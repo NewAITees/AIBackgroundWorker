@@ -1,0 +1,20 @@
+[Unit]
+Description=AIBackgroundWorker Lifelog Daemon
+After=network.target
+
+[Service]
+Type=forking
+User=perso
+WorkingDirectory=/home/perso/analysis/AIBackgroundWorker
+Environment="HOME=/home/perso"
+Environment="ENABLE_WINDOWS_FOREGROUND_LOGGER=1"
+Environment="PATH=/home/perso/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStart=/home/perso/analysis/AIBackgroundWorker/scripts/daemon.sh start
+ExecStop=/home/perso/analysis/AIBackgroundWorker/scripts/daemon.sh stop
+PIDFile=/home/perso/analysis/AIBackgroundWorker/lifelog.pid
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+

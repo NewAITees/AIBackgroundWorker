@@ -1,0 +1,11 @@
+[Unit]
+Description=AIBackgroundWorker - Merge Windows Logs Timer
+Requires=merge-windows-logs.service
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=15min
+
+[Install]
+WantedBy=timers.target
+
