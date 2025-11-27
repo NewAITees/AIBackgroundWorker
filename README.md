@@ -23,6 +23,31 @@ AIシステムを動かすための背景として動作する常駐システム
   - RSSフィードからの情報収集
   - Web検索機能
 
+## 自動情報収集（優先機能）
+
+RSS/ニュース/Web検索をまとめて**能動的に1時間ごと収集**できます。興味関心は `lifelog-system/config/info_collector/*.txt` で管理し、`--use-ollama` を付けるとローカルOllamaに検索クエリの提案を依頼します（Ollamaが落ちていてもフォールバックします）。
+
+### 1回実行
+
+```bash
+./scripts/info_collector/auto_collect.sh --all --limit 15 --use-ollama
+```
+
+### 定期実行（systemdタイマーで毎時）
+
+```bash
+sudo cp scripts/systemd/info-collector.service /etc/systemd/system/
+sudo cp scripts/systemd/info-collector.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now info-collector.timer
+```
+
+設定ファイル:
+- `lifelog-system/config/info_collector/rss_feeds.txt`: RSS URL一覧
+- `lifelog-system/config/info_collector/news_sites.txt`: ニュースサイトURL一覧
+- `lifelog-system/config/info_collector/search_queries.txt`: ベース検索クエリ（フォールバック）
+- `lifelog-system/config/info_collector/interests.txt`: ユーザー興味（Ollamaプロンプト用）
+
 ### データ可視化機能
 
 - **データ閲覧機能**

@@ -1,0 +1,10 @@
+[Unit]
+Description=Run AIBackgroundWorker Info Collector hourly
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+Unit=info-collector.service
+
+[Install]
+WantedBy=timers.target

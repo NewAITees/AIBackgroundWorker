@@ -1,0 +1,4 @@
+# ニュースサイトのトップページURLを1行ずつ記載してください
+# 例:
+# https://example.com/news
+# https://news.ycombinator.com/

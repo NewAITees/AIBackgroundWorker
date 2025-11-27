@@ -1,0 +1,4 @@
+# RSSフィードURLを1行ずつ記載してください
+# 例:
+# https://example.com/feed
+# https://hnrss.org/frontpage
