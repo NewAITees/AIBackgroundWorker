@@ -9,7 +9,7 @@ DuckDuckGo検索コレクター
 
 from typing import List, Optional
 from datetime import datetime
-from ddgs import DDGS
+from duckduckgo_search import DDGS
 
 from ..models import SearchResult
 from .base import BaseCollector

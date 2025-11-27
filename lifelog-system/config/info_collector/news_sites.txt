@@ -1,4 +1,5 @@
-# ニュースサイトのトップページURLを1行ずつ記載してください
-# 例:
-# https://example.com/news
-# https://news.ycombinator.com/
+# ニュースサイトのトップページURLを1行ずつ記載してください（コメント行は無視されます）
+https://www3.nhk.or.jp/news/
+https://www.bbc.com/news
+https://www.reuters.com/world/
+https://news.ycombinator.com/

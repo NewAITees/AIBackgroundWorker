@@ -1,4 +1,13 @@
-# RSSフィードURLを1行ずつ記載してください
-# 例:
-# https://example.com/feed
-# https://hnrss.org/frontpage
+# RSSフィードURLを1行ずつ記載してください（コメント行は無視されます）
+# ニュース系
+https://news.google.com/rss?hl=ja&gl=JP&ceid=JP:ja
+https://news.yahoo.co.jp/rss/topics/top-picks.xml
+https://www.nhk.or.jp/rss/news/cat0.xml
+
+# 技術系
+https://hnrss.org/frontpage
+https://hnrss.org/newest
+https://zenn.dev/topics/ai/feed
+https://zenn.dev/topics/python/feed
+https://qiita.com/popular-items/feed
+http://b.hatena.ne.jp/hotentry/it.rss
