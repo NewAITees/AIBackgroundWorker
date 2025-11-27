@@ -1,0 +1,55 @@
+# lifelog-system Windows privacy configuration
+
+privacy:
+  # ⚠️ 以下はデフォルトで除外（安全側）
+
+  # 除外プロセス（記録しない）
+  # Windows用のプロセス名（.exe拡張子付き）
+  exclude_processes:
+    # パスワードマネージャー
+    - keepass.exe
+    - KeePass.exe
+    - KeePassXC.exe
+    - keepassxc.exe
+    - lastpass.exe
+    - LastPass.exe
+    - 1password.exe
+    - 1Password.exe
+    - bitwarden.exe
+    - Bitwarden.exe
+    - dashlane.exe
+    - Dashlane.exe
+
+    # VPN
+    - nordvpn.exe
+    - NordVPN.exe
+    - expressvpn.exe
+    - ExpressVPN.exe
+    - protonvpn.exe
+    - ProtonVPN.exe
+
+    # セキュリティツール
+    - tor.exe
+    - Tor.exe
+    - veracrypt.exe
+    - VeraCrypt.exe
+
+  # センシティブキーワード（これらを含むウィンドウタイトルやプロセス名は記録しない）
+  sensitive_keywords:
+    # 英語
+    - password
+    - credential
+    - secret
+    - private
+    - confidential
+    - authentication
+    - login
+    - signin
+
+    # 日本語
+    - パスワード
+    - 秘密
+    - 機密
+    - 認証情報
+    - ログイン
+    - サインイン
