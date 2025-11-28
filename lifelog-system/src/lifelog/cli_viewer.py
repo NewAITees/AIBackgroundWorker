@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from src.lifelog.database.db_manager import DatabaseManager
+from src.browser_history.repository import BrowserHistoryRepository
 
 
 def format_duration(seconds: int) -> str:
@@ -230,6 +231,106 @@ def show_health_metrics(db: DatabaseManager, hours: int = 24) -> None:
         print(f"Dropped Events: {latest[5]}")
 
 
+def show_browser_history(limit: int = 20, date: str = None) -> None:
+    """ブラウザ履歴を表示."""
+    repo = BrowserHistoryRepository()
+
+    if date:
+        entries = repo.list_history(start_date=date, end_date=date, limit=limit)
+        print(f"\n=== Browser History for {date} ===\n")
+    else:
+        entries = repo.list_history(limit=limit)
+        print(f"\n=== Recent Browser History (Last {limit} entries) ===\n")
+
+    if not entries:
+        print("No browser history found")
+        return
+
+    print(f"{'Time':<20} {'Title':<50} {'URL':<60}")
+    print("-" * 130)
+
+    for entry in entries:
+        time_str = entry.visit_time.strftime("%Y-%m-%d %H:%M:%S")
+        title = (entry.title or "(No title)")[:48]
+        url = entry.url[:58]
+
+        print(f"{time_str:<20} {title:<50} {url:<60}")
+
+    print(f"\nTotal: {len(entries)} entries")
+
+
+def show_browser_stats(date: str = None) -> None:
+    """ブラウザ統計を表示."""
+    repo = BrowserHistoryRepository()
+
+    import sqlite3
+    conn = repo._connect()
+    cursor = conn.cursor()
+
+    # 日付フィルタ
+    date_filter = ""
+    params = []
+    if date:
+        date_filter = "WHERE date(visit_time) = ?"
+        params.append(date)
+        print(f"\n=== Browser Statistics for {date} ===\n")
+    else:
+        print(f"\n=== Browser Statistics (All Time) ===\n")
+
+    # 総件数
+    cursor.execute(f"SELECT COUNT(*) FROM browser_history {date_filter}", params)
+    total = cursor.fetchone()[0]
+
+    # ドメイン別集計
+    query = f"""
+        SELECT
+            CASE
+                WHEN url LIKE 'https://%' THEN substr(url, 9, instr(substr(url, 9), '/') - 1)
+                WHEN url LIKE 'http://%' THEN substr(url, 8, instr(substr(url, 8), '/') - 1)
+                ELSE 'other'
+            END as domain,
+            COUNT(*) as count
+        FROM browser_history
+        {date_filter}
+        GROUP BY domain
+        ORDER BY count DESC
+        LIMIT 20
+    """
+    cursor.execute(query, params)
+    domains = cursor.fetchall()
+
+    print(f"Total Visits: {total}")
+    print(f"\n{'Domain':<40} {'Visits':<10}")
+    print("-" * 50)
+
+    for domain, count in domains:
+        # ドメインがNoneまたは空の場合の処理
+        domain_clean = domain if domain and domain.strip() else "(unknown)"
+        print(f"{domain_clean:<40} {count:<10}")
+
+    # 時間帯別集計
+    if date:
+        query = f"""
+            SELECT
+                strftime('%H', visit_time) as hour,
+                COUNT(*) as count
+            FROM browser_history
+            WHERE date(visit_time) = ?
+            GROUP BY hour
+            ORDER BY hour
+        """
+        cursor.execute(query, [date])
+        hourly = cursor.fetchall()
+
+        if hourly:
+            print(f"\n{'Hour':<8} {'Visits':<10}")
+            print("-" * 20)
+            for hour, count in hourly:
+                print(f"{hour}:00   {count:<10}")
+
+    conn.close()
+
+
 def main() -> None:
     """メインエントリーポイント."""
     parser = argparse.ArgumentParser(description="Lifelog CLI Viewer")
@@ -259,6 +360,21 @@ def main() -> None:
         "--hours", type=int, default=24, help="Hours to look back (default: 24)"
     )
 
+    # browser コマンド
+    browser_parser = subparsers.add_parser("browser", help="Show browser history")
+    browser_parser.add_argument(
+        "--limit", type=int, default=20, help="Number of entries to show (default: 20)"
+    )
+    browser_parser.add_argument(
+        "--date", type=str, help="Date (YYYY-MM-DD, default: all)"
+    )
+
+    # browser-stats コマンド
+    browser_stats_parser = subparsers.add_parser("browser-stats", help="Show browser statistics")
+    browser_stats_parser.add_argument(
+        "--date", type=str, help="Date (YYYY-MM-DD, default: all time)"
+    )
+
     args = parser.parse_args()
 
     # データベース接続
@@ -280,6 +396,10 @@ def main() -> None:
         show_timeline(db, args.hours)
     elif args.command == "health":
         show_health_metrics(db, args.hours)
+    elif args.command == "browser":
+        show_browser_history(args.limit, args.date)
+    elif args.command == "browser-stats":
+        show_browser_stats(args.date)
 
 
 if __name__ == "__main__":

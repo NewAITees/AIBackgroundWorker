@@ -1,34 +1,49 @@
-# タスクスケジューラ設定手順 - 完全ガイド
+# 自動実行設定ガイド - WSL systemd + Windowsタスクスケジューラ
 
-このドキュメントでは、Windowsタスクスケジューラを使って、すべてのデータ収集を自動化する具体的な手順を説明します。
+このドキュメントでは、AIBackgroundWorkerのすべてのデータ収集を自動化する具体的な手順を説明します。
+
+**更新日**: 2025-11-28
+**動作確認済み環境**: WSL2 (Ubuntu) + Windows 11
+
+---
 
 ## 📍 前提条件
 
-- WSL2環境（Ubuntu）で作業している
+- WSL2環境（Ubuntu）でsystemdが有効
 - プロジェクトパス: `/home/perso/analysis/AIBackgroundWorker`
 - Windows側からアクセス可能なパス: `\\wsl.localhost\Ubuntu\home\perso\analysis\AIBackgroundWorker`
 
----
+### systemdの有効化確認
 
-## 🎯 設定するタスク一覧
+```bash
+systemctl --version
+```
 
-以下のタスクを設定します：
-
-### Windowsタスクスケジューラで設定するタスク
-
-1. **Windows前面ウィンドウロガー** - 常駐実行（ログオン時起動）
-
-### WSL側で設定するタスク（systemdサービス・タイマー）
-
-2. **WSL側ライフログデーモン** - 常駐実行（systemdサービスとして設定）
-3. **ブラウザ履歴収集** - 5分ごとに実行（systemdタイマーとして設定）✅ **推奨**
-4. **Windowsログ統合** - 15分ごとに実行（systemdタイマーとして設定）
-
-**注意**: ブラウザ履歴収集は、PATH環境変数の問題を回避するため、WSL側のsystemdタイマーを使用することを推奨します。
+systemdが無効な場合は、[付録A: systemdの有効化](#付録a-systemdの有効化)を参照してください。
 
 ---
 
-## ステップ1: Windows前面ウィンドウロガーの設定
+## 🎯 自動実行の構成
+
+### WSL systemdで管理（推奨）
+
+以下のサービス/タイマーはWSL側のsystemdで管理します：
+
+1. **lifelog-daemon** (サービス) - ライフログ収集デーモン（常駐）
+2. **brave-history-poller** (タイマー) - ブラウザ履歴収集（5分ごと）
+3. **merge-windows-logs** (タイマー) - Windowsログ統合（15分ごと）
+
+### Windowsタスクスケジューラで管理
+
+以下のタスクはWindows側のタスクスケジューラで管理します：
+
+1. **Windows前面ウィンドウロガー** - Windows側の前面ウィンドウ記録（常駐）
+
+**理由**: WSL環境からWindows APIを直接呼び出せないため、PowerShellスクリプトをWindows側で実行する必要があります。
+
+---
+
+## ステップ1: Windows前面ウィンドウロガーの設定（タスクスケジューラ）
 
 ### 1-1. タスクスケジューラを開く
 
@@ -62,407 +77,108 @@
    ```
    -ExecutionPolicy Bypass -File "\\wsl.localhost\Ubuntu\home\perso\analysis\AIBackgroundWorker\scripts\windows\foreground_logger.ps1" -IntervalSeconds 5 -StopAfterSeconds 0 -OutputPath "\\wsl.localhost\Ubuntu\home\perso\analysis\AIBackgroundWorker\logs\windows_foreground.jsonl"
    ```
-   
-   **注意**: 出力パスを明示的に指定しています。デフォルトでは同じ場所に出力されますが、明示的に指定することで確実に動作します。
-
-   **開始場所（オプション）**:
-   ```
-   \\wsl.localhost\Ubuntu\home\perso\analysis\AIBackgroundWorker\scripts\windows
-   ```
 
 4. 「次へ」をクリック
 
 ### 1-5. 完了前の確認
 
-1. 「**完了**」のチェックボックスを**外す**（詳細設定をするため）
+1. 「**プロパティを開く**」のチェックボックスを**ON**
 2. 「完了」をクリック
 
 ### 1-6. 詳細設定
 
-1. 作成したタスクを右クリック → 「**プロパティ**」を選択
-2. **全般タブ**:
+プロパティダイアログが自動で開きます：
+
+1. **全般タブ**:
    - 「**最上位の特権で実行する**」にチェック ✅
    - 「構成」: **Windows 10/11** を選択
-3. **条件タブ**:
+
+2. **条件タブ**:
    - 「コンピューターが AC 電源に接続されている場合のみタスクを開始する」のチェックを**外す** ✅
-4. **設定タブ**:
-   - 「タスクが要求されたときに実行する」にチェック ✅
-   - 「タスクが実行中でも新しいインスタンスを開始する」を選択
-5. 「**OK**」をクリック
+
+3. **設定タブ**:
+   - 「タスクが実行中の場合に適用される規則」: 「新しいインスタンスを開始しない」を選択
+
+4. 「**OK**」をクリック
 
 ### 1-7. 動作確認
 
-1. タスクを右クリック → 「**実行**」を選択
-2. 数秒待ってから、タスクを右クリック → 「**履歴**」タブを確認
-3. エラーがないことを確認
-
-**確認方法**:
-```powershell
-# PowerShellで確認（WSLから）
+```bash
+# WSL側で実行
 cat /home/perso/analysis/AIBackgroundWorker/logs/windows_foreground.jsonl | tail -5
 ```
 
----
-
-## ステップ2: WSL側ライフログデーモンの設定（systemdサービス）
-
-WSL側のデーモンは、systemdサービスとして設定します（WSL2でsystemdが有効な場合）。
-
-### 2-1. systemdサービスファイルを作成
-
-**WSL側のターミナルで実行**:
-
-```bash
-cd /home/perso/analysis/AIBackgroundWorker
-
-# systemdサービスディレクトリを作成（存在しない場合）
-sudo mkdir -p /etc/systemd/system
-
-# サービスファイルを作成
-sudo nano /etc/systemd/system/lifelog-daemon.service
-```
-
-### 2-2. サービスファイルの内容
-
-プロジェクトに含まれているサービスファイルを使用します：
-
-```bash
-# サービスファイルをコピー
-sudo cp scripts/systemd/lifelog-daemon.service /etc/systemd/system/
-```
-
-サービスファイルの内容：
-
-```ini
-[Unit]
-Description=AIBackgroundWorker Lifelog Daemon
-After=network.target
-
-[Service]
-Type=forking
-User=perso
-WorkingDirectory=/home/perso/analysis/AIBackgroundWorker
-Environment="HOME=/home/perso"
-Environment="ENABLE_WINDOWS_FOREGROUND_LOGGER=1"
-Environment="PATH=/home/perso/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-ExecStart=/home/perso/analysis/AIBackgroundWorker/scripts/daemon.sh start
-ExecStop=/home/perso/analysis/AIBackgroundWorker/scripts/daemon.sh stop
-PIDFile=/home/perso/analysis/AIBackgroundWorker/lifelog.pid
-Restart=always
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-```
-
-**注意**: 
-- `User=perso` の部分は、実際のユーザー名に合わせて変更してください
-- `Type=forking` を使用しているため、`daemon.sh start`がバックグラウンドプロセスを起動し、PIDファイルに書き込みます
-- `HOME`環境変数を明示的に設定することで、`uv`のキャッシュディレクトリへのアクセス権限問題を回避します
-
-### 2-3. 権限の確認と修正（重要）
-
-**WSL側のターミナルで実行**:
-
-```bash
-# uvのキャッシュディレクトリの権限を確認
-ls -la ~/.cache/uv/
-
-# 権限が正しくない場合（root所有など）、修正
-sudo chown -R perso:perso ~/.cache/uv/
-
-# .venvディレクトリの権限を確認
-cd /home/perso/analysis/AIBackgroundWorker/lifelog-system
-ls -la .venv/
-
-# 権限が正しくない場合、修正
-chmod -R u+w .venv/
-```
-
-### 2-4. サービスを有効化
-
-**WSL側のターミナルで実行**:
-
-```bash
-cd /home/perso/analysis/AIBackgroundWorker
-
-# サービスファイルをコピー
-sudo cp scripts/systemd/lifelog-daemon.service /etc/systemd/system/
-
-# systemdの設定を再読み込み
-sudo systemctl daemon-reload
-
-# サービスを有効化（起動時に自動起動）
-sudo systemctl enable lifelog-daemon.service
-
-# サービスを起動
-sudo systemctl start lifelog-daemon.service
-```
-
-### 2-5. 動作確認
-
-**WSL側のターミナルで実行**:
-
-```bash
-# サービスの状態を確認
-
-sudo systemctl status lifelog-daemon.service
-
-# または、daemon.shで確認
-cd /home/perso/analysis/AIBackgroundWorker
-./scripts/daemon.sh status
-```
-
-**期待される出力**:
-```
-Lifelog is running (PID: xxxxx)
-```
-
-### 2-6. サービス管理コマンド
-
-**WSL側のターミナルで実行**:
-
-```bash
-# サービスを停止
-sudo systemctl stop lifelog-daemon.service
-
-# サービスを再起動
-sudo systemctl restart lifelog-daemon.service
-
-# サービスのログを確認
-sudo journalctl -u lifelog-daemon.service -f
-```
-
-### 2-7. systemdが無効な場合
-
-WSL2でsystemdが無効な場合は、以下の方法で有効化できます：
-
-**WSL側のターミナルで実行**:
-
-```bash
-# /etc/wsl.conf を編集
-sudo nano /etc/wsl.conf
-```
-
-以下の内容を追加：
-
-```ini
-[boot]
-systemd=true
-```
-
-その後、WSLを再起動：
-
-**Windows側のPowerShellで実行**:
-
-```powershell
-wsl --shutdown
-```
-
-WSLを再起動後、systemdが有効になります。
+ログファイルにWindows前面ウィンドウの情報が記録されていることを確認してください。
 
 ---
 
-## ステップ3: ブラウザ履歴収集の設定
+## ステップ2: WSL systemdサービス/タイマーの設定
 
-**推奨方法**: WSL側のsystemdタイマーを使用します（PATH環境変数の問題を回避できます）。
-
-### 方法A: WSL側のsystemdタイマーを使用（推奨）
-
-### 3A-1. systemdサービスとタイマーファイルをインストール
+### 2-1. サービスファイルのインストール
 
 **WSL側のターミナルで実行**:
 
 ```bash
 cd /home/perso/analysis/AIBackgroundWorker
 
-# サービスファイルをコピー
+# サービスファイルをsystemdディレクトリにコピー
+sudo cp scripts/systemd/lifelog-daemon.service /etc/systemd/system/
 sudo cp scripts/systemd/brave-history-poller.service /etc/systemd/system/
 sudo cp scripts/systemd/brave-history-poller.timer /etc/systemd/system/
-
-# systemdの設定を再読み込み
-sudo systemctl daemon-reload
-
-# タイマーを有効化
-sudo systemctl enable brave-history-poller.timer
-
-# タイマーを起動
-sudo systemctl start brave-history-poller.timer
-```
-
-### 3A-2. 動作確認
-
-**WSL側のターミナルで実行**:
-
-```bash
-# タイマーの状態を確認
-sudo systemctl status brave-history-poller.timer
-
-# タイマーの一覧を確認
-sudo systemctl list-timers brave-history-poller.timer
-
-# 手動で実行（テスト）
-sudo systemctl start brave-history-poller.service
-
-# ログを確認
-tail -f /home/perso/analysis/AIBackgroundWorker/logs/brave_poll.log
-```
-
-### 3A-3. タイマーの管理コマンド
-
-**WSL側のターミナルで実行**:
-
-```bash
-# タイマーを停止
-sudo systemctl stop brave-history-poller.timer
-
-# タイマーを再起動
-sudo systemctl restart brave-history-poller.timer
-
-# タイマーを無効化
-sudo systemctl disable brave-history-poller.timer
-```
-
----
-
-### 方法B: Windowsタスクスケジューラを使用（代替方法）
-
-**注意**: この方法ではPATH環境変数の問題が発生する可能性があります。可能であれば方法Aを推奨します。
-
-### 3B-1. タスクを作成
-
-1. 「**基本タスクの作成**」をクリック
-2. **名前**: `AIBackgroundWorker - Browser History Poller`
-3. **説明**: `Braveブラウザ履歴を5分ごとに収集`
-4. 「次へ」をクリック
-
-### 3B-2. トリガーを設定
-
-1. 「**スケジュールに従う**」を選択
-2. **繰り返し間隔**: **5分** を選択
-3. 「次へ」をクリック
-
-### 3B-3. 操作を設定
-
-1. 「**プログラムの開始**」を選択
-2. 「次へ」をクリック
-3. 以下の値を入力：
-
-   **プログラム/スクリプト**:
-   ```
-   wsl
-   ```
-
-   **引数の追加**:
-   ```
-   -d Ubuntu -e bash -c "cd /home/perso/analysis/AIBackgroundWorker && ./scripts/browser/poll_brave_history.sh --once >> /home/perso/analysis/AIBackgroundWorker/logs/brave_poll.log 2>&1"
-   ```
-   
-   **注意**: ログファイルへのリダイレクト（`>> .../logs/brave_poll.log 2>&1`）を追加しています。これにより、標準出力と標準エラー出力の両方がログファイルに記録されます。
-
-4. 「次へ」をクリック
-
-### 3B-4. 完了前の確認
-
-1. 「完了」のチェックボックスを**外す**
-2. 「完了」をクリック
-
-### 3B-5. 詳細設定
-
-1. 作成したタスクを右クリック → 「**プロパティ**」を選択
-2. **全般タブ**:
-   - 「**最上位の特権で実行する**」にチェック ✅
-3. **条件タブ**:
-   - 「コンピューターが AC 電源に接続されている場合のみタスクを開始する」のチェックを**外す** ✅
-4. **設定タブ**:
-   - 「タスクが要求されたときに実行する」にチェック ✅
-   - 「タスクが実行中でも新しいインスタンスを開始する」を選択
-5. 「**OK**」をクリック
-
-### 3B-6. 動作確認
-
-1. タスクを右クリック → 「**実行**」を選択
-2. WSL側で確認：
-
-```bash
-# WSL側で実行
-# ログファイルが作成されるまで少し待つ
-sleep 5
-tail -f /home/perso/analysis/AIBackgroundWorker/logs/brave_poll.log
-```
-
-**注意**: 
-- ログファイルが存在しない場合は、タスクがまだ実行されていないか、エラーが発生している可能性があります
-- タスクスケジューラの「履歴」タブでエラーを確認してください
-- Braveブラウザがインストールされていない場合、エラーメッセージが表示されます
-
----
-
-## ステップ4: Windowsログ統合の設定（systemdタイマー）
-
-Windowsログ統合もsystemdタイマーで設定します。
-
-### 4-1. systemdサービスとタイマーファイルをインストール
-
-**WSL側のターミナルで実行**:
-
-```bash
-cd /home/perso/analysis/AIBackgroundWorker
-
-# サービスファイルをコピー
 sudo cp scripts/systemd/merge-windows-logs.service /etc/systemd/system/
 sudo cp scripts/systemd/merge-windows-logs.timer /etc/systemd/system/
 
 # systemdの設定を再読み込み
 sudo systemctl daemon-reload
+```
 
-# タイマーを有効化
+### 2-2. サービス/タイマーを有効化して起動
+
+**WSL側のターミナルで実行**:
+
+```bash
+# ライフログデーモン（サービス）
+sudo systemctl enable lifelog-daemon.service
+sudo systemctl start lifelog-daemon.service
+
+# ブラウザ履歴ポーラー（タイマー）
+sudo systemctl enable brave-history-poller.timer
+sudo systemctl start brave-history-poller.timer
+
+# Windowsログ統合（タイマー）
 sudo systemctl enable merge-windows-logs.timer
-
-# タイマーを起動
 sudo systemctl start merge-windows-logs.timer
 ```
 
-### 4-2. 動作確認
+### 2-3. 動作確認
 
 **WSL側のターミナルで実行**:
 
 ```bash
-# タイマーの状態を確認
+# サービスの状態確認
+sudo systemctl status lifelog-daemon.service
+
+# タイマーの状態確認
+sudo systemctl status brave-history-poller.timer
 sudo systemctl status merge-windows-logs.timer
 
-# タイマーの一覧を確認
-sudo systemctl list-timers merge-windows-logs.timer
-
-# 手動で実行（テスト）
-sudo systemctl start merge-windows-logs.service
-
-# サービスのログを確認
-sudo journalctl -u merge-windows-logs.service -f
+# タイマーの一覧表示
+sudo systemctl list-timers --all | grep -E "brave|merge"
 ```
 
-### 4-3. タイマーの管理コマンド
+**期待される出力**:
 
-**WSL側のターミナルで実行**:
-
-```bash
-# タイマーを停止
-sudo systemctl stop merge-windows-logs.timer
-
-# タイマーを再起動
-sudo systemctl restart merge-windows-logs.timer
-
-# タイマーを無効化
-sudo systemctl disable merge-windows-logs.timer
+```
+● lifelog-daemon.service - AIBackgroundWorker Lifelog Daemon
+     Loaded: loaded (/etc/systemd/system/lifelog-daemon.service; enabled; preset: enabled)
+     Active: active (running) since ...
 ```
 
-### 4-4. データベースの内容確認
-
-**WSL側のターミナルで実行**:
-
-```bash
-cd /home/perso/analysis/AIBackgroundWorker/lifelog-system
-uv run python -m src.lifelog.cli_viewer summary
+```
+● brave-history-poller.timer - AIBackgroundWorker - Brave History Poller Timer
+     Loaded: loaded (/etc/systemd/system/brave-history-poller.timer; enabled; preset: enabled)
+     Active: active (waiting) since ...
+    Trigger: ... (next execution time)
 ```
 
 ---
@@ -474,124 +190,99 @@ uv run python -m src.lifelog.cli_viewer summary
 ### 確認コマンド（WSL側で実行）
 
 ```bash
-# 1. ライフログデーモンの状態確認
 cd /home/perso/analysis/AIBackgroundWorker
+
+# 1. ライフログデーモンの状態確認
+sudo systemctl status lifelog-daemon.service
+
+# または daemon.sh で確認
 ./scripts/daemon.sh status
 
-# 2. Windowsロガーの状態確認
-./scripts/daemon.sh winlogger-status
+# 2. タイマーの状態確認
+sudo systemctl list-timers --all | grep -E "brave|merge"
 
-# 3. Windowsログファイルの確認
-ls -lh logs/windows_foreground.jsonl
+# 3. ログファイルの確認
+ls -lh logs/
 
-# 4. ブラウザ履歴ログの確認
+# 4. Windowsログファイルの確認
+tail -10 logs/windows_foreground.jsonl
+
+# 5. ブラウザ履歴ログの確認
 tail -20 logs/brave_poll.log
 
-# 5. データベースの内容確認
+# 6. データベースの内容確認
 cd lifelog-system
 uv run python -m src.lifelog.cli_viewer summary
 ```
 
-### タスクスケジューラでの確認
-
-1. タスク スケジューラを開く
-2. 「タスク スケジューラ ライブラリ」を選択
-3. 以下の3つのタスクが表示されていることを確認：
-   - `AIBackgroundWorker - Windows Foreground Logger`
-   - `AIBackgroundWorker - Browser History Poller`
-   - `AIBackgroundWorker - Merge Windows Logs`
-4. 各タスクの「状態」が「準備完了」になっていることを確認
-
-### systemdサービスの確認
-
-**WSL側のターミナルで実行**:
+### 有効化の確認
 
 ```bash
-# サービスの状態を確認
-sudo systemctl status lifelog-daemon.service
+# すべてのサービス/タイマーが enabled になっているか確認
+sudo systemctl is-enabled lifelog-daemon.service
+sudo systemctl is-enabled brave-history-poller.timer
+sudo systemctl is-enabled merge-windows-logs.timer
+```
+
+すべて `enabled` と表示されればOKです。
+
+---
+
+## 🔧 サービス管理コマンド
+
+### ライフログデーモン（サービス）
+
+```bash
+# 停止
+sudo systemctl stop lifelog-daemon.service
+
+# 再起動
+sudo systemctl restart lifelog-daemon.service
+
+# ログ確認
+sudo journalctl -u lifelog-daemon.service -f
+
+# または
+tail -f /home/perso/analysis/AIBackgroundWorker/logs/lifelog_daemon.log
+```
+
+### ブラウザ履歴ポーラー（タイマー）
+
+```bash
+# タイマーを停止
+sudo systemctl stop brave-history-poller.timer
+
+# タイマーを再起動
+sudo systemctl restart brave-history-poller.timer
+
+# 手動で即座に実行（テスト用）
+sudo systemctl start brave-history-poller.service
+
+# ログ確認
+tail -f /home/perso/analysis/AIBackgroundWorker/logs/brave_poll.log
+```
+
+### Windowsログ統合（タイマー）
+
+```bash
+# タイマーを停止
+sudo systemctl stop merge-windows-logs.timer
+
+# タイマーを再起動
+sudo systemctl restart merge-windows-logs.timer
+
+# 手動で即座に実行（テスト用）
+sudo systemctl start merge-windows-logs.service
+
+# ログ確認
+sudo journalctl -u merge-windows-logs.service -f
 ```
 
 ---
 
 ## 🔧 トラブルシューティング
 
-### 問題1: タスクが実行されない
-
-**確認事項**:
-1. タスクを右クリック → 「履歴」タブでエラーを確認
-2. 「最上位の特権で実行する」にチェックが入っているか確認
-3. パスが正しいか確認（`\\wsl.localhost\Ubuntu\...` の形式）
-
-**解決方法**:
-- エラーメッセージを確認して、パスや権限の問題を修正
-
-### 問題2: WSLコマンドが実行されない
-
-**確認事項**:
-```powershell
-# PowerShellで確認
-wsl -l -v
-```
-
-**解決方法**:
-- WSLが正しくインストールされているか確認
-- 引数の `-d Ubuntu` の部分を、実際のディストリビューション名に変更
-
-### 問題3: ログファイルが生成されない
-
-**確認事項**:
-```bash
-# WSL側で確認
-ls -la /home/perso/analysis/AIBackgroundWorker/logs/
-```
-
-**解決方法**:
-- ログディレクトリが存在するか確認
-- 権限の問題がないか確認
-
-### 問題4: Windowsロガーが起動しない
-
-**確認事項**:
-- PowerShellの実行ポリシーを確認
-
-**解決方法**:
-```powershell
-# PowerShell（管理者権限）で実行
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-```
-
-### 問題5: systemdサービスが再起動ループになっている
-
-**症状**:
-```bash
-sudo systemctl status lifelog-daemon.service
-# Active: activating (auto-restart) と表示される
-```
-
-**原因**:
-1. `uv`のキャッシュディレクトリへのアクセス権限エラー
-2. `.venv`ディレクトリへのアクセス権限エラー
-3. `HOME`環境変数が設定されていない
-
-**解決方法**:
-
-```bash
-# 1. 権限を修正
-sudo chown -R perso:perso ~/.cache/uv/
-cd /home/perso/analysis/AIBackgroundWorker/lifelog-system
-chmod -R u+w .venv/
-
-# 2. サービスファイルにHOME環境変数が設定されているか確認
-cat /etc/systemd/system/lifelog-daemon.service | grep HOME
-
-# 3. サービスを再起動
-sudo systemctl restart lifelog-daemon.service
-
-# 4. ログを確認
-tail -50 /home/perso/analysis/AIBackgroundWorker/logs/lifelog_daemon.log
-```
-
-### 問題6: systemdサービスが起動するがすぐに終了する
+### 問題1: lifelog-daemonがすぐに終了する
 
 **症状**:
 ```bash
@@ -617,44 +308,48 @@ cd /home/perso/analysis/AIBackgroundWorker/lifelog-system
 HOME=/home/perso /home/perso/.local/bin/uv run python -m src.lifelog.main_collector
 ```
 
-### 問題7: ブラウザ履歴収集タスクが実行されてもログファイルが作成されない
+### 問題2: lifelog-daemonが再起動ループになっている
 
 **症状**:
 ```bash
-tail -f /home/perso/analysis/AIBackgroundWorker/logs/brave_poll.log
-# tail: cannot open '/home/perso/analysis/AIBackgroundWorker/logs/brave_poll.log' for reading: No such file or directory
+sudo systemctl status lifelog-daemon.service
+# Active: activating (auto-restart) と表示される
 ```
 
 **原因**:
-1. タスクスケジューラの設定でログファイルへのリダイレクトが指定されていない
-2. ログディレクトリが存在しない
+1. `uv`のキャッシュディレクトリへのアクセス権限エラー
+2. `.venv`ディレクトリへのアクセス権限エラー
+3. `HOME`環境変数が設定されていない
 
 **解決方法**:
 
 ```bash
-# 1. ログディレクトリが存在するか確認
-ls -la /home/perso/analysis/AIBackgroundWorker/logs/
+# 1. 権限を修正
+sudo chown -R $USER:$USER ~/.cache/uv/
+cd /home/perso/analysis/AIBackgroundWorker/lifelog-system
+chmod -R u+w .venv/
 
-# 2. 存在しない場合は作成
-mkdir -p /home/perso/analysis/AIBackgroundWorker/logs/
+# 2. サービスファイルにHOME環境変数が設定されているか確認
+cat /etc/systemd/system/lifelog-daemon.service | grep HOME
 
-# 3. タスクスケジューラの設定を確認
-# 「引数の追加」に以下が含まれているか確認：
-# >> /home/perso/analysis/AIBackgroundWorker/logs/brave_poll.log 2>&1
+# 3. サービスを再起動
+sudo systemctl restart lifelog-daemon.service
+
+# 4. ログを確認
+tail -50 /home/perso/analysis/AIBackgroundWorker/logs/lifelog_daemon.log
 ```
 
-### 問題8: Braveブラウザ履歴が見つからない
+### 問題3: ブラウザ履歴が見つからない
 
 **症状**:
 ```bash
 tail logs/brave_poll.log
-# ✗ エラー: Brave history file not found. Please specify --profile-path or ensure Brave is installed.
+# ✗ エラー: Brave history file not found.
 ```
 
 **原因**:
 - Braveブラウザがインストールされていない
 - Braveブラウザのプロファイルパスが標準的な場所にない
-- Braveブラウザが実行中で履歴ファイルがロックされている
 
 **解決方法**:
 
@@ -663,36 +358,147 @@ tail logs/brave_poll.log
 # Windowsの場合:
 # C:\Users\<USERNAME>\AppData\Local\BraveSoftware\Brave-Browser\User Data\Default
 
-# 2. プロファイルパスを指定して実行
+# 2. プロファイルパスを指定して手動実行
 cd /home/perso/analysis/AIBackgroundWorker
 ./scripts/browser/poll_brave_history.sh --once --profile-path "/mnt/c/Users/<USERNAME>/AppData/Local/BraveSoftware/Brave-Browser/User Data/Default"
+```
 
-# 3. タスクスケジューラの設定でプロファイルパスを指定する場合
-# 「引数の追加」に以下を追加：
-# --profile-path "/mnt/c/Users/<USERNAME>/AppData/Local/BraveSoftware/Brave-Browser/User Data/Default"
+### 問題4: Windowsロガーが起動しない
+
+**確認事項**:
+- PowerShellの実行ポリシーを確認
+
+**解決方法**:
+```powershell
+# PowerShell（管理者権限）で実行
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+
+### 問題5: タイマーが実行されない
+
+**確認事項**:
+
+```bash
+# タイマーが有効化されているか確認
+sudo systemctl is-enabled brave-history-poller.timer
+
+# タイマーの状態を確認
+sudo systemctl status brave-history-poller.timer
+
+# タイマーの一覧を確認
+sudo systemctl list-timers --all
+```
+
+**解決方法**:
+
+```bash
+# タイマーを再起動
+sudo systemctl restart brave-history-poller.timer
+
+# systemdの設定を再読み込み
+sudo systemctl daemon-reload
 ```
 
 ---
 
-## 📝 次のステップ
+## 📝 systemdサービス/タイマーファイルの内容
 
-設定が完了したら、以下を確認してください：
+### lifelog-daemon.service
 
-1. **データが正しく収集されているか**
-   ```bash
-   cd /home/perso/analysis/AIBackgroundWorker/lifelog-system
-   uv run python -m src.lifelog.cli_viewer summary
-   ```
+```ini
+[Unit]
+Description=AIBackgroundWorker Lifelog Daemon
+After=network.target
 
-2. **定期的にデータが更新されているか**
-   - 数時間後に再度確認して、データが増えているか確認
+[Service]
+Type=forking
+User=perso
+WorkingDirectory=/home/perso/analysis/AIBackgroundWorker
+Environment="HOME=/home/perso"
+Environment="ENABLE_WINDOWS_FOREGROUND_LOGGER=1"
+Environment="PATH=/home/perso/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStart=/home/perso/analysis/AIBackgroundWorker/scripts/daemon.sh start
+ExecStop=/home/perso/analysis/AIBackgroundWorker/scripts/daemon.sh stop
+PIDFile=/home/perso/analysis/AIBackgroundWorker/lifelog.pid
+Restart=always
+RestartSec=10
 
-3. **ログファイルのサイズを確認**
-   - ログファイルが大きくなりすぎていないか確認
+[Install]
+WantedBy=multi-user.target
+```
+
+### brave-history-poller.timer
+
+```ini
+[Unit]
+Description=AIBackgroundWorker - Brave History Poller Timer
+Requires=brave-history-poller.service
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target
+```
+
+### merge-windows-logs.timer
+
+```ini
+[Unit]
+Description=AIBackgroundWorker - Merge Windows Logs Timer
+Requires=merge-windows-logs.service
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=15min
+
+[Install]
+WantedBy=timers.target
+```
+
+---
+
+## 付録A: systemdの有効化
+
+WSL2でsystemdが無効な場合は、以下の方法で有効化できます。
+
+**WSL側のターミナルで実行**:
+
+```bash
+# /etc/wsl.conf を編集
+sudo nano /etc/wsl.conf
+```
+
+以下の内容を追加：
+
+```ini
+[boot]
+systemd=true
+```
+
+その後、WSLを再起動：
+
+**Windows側のPowerShellで実行**:
+
+```powershell
+wsl --shutdown
+```
+
+WSLを再起動後、systemdが有効になります。
+
+```bash
+# systemdが有効化されたか確認
+systemctl --version
+```
 
 ---
 
 ## 🎉 完了
 
-これで、すべてのデータ収集が自動化されました。次回のログオン時から、すべてのタスクが自動的に起動します。
+これで、すべてのデータ収集が自動化されました。
 
+- **WSL起動時**: systemdサービス/タイマーが自動起動
+- **Windowsログオン時**: Windows前面ウィンドウロガーが自動起動
+
+次回のWSL起動・Windowsログオン時から、すべてのタスクが自動的に起動します。
