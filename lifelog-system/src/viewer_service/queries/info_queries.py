@@ -185,6 +185,14 @@ def get_info_data(
         )
 
     # 分析結果
+    # date_filterを修正（fetched_atをci.fetched_atに置換、WHERE句がない場合は追加）
+    if date_filter:
+        analysis_date_filter = date_filter.replace("fetched_at", "ci.fetched_at")
+        if not analysis_date_filter.strip().startswith("WHERE"):
+            analysis_date_filter = "WHERE " + analysis_date_filter.replace("AND ", "")
+    else:
+        analysis_date_filter = ""
+    
     cursor.execute(
         f"""
         SELECT
@@ -193,10 +201,12 @@ def get_info_data(
             aa.relevance_score,
             aa.keywords,
             aa.summary,
-            aa.deep_research_json
+            dr.synthesized_content,
+            dr.search_results
         FROM article_analysis aa
         JOIN collected_info ci ON aa.article_id = ci.id
-        {date_filter.replace('fetched_at', 'ci.fetched_at')}
+        LEFT JOIN deep_research dr ON aa.article_id = dr.article_id
+        {analysis_date_filter}
         ORDER BY aa.importance_score DESC, aa.relevance_score DESC
         LIMIT ?
         """,
@@ -206,11 +216,20 @@ def get_info_data(
     analysis = []
     for row in cursor.fetchall():
         keywords_list = json.loads(row["keywords"]) if row["keywords"] else []
-        deep_research = (
-            json.loads(row["deep_research_json"])
-            if row["deep_research_json"]
-            else None
-        )
+        # deep_researchデータを構築（synthesized_contentとsearch_resultsから）
+        deep_research = None
+        if row["synthesized_content"] or row["search_results"]:
+            try:
+                search_results_data = json.loads(row["search_results"]) if row["search_results"] else []
+                deep_research = {
+                    "synthesized_content": row["synthesized_content"],
+                    "search_results": search_results_data,
+                }
+            except (json.JSONDecodeError, TypeError):
+                deep_research = {
+                    "synthesized_content": row["synthesized_content"],
+                    "search_results": [],
+                }
 
         analysis.append(
             AnalysisItem(

@@ -39,22 +39,22 @@ def get_daily_summary(db_path: Path, date: str) -> LifelogData:
     conn = _connect_lifelog_db(db_path)
     cursor = conn.cursor()
 
-    # 日付範囲
+    # 日付範囲（SQLiteのDATETIME形式に合わせてスペースセパレーター使用）
     start_dt = datetime.strptime(date, "%Y-%m-%d")
     end_dt = start_dt + timedelta(days=1)
-    start_ts = start_dt.timestamp()
-    end_ts = end_dt.timestamp()
+    start_ts_str = start_dt.strftime("%Y-%m-%d %H:%M:%S")
+    end_ts_str = end_dt.strftime("%Y-%m-%d %H:%M:%S")
 
     # 総アクティブ時間とアイドル時間
     cursor.execute(
         """
         SELECT
-            SUM(CASE WHEN is_idle = 0 THEN duration ELSE 0 END) as active_seconds,
-            SUM(CASE WHEN is_idle = 1 THEN duration ELSE 0 END) as idle_seconds
+            SUM(CASE WHEN is_idle = 0 THEN duration_seconds ELSE 0 END) as active_seconds,
+            SUM(CASE WHEN is_idle = 1 THEN duration_seconds ELSE 0 END) as idle_seconds
         FROM activity_intervals
-        WHERE start_time >= ? AND start_time < ?
+        WHERE start_ts >= ? AND start_ts < ?
         """,
-        (start_ts, end_ts),
+        (start_ts_str, end_ts_str),
     )
     row = cursor.fetchone()
     total_active = row["active_seconds"] or 0
@@ -65,15 +65,15 @@ def get_daily_summary(db_path: Path, date: str) -> LifelogData:
         """
         SELECT
             a.process_name as process,
-            SUM(i.duration) as total_seconds
+            SUM(i.duration_seconds) as total_seconds
         FROM activity_intervals i
-        JOIN apps a ON i.app_id = a.id
-        WHERE i.start_time >= ? AND i.start_time < ? AND i.is_idle = 0
+        JOIN apps a ON i.app_id = a.app_id
+        WHERE i.start_ts >= ? AND i.start_ts < ? AND i.is_idle = 0
         GROUP BY a.process_name
         ORDER BY total_seconds DESC
         LIMIT 10
         """,
-        (start_ts, end_ts),
+        (start_ts_str, end_ts_str),
     )
     top_apps = [
         AppUsage(
@@ -92,25 +92,25 @@ def get_daily_summary(db_path: Path, date: str) -> LifelogData:
     cursor.execute(
         """
         SELECT
-            i.start_time,
+            i.start_ts,
             a.process_name,
-            i.domain_hash,
-            i.duration,
+            i.domain,
+            i.duration_seconds,
             i.is_idle
         FROM activity_intervals i
-        JOIN apps a ON i.app_id = a.id
-        WHERE i.start_time >= ? AND i.start_time < ?
-        ORDER BY i.start_time DESC
+        JOIN apps a ON i.app_id = a.app_id
+        WHERE i.start_ts >= ? AND i.start_ts < ?
+        ORDER BY i.start_ts DESC
         LIMIT 10
         """,
-        (start_ts, end_ts),
+        (start_ts_str, end_ts_str),
     )
     recent_intervals = [
         ActivityInterval(
-            timestamp=datetime.fromtimestamp(row["start_time"]),
+            timestamp=datetime.fromisoformat(row["start_ts"]),
             process=row["process_name"],
-            domain=row["domain_hash"],
-            duration=row["duration"],
+            domain=row["domain"],
+            duration=row["duration_seconds"],
             is_idle=bool(row["is_idle"]),
         )
         for row in cursor.fetchall()
@@ -119,22 +119,22 @@ def get_daily_summary(db_path: Path, date: str) -> LifelogData:
     # 最新のヘルスメトリクス
     cursor.execute(
         """
-        SELECT timestamp, cpu_percent, memory_mb, delay_p95
+        SELECT ts, cpu_percent, mem_mb, collection_delay_p95
         FROM health_snapshots
-        WHERE timestamp >= ? AND timestamp < ?
-        ORDER BY timestamp DESC
+        WHERE ts >= ? AND ts < ?
+        ORDER BY ts DESC
         LIMIT 1
         """,
-        (start_ts, end_ts),
+        (start_ts_str, end_ts_str),
     )
     health_row = cursor.fetchone()
     health_latest = None
     if health_row:
         health_latest = HealthMetrics(
-            timestamp=datetime.fromtimestamp(health_row["timestamp"]),
+            timestamp=datetime.fromisoformat(health_row["ts"]),
             cpu_percent=health_row["cpu_percent"],
-            memory_mb=health_row["memory_mb"],
-            delay_p95=health_row["delay_p95"],
+            memory_mb=health_row["mem_mb"],
+            delay_p95=health_row["collection_delay_p95"],
         )
 
     conn.close()
@@ -162,31 +162,31 @@ def get_recent_timeline(db_path: Path, hours: int = 6) -> List[ActivityInterval]
     conn = _connect_lifelog_db(db_path)
     cursor = conn.cursor()
 
-    cutoff_ts = (datetime.now() - timedelta(hours=hours)).timestamp()
+    cutoff_ts_str = (datetime.now() - timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
 
     cursor.execute(
         """
         SELECT
-            i.start_time,
+            i.start_ts,
             a.process_name,
-            i.domain_hash,
-            i.duration,
+            i.domain,
+            i.duration_seconds,
             i.is_idle
         FROM activity_intervals i
-        JOIN apps a ON i.app_id = a.id
-        WHERE i.start_time >= ?
-        ORDER BY i.start_time DESC
+        JOIN apps a ON i.app_id = a.app_id
+        WHERE i.start_ts >= ?
+        ORDER BY i.start_ts DESC
         LIMIT 100
         """,
-        (cutoff_ts,),
+        (cutoff_ts_str,),
     )
 
     intervals = [
         ActivityInterval(
-            timestamp=datetime.fromtimestamp(row["start_time"]),
+            timestamp=datetime.fromisoformat(row["start_ts"]),
             process=row["process_name"],
-            domain=row["domain_hash"],
-            duration=row["duration"],
+            domain=row["domain"],
+            duration=row["duration_seconds"],
             is_idle=bool(row["is_idle"]),
         )
         for row in cursor.fetchall()
@@ -209,25 +209,25 @@ def get_health_metrics(db_path: Path, hours: int = 24) -> List[HealthMetrics]:
     conn = _connect_lifelog_db(db_path)
     cursor = conn.cursor()
 
-    cutoff_ts = (datetime.now() - timedelta(hours=hours)).timestamp()
+    cutoff_ts_str = (datetime.now() - timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
 
     cursor.execute(
         """
-        SELECT timestamp, cpu_percent, memory_mb, delay_p95
+        SELECT ts, cpu_percent, mem_mb, collection_delay_p95
         FROM health_snapshots
-        WHERE timestamp >= ?
-        ORDER BY timestamp DESC
+        WHERE ts >= ?
+        ORDER BY ts DESC
         LIMIT 100
         """,
-        (cutoff_ts,),
+        (cutoff_ts_str,),
     )
 
     metrics = [
         HealthMetrics(
-            timestamp=datetime.fromtimestamp(row["timestamp"]),
+            timestamp=datetime.fromisoformat(row["ts"]),
             cpu_percent=row["cpu_percent"],
-            memory_mb=row["memory_mb"],
-            delay_p95=row["delay_p95"],
+            memory_mb=row["mem_mb"],
+            delay_p95=row["collection_delay_p95"],
         )
         for row in cursor.fetchall()
     ]
