@@ -87,6 +87,79 @@ class InfoCollectorRepository:
                 """
             )
 
+            # 分析結果
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS article_analysis (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    article_id INTEGER NOT NULL UNIQUE,
+                    importance_score REAL,
+                    relevance_score REAL,
+                    category TEXT,
+                    keywords TEXT,
+                    summary TEXT,
+                    model TEXT,
+                    analyzed_at TEXT NOT NULL,
+                    FOREIGN KEY(article_id) REFERENCES collected_info(id)
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_analysis_scores
+                ON article_analysis(importance_score DESC, relevance_score DESC)
+                """
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_analysis_date
+                ON article_analysis(analyzed_at DESC)
+                """
+            )
+
+            # 深掘り結果
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS deep_research (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    article_id INTEGER NOT NULL UNIQUE,
+                    search_query TEXT NOT NULL,
+                    search_results TEXT NOT NULL,
+                    synthesized_content TEXT,
+                    sources TEXT,
+                    researched_at TEXT NOT NULL,
+                    FOREIGN KEY(article_id) REFERENCES collected_info(id)
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_research_date
+                ON deep_research(researched_at DESC)
+                """
+            )
+
+            # レポート
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS reports (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT NOT NULL,
+                    report_date TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    article_count INTEGER,
+                    category TEXT,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_reports_date
+                ON reports(report_date DESC)
+                """
+            )
+
     def add_info(self, info: CollectedInfo) -> Optional[int]:
         """
         情報を追加（重複時はスキップ）
@@ -297,3 +370,181 @@ class InfoCollectorRepository:
             created_at=datetime.fromisoformat(row["created_at"]),
             query=row["query"],
         )
+
+    # --- 拡張機能: 分析/深掘り/レポート用ユーティリティ ---
+
+    def fetch_unanalyzed(self, limit: int = 20) -> list[sqlite3.Row]:
+        """
+        未分析の記事を取得.
+
+        Returns:
+            collected_info行を含むRowリスト
+        """
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.execute(
+            """
+            SELECT c.*
+            FROM collected_info c
+            LEFT JOIN article_analysis a ON c.id = a.article_id
+            WHERE a.id IS NULL
+            ORDER BY c.fetched_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
+        rows = cursor.fetchall()
+        conn.close()
+        return rows
+
+    def save_analysis(
+        self,
+        article_id: int,
+        importance: float,
+        relevance: float,
+        category: str,
+        keywords: list[str],
+        summary: str,
+        model: str,
+        analyzed_at: datetime,
+    ) -> None:
+        """分析結果を保存."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO article_analysis
+                (article_id, importance_score, relevance_score, category,
+                 keywords, summary, model, analyzed_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    article_id,
+                    importance,
+                    relevance,
+                    category,
+                    json.dumps(keywords, ensure_ascii=False),
+                    summary,
+                    model,
+                    analyzed_at.isoformat(),
+                ),
+            )
+
+    def fetch_deep_research_targets(
+        self, min_importance: float = 0.7, min_relevance: float = 0.6, limit: int = 5
+    ) -> list[sqlite3.Row]:
+        """
+        深掘り対象の記事を取得.
+
+        Returns:
+            article_analysis と collected_info を結合したRowリスト
+        """
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.execute(
+            """
+            SELECT a.*, c.title AS collected_title, c.content AS collected_content
+            FROM article_analysis a
+            JOIN collected_info c ON a.article_id = c.id
+            LEFT JOIN deep_research d ON a.article_id = d.article_id
+            WHERE a.importance_score >= ?
+              AND a.relevance_score >= ?
+              AND d.id IS NULL
+            ORDER BY a.importance_score DESC, a.relevance_score DESC
+            LIMIT ?
+            """,
+            (min_importance, min_relevance, limit),
+        )
+        rows = cursor.fetchall()
+        conn.close()
+        return rows
+
+    def save_deep_research(
+        self,
+        article_id: int,
+        search_query: str,
+        search_results: list[dict[str, str]],
+        synthesized_content: str,
+        sources: list[dict[str, str]],
+        researched_at: datetime,
+    ) -> None:
+        """深掘り結果を保存."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO deep_research
+                (article_id, search_query, search_results,
+                 synthesized_content, sources, researched_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    article_id,
+                    search_query,
+                    json.dumps(search_results, ensure_ascii=False),
+                    synthesized_content,
+                    json.dumps(sources, ensure_ascii=False),
+                    researched_at.isoformat(),
+                ),
+            )
+
+    def fetch_recent_analysis(self, since_iso: str) -> list[dict[str, Any]]:
+        """指定日時以降の分析結果を取得."""
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.execute(
+            """
+            SELECT a.*, c.title, c.url
+            FROM article_analysis a
+            JOIN collected_info c ON a.article_id = c.id
+            WHERE a.analyzed_at >= ?
+            ORDER BY a.analyzed_at DESC
+            """,
+            (since_iso,),
+        )
+        rows = [dict(r) for r in cursor.fetchall()]
+        conn.close()
+        return rows
+
+    def fetch_recent_deep_research(self, since_iso: str) -> list[dict[str, Any]]:
+        """指定日時以降の深掘り結果を取得."""
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.execute(
+            """
+            SELECT d.*, a.summary AS theme
+            FROM deep_research d
+            JOIN article_analysis a ON d.article_id = a.article_id
+            WHERE d.researched_at >= ?
+            ORDER BY d.researched_at DESC
+            """,
+            (since_iso,),
+        )
+        rows = [dict(r) for r in cursor.fetchall()]
+        conn.close()
+        return rows
+
+    def save_report(
+        self,
+        title: str,
+        report_date: str,
+        content: str,
+        article_count: int,
+        category: str,
+        created_at: datetime,
+    ) -> None:
+        """レポートを保存."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """
+                INSERT INTO reports
+                (title, report_date, content, article_count, category, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    title,
+                    report_date,
+                    content,
+                    article_count,
+                    category,
+                    created_at.isoformat(),
+                ),
+            )
