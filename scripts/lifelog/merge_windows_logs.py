@@ -225,8 +225,8 @@ def main() -> None:
     parser.add_argument(
         "--source",
         type=str,
-        default=str(project_root / "lifelog-system" / "scripts" / "logs" / "windows_foreground.jsonl"),
-        help="Source JSON Lines file (default: lifelog-system/scripts/logs/windows_foreground.jsonl)",
+        default=str(project_root / "scripts" / "logs" / "windows_foreground.jsonl"),
+        help="Source JSON Lines file (default: scripts/logs/windows_foreground.jsonl)",
     )
     parser.add_argument(
         "--db",
