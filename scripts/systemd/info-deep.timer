@@ -1,0 +1,10 @@
+[Unit]
+Description=Run AIBackgroundWorker Deep Research every 30 minutes
+
+[Timer]
+OnCalendar=*:0/30
+Persistent=true
+Unit=info-deep.service
+
+[Install]
+WantedBy=timers.target

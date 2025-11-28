@@ -1,0 +1,10 @@
+[Unit]
+Description=Run AIBackgroundWorker Info Analyzer every 15 minutes
+
+[Timer]
+OnCalendar=*:0/15
+Persistent=true
+Unit=info-analyze.service
+
+[Install]
+WantedBy=timers.target

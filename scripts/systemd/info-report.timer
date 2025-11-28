@@ -1,0 +1,10 @@
+[Unit]
+Description=Run AIBackgroundWorker Daily Report Generator at 6:00 AM
+
+[Timer]
+OnCalendar=*-*-* 06:00:00
+Persistent=true
+Unit=info-report.service
+
+[Install]
+WantedBy=timers.target

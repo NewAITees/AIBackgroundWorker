@@ -1,0 +1,12 @@
+[Unit]
+Description=AIBackgroundWorker Daily Report Generator
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/perso/analysis/AIBackgroundWorker
+Environment="PATH=/home/perso/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStart=/home/perso/analysis/AIBackgroundWorker/scripts/info_collector/generate_report.sh --hours 24
+
+[Install]
+WantedBy=multi-user.target

@@ -105,10 +105,11 @@ AIBackgroundWorker/
 │   │   ├── poll_brave_history.sh
 │   │   └── install_poll_cron.sh
 │   ├── info_collector/   # 外部情報収集スクリプト
-│   │   ├── collect_news.sh
-│   │   ├── collect_rss.sh
-│   │   ├── search_web.sh
-│   │   └── generate_summary.sh
+│   │   ├── auto_collect.sh        # RSS/ニュース/検索の一括収集
+│   │   ├── analyze_articles.sh    # 収集後の分析
+│   │   ├── deep_research.sh       # 深掘り調査
+│   │   ├── generate_report.sh     # 日次レポート生成
+│   │   └── check_logs.sh          # ログ確認
 │   ├── lifelog/          # ライフログ関連スクリプト
 │   │   ├── merge_windows_logs.py
 │   │   ├── get_daily_summary.sh
@@ -205,14 +206,17 @@ uv run python -m src.lifelog.cli_viewer timeline --hours 2
 ### 外部情報の収集
 
 ```bash
-# ニュース収集
-./scripts/info_collector/collect_news.sh --all
+# 収集（RSS/ニュース/検索）
+./scripts/info_collector/auto_collect.sh --all
 
-# RSS収集
-./scripts/info_collector/collect_rss.sh --all
+# 分析
+./scripts/info_collector/analyze_articles.sh --batch-size 30
 
-# Web検索
-./scripts/info_collector/search_web.sh "検索クエリ"
+# 深掘り
+./scripts/info_collector/deep_research.sh --batch-size 5
+
+# レポート生成
+./scripts/info_collector/generate_report.sh --hours 24
 ```
 
 ## 今後の拡張予定
@@ -227,4 +231,3 @@ uv run python -m src.lifelog.cli_viewer timeline --hours 2
 ## ライセンス
 
 MIT
-

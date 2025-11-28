@@ -1,0 +1,12 @@
+[Unit]
+Description=AIBackgroundWorker Info Analyzer (Ollama-based article analysis)
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/perso/analysis/AIBackgroundWorker
+Environment="PATH=/home/perso/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStart=/home/perso/analysis/AIBackgroundWorker/scripts/info_collector/analyze_articles.sh --batch-size 30
+
+[Install]
+WantedBy=multi-user.target
