@@ -10,7 +10,7 @@
 import sqlite3
 import json
 from datetime import datetime, timedelta
-from typing import Optional, List
+from typing import Optional, List, Any
 from pathlib import Path
 
 from .models import CollectedInfo, InfoSummary

@@ -46,10 +46,11 @@ def analyze_pending_articles(db_path: Path = DEFAULT_DB, batch_size: int = 10) -
     processed = 0
 
     for article in pending:
+        fetched = article["fetched_at"] if "fetched_at" in article.keys() else ""
         prompts = theme_extraction.build_prompt(
             title=article["title"],
             content=article["content"] or "",
-            published_at=article.get("fetched_at", "") or "",
+            published_at=fetched or "",
         )
 
         parsed = _run_ollama_json(ollama, prompts["system"], prompts["user"])

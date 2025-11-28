@@ -54,7 +54,8 @@ def deep_research_articles(
         summary = row["summary"] or row["collected_title"] or ""
         keywords = []
         try:
-            keywords = json.loads(row.get("keywords", "[]"))
+            raw_keywords = row["keywords"] if "keywords" in row.keys() else "[]"
+            keywords = json.loads(raw_keywords or "[]")
         except Exception:
             keywords = []
 
@@ -62,7 +63,7 @@ def deep_research_articles(
         prompts = search_query_gen.build_prompt(
             theme=summary,
             keywords=[str(k) for k in keywords],
-            category=row.get("category", "その他"),
+            category=row["category"] if "category" in row.keys() else "その他",
             summary=summary,
         )
         query_payload = _run_ollama_json(ollama, prompts["system"], prompts["user"])
