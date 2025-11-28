@@ -37,10 +37,10 @@ def create_app(config: ViewerConfig) -> FastAPI:
     app.state.lifelog_db = config.lifelog_db
     app.state.info_db = config.info_db
 
-    # ルートを追加（依存性注入でDBパスを渡す）
+    # ルートエンドポイント
     @app.get("/")
     async def root(request: Request):
-        """ルートエンドポイント - ダッシュボードへリダイレクト."""
+        """ルートエンドポイント - ダッシュボード表示."""
         templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
         return templates.TemplateResponse(
             "dashboard.html",
@@ -50,35 +50,7 @@ def create_app(config: ViewerConfig) -> FastAPI:
             },
         )
 
-    # APIルートを含める（DBパスを依存性として渡す）
-    def get_lifelog_db() -> Path:
-        return app.state.lifelog_db
-
-    def get_info_db() -> Path:
-        return app.state.info_db
-
-    # ルーターにDBパス依存性を追加
-    for route in router.routes:
-        if hasattr(route, "dependant"):
-            # 各エンドポイントにDBパスを注入
-            pass
-
-    # ルーターを追加（簡易版：DBパスを直接渡す）
-    from functools import wraps
-
-    original_routes = router.routes.copy()
-    for route in original_routes:
-        if hasattr(route, "endpoint"):
-            original_endpoint = route.endpoint
-
-            @wraps(original_endpoint)
-            async def wrapped_endpoint(*args, **kwargs):
-                kwargs["lifelog_db"] = app.state.lifelog_db
-                kwargs["info_db"] = app.state.info_db
-                return await original_endpoint(*args, **kwargs)
-
-            route.endpoint = wrapped_endpoint
-
+    # APIルーターを追加
     app.include_router(router, prefix="/api")
 
     # 静的ファイル
