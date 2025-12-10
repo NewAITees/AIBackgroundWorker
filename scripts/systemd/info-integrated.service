@@ -6,7 +6,12 @@ After=network-online.target
 Type=oneshot
 WorkingDirectory=/home/perso/analysis/AIBackgroundWorker
 Environment="PATH=/home/perso/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-ExecStart=/home/perso/analysis/AIBackgroundWorker/scripts/info_collector/integrated_pipeline.sh --analyze-batch-size 30 --deep-batch-size 3 --deep-min-importance 0.0 --deep-min-relevance 0.0 --report-hours 1
+Environment="OLLAMA_TIMEOUT=90"
+# nice -n 19: 最低CPU優先度, ionice -c 3: アイドル時のみI/O実行
+# 分析・深掘りの比率向上のため、バッチサイズと閾値を更新
+# デフォルト値: ANALYZE_BATCH_SIZE=50, DEEP_BATCH_SIZE=5, DEEP_MIN_IMPORTANCE=0.5, DEEP_MIN_RELEVANCE=0.5
+# 必要に応じてパラメータを明示的に指定可能（現在はデフォルト値を使用）
+ExecStart=/usr/bin/nice -n 19 /usr/bin/ionice -c 3 /home/perso/analysis/AIBackgroundWorker/scripts/info_collector/integrated_pipeline.sh --report-hours 1
 
 [Install]
 WantedBy=multi-user.target

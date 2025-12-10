@@ -14,8 +14,8 @@ mkdir -p "$LOG_DIR"
 
 cd "$LIFELOG_DIR" || exit 1
 
-# デフォルト値
-BATCH_SIZE=30
+# デフォルト値（分析・深掘りの比率向上のため増加）
+BATCH_SIZE=50  # 30 → 50 に増加（より多くの記事を分析）
 DB_PATH="data/ai_secretary.db"
 
 # 引数解析

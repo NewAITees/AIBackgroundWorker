@@ -14,10 +14,10 @@ mkdir -p "$LOG_DIR"
 
 cd "$LIFELOG_DIR" || exit 1
 
-# デフォルト値
-BATCH_SIZE=3
-MIN_IMPORTANCE=0.7
-MIN_RELEVANCE=0.6
+# デフォルト値（分析・深掘りの比率向上のため緩和）
+BATCH_SIZE=5          # 3 → 5 に増加（より多くの記事を深掘り）
+MIN_IMPORTANCE=0.5    # 0.7 → 0.5 に緩和（より多くの記事を深掘り対象に）
+MIN_RELEVANCE=0.5     # 0.6 → 0.5 に緩和（より多くの記事を深掘り対象に）
 DB_PATH="data/ai_secretary.db"
 
 # 引数解析

@@ -6,7 +6,9 @@ After=network-online.target
 Type=oneshot
 WorkingDirectory=/home/perso/analysis/AIBackgroundWorker
 Environment="PATH=/home/perso/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-ExecStart=/home/perso/analysis/AIBackgroundWorker/scripts/info_collector/auto_collect.sh --all --limit 15 --use-ollama
+Environment="OLLAMA_TIMEOUT=90"
+# nice -n 19: 最低CPU優先度, ionice -c 3: アイドル時のみI/O実行
+ExecStart=/usr/bin/nice -n 19 /usr/bin/ionice -c 3 /home/perso/analysis/AIBackgroundWorker/scripts/info_collector/auto_collect.sh --all --limit 10 --use-ollama
 
 [Install]
 WantedBy=multi-user.target

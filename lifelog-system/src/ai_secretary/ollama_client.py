@@ -24,13 +24,14 @@ class OllamaClient:
         self,
         base_url: str | None = None,
         model: str | None = None,
-        timeout: int = 30,
+        timeout: int | None = None,
     ) -> None:
         # 環境変数からbase_urlを取得、なければデフォルト値を使用
         self.base_url = (base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")).rstrip("/")
         # 環境変数からモデルを取得、なければデフォルト値を使用
         self.model = model or os.getenv("OLLAMA_MODEL", "gpt-oss:20b")
-        self.timeout = timeout
+        # 環境変数からタイムアウトを取得、なければデフォルト90秒
+        self.timeout = timeout or int(os.getenv("OLLAMA_TIMEOUT", "90"))
 
     def generate(
         self, prompt: str, system: Optional[str] = None, options: Optional[Dict[str, Any]] = None

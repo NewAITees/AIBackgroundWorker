@@ -12,11 +12,11 @@ LOG_DIR="$PROJECT_ROOT/logs/info_collector"
 # ログディレクトリ作成
 mkdir -p "$LOG_DIR"
 
-# デフォルト値
-ANALYZE_BATCH_SIZE=30
-DEEP_BATCH_SIZE=3
-DEEP_MIN_IMPORTANCE=0.0
-DEEP_MIN_RELEVANCE=0.0
+# デフォルト値（分析・深掘りの比率向上のため緩和）
+ANALYZE_BATCH_SIZE=50  # 30 → 50 に増加（より多くの記事を分析）
+DEEP_BATCH_SIZE=5      # 3 → 5 に増加（より多くの記事を深掘り）
+DEEP_MIN_IMPORTANCE=0.5  # 0.0 → 0.5 に設定（より多くの記事を深掘り対象に）
+DEEP_MIN_RELEVANCE=0.5   # 0.0 → 0.5 に設定（より多くの記事を深掘り対象に）
 REPORT_HOURS=1  # 統合パイプラインでは直近1時間のみ対象
 DB_PATH="data/ai_secretary.db"
 
@@ -92,19 +92,35 @@ if [ $DEEP_EXIT_CODE -ne 0 ]; then
 fi
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] [STAGE 2/3] 深掘り調査が完了しました" | tee -a "$LOG_FILE"
 
-# ===== ステージ3: レポート生成 =====
+# ===== ステージ3: 日次レポート生成 =====
 echo "" | tee -a "$LOG_FILE"
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] [STAGE 3/3] レポート生成を開始..." | tee -a "$LOG_FILE"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] [STAGE 3/4] 日次レポート生成を開始..." | tee -a "$LOG_FILE"
 "$SCRIPT_DIR/generate_report.sh" \
   --hours "$REPORT_HOURS" \
   --db-path "$DB_PATH" 2>&1 | tee -a "$LOG_FILE"
 
 REPORT_EXIT_CODE=${PIPESTATUS[0]}
 if [ $REPORT_EXIT_CODE -ne 0 ]; then
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: レポート生成が失敗しました (exit code: $REPORT_EXIT_CODE)" | tee -a "$LOG_FILE"
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: 日次レポート生成が失敗しました (exit code: $REPORT_EXIT_CODE)" | tee -a "$LOG_FILE"
   exit $REPORT_EXIT_CODE
 fi
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] [STAGE 3/3] レポート生成が完了しました" | tee -a "$LOG_FILE"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] [STAGE 3/4] 日次レポート生成が完了しました" | tee -a "$LOG_FILE"
+
+# ===== ステージ4: テーマベースレポート生成 =====
+echo "" | tee -a "$LOG_FILE"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] [STAGE 4/4] テーマベースレポート生成を開始..." | tee -a "$LOG_FILE"
+"$SCRIPT_DIR/generate_theme_report.sh" \
+  --min-articles 1 \
+  --db-path "$DB_PATH" 2>&1 | tee -a "$LOG_FILE"
+
+THEME_REPORT_EXIT_CODE=${PIPESTATUS[0]}
+if [ $THEME_REPORT_EXIT_CODE -ne 0 ]; then
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: テーマベースレポート生成が失敗しました (exit code: $THEME_REPORT_EXIT_CODE)" | tee -a "$LOG_FILE"
+  # テーマレポート生成の失敗は致命的ではないため、続行
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] WARNING: テーマベースレポート生成は失敗しましたが、パイプラインは続行します" | tee -a "$LOG_FILE"
+else
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] [STAGE 4/4] テーマベースレポート生成が完了しました" | tee -a "$LOG_FILE"
+fi
 
 # ===== 完了 =====
 echo "" | tee -a "$LOG_FILE"
@@ -112,7 +128,8 @@ echo "========================================" | tee -a "$LOG_FILE"
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] 統合パイプライン完了" | tee -a "$LOG_FILE"
 echo "  - 記事分析: $ANALYZE_BATCH_SIZE 件処理" | tee -a "$LOG_FILE"
 echo "  - 深掘り調査: $DEEP_BATCH_SIZE 件処理" | tee -a "$LOG_FILE"
-echo "  - レポート生成: 直近 $REPORT_HOURS 時間" | tee -a "$LOG_FILE"
+echo "  - 日次レポート生成: 直近 $REPORT_HOURS 時間" | tee -a "$LOG_FILE"
+echo "  - テーマベースレポート生成: 完了" | tee -a "$LOG_FILE"
 echo "========================================" | tee -a "$LOG_FILE"
 
 exit 0

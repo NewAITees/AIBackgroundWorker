@@ -522,6 +522,51 @@ class InfoCollectorRepository:
         conn.close()
         return rows
 
+    def fetch_deep_research_by_theme(self, min_articles: int = 1) -> dict[str, list[dict[str, Any]]]:
+        """
+        深掘り済み記事をテーマ（summary）ごとにグループ化して取得.
+        
+        Args:
+            min_articles: テーマごとの最小記事数（この数以上の記事があるテーマのみ返す）
+        
+        Returns:
+            テーマ（summary）をキー、深掘り結果のリストを値とする辞書
+        """
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.execute(
+            """
+            SELECT 
+                d.*,
+                a.summary AS theme,
+                a.importance_score,
+                a.relevance_score,
+                a.category,
+                a.keywords,
+                c.title AS article_title,
+                c.url AS article_url,
+                c.content AS article_content
+            FROM deep_research d
+            JOIN article_analysis a ON d.article_id = a.article_id
+            JOIN collected_info c ON d.article_id = c.id
+            WHERE a.summary IS NOT NULL AND a.summary != ''
+            ORDER BY d.researched_at DESC
+            """,
+        )
+        rows = [dict(r) for r in cursor.fetchall()]
+        conn.close()
+        
+        # テーマごとにグループ化
+        theme_groups: dict[str, list[dict[str, Any]]] = {}
+        for row in rows:
+            theme = row.get("theme", "その他")
+            if theme not in theme_groups:
+                theme_groups[theme] = []
+            theme_groups[theme].append(row)
+        
+        # 最小記事数以上のテーマのみ返す
+        return {theme: articles for theme, articles in theme_groups.items() if len(articles) >= min_articles}
+
     def save_report(
         self,
         title: str,
