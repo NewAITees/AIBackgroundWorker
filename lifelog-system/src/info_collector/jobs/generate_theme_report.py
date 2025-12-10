@@ -23,19 +23,32 @@ def _slugify(text: str) -> str:
     """
     テキストをファイル名に使用可能なスラッグに変換.
     
+    Unicode文字（日本語など）を含むテキストを安全なファイル名に変換します。
+    非ASCII文字は保持されますが、ファイルシステムで問題となる特殊文字は
+    アンダースコアに置換されます。
+    
     Args:
         text: 変換するテキスト
     
     Returns:
         スラッグ化されたテキスト
     """
-    # 日本語や特殊文字をアンダースコアに置換
-    text = re.sub(r'[^\w\s-]', '', text)
+    # re.UNICODEフラグを使用してUnicode文字（日本語など）を保持
+    # ファイル名に使用できない文字のみを除去
+    # \w は re.UNICODE フラグにより Unicode の単語文字（日本語の文字など）もマッチ
+    text = re.sub(r'[^\w\s-]', '', text, flags=re.UNICODE)
+    # 連続する空白やハイフンをアンダースコアに統一
     text = re.sub(r'[-\s]+', '_', text)
     # 長すぎる場合は切り詰め
     if len(text) > 50:
         text = text[:50]
-    return text.strip('_')
+    result = text.strip('_')
+    # 空文字列の場合はフォールバック（すべて非ASCII文字で構成されていた場合の対策）
+    if not result:
+        # 元のテキストから最初の数文字を取得してエンコード
+        # ファイル名として安全な形式に変換
+        result = text.encode('utf-8')[:20].hex() if text else 'theme'
+    return result
 
 
 def generate_theme_reports(
