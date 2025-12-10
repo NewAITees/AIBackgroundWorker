@@ -51,23 +51,34 @@ def get_info_data(
     conn = _connect_info_db(db_path)
     cursor = conn.cursor()
 
-    # 日付フィルタ
-    if date:
-        date_filter = f"AND DATE(fetched_at) = '{date}'"
-    else:
-        date_filter = ""
+    # 日付フィルタ（SQLインジェクション対策: パラメータ化クエリを使用）
+    date_param = date if date else None
 
     # ニュース
-    cursor.execute(
-        f"""
-        SELECT title, url, source_name, published_at, snippet, content
-        FROM collected_info
-        WHERE source_type = 'news' {date_filter}
-        ORDER BY published_at DESC
-        LIMIT ?
-        """,
-        (limit,),
-    )
+    if date_param:
+        # DATE()関数とパラメータ化クエリを組み合わせる
+        # dateパラメータはYYYY-MM-DD形式であることを前提とする
+        cursor.execute(
+            """
+            SELECT title, url, source_name, published_at, snippet, content
+            FROM collected_info
+            WHERE source_type = 'news' AND DATE(fetched_at) = DATE(?)
+            ORDER BY published_at DESC
+            LIMIT ?
+            """,
+            (date_param, limit),
+        )
+    else:
+        cursor.execute(
+            """
+            SELECT title, url, source_name, published_at, snippet, content
+            FROM collected_info
+            WHERE source_type = 'news'
+            ORDER BY published_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
 
     news = []
     for row in cursor.fetchall():
@@ -87,16 +98,28 @@ def get_info_data(
         )
 
     # RSS
-    cursor.execute(
-        f"""
-        SELECT title, url, source_name, published_at, snippet, content
-        FROM collected_info
-        WHERE source_type = 'rss' {date_filter}
-        ORDER BY published_at DESC
-        LIMIT ?
-        """,
-        (limit,),
-    )
+    if date_param:
+        cursor.execute(
+            """
+            SELECT title, url, source_name, published_at, snippet, content
+            FROM collected_info
+            WHERE source_type = 'rss' AND DATE(fetched_at) = DATE(?)
+            ORDER BY published_at DESC
+            LIMIT ?
+            """,
+            (date_param, limit),
+        )
+    else:
+        cursor.execute(
+            """
+            SELECT title, url, source_name, published_at, snippet, content
+            FROM collected_info
+            WHERE source_type = 'rss'
+            ORDER BY published_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
 
     rss = []
     for row in cursor.fetchall():
@@ -116,16 +139,28 @@ def get_info_data(
         )
 
     # 検索結果
-    cursor.execute(
-        f"""
-        SELECT title, url, snippet, metadata_json, fetched_at
-        FROM collected_info
-        WHERE source_type = 'search' {date_filter}
-        ORDER BY fetched_at DESC
-        LIMIT ?
-        """,
-        (limit,),
-    )
+    if date_param:
+        cursor.execute(
+            """
+            SELECT title, url, snippet, metadata_json, fetched_at
+            FROM collected_info
+            WHERE source_type = 'search' AND DATE(fetched_at) = DATE(?)
+            ORDER BY fetched_at DESC
+            LIMIT ?
+            """,
+            (date_param, limit),
+        )
+    else:
+        cursor.execute(
+            """
+            SELECT title, url, snippet, metadata_json, fetched_at
+            FROM collected_info
+            WHERE source_type = 'search'
+            ORDER BY fetched_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
 
     search = []
     for row in cursor.fetchall():
@@ -185,33 +220,46 @@ def get_info_data(
         )
 
     # 分析結果
-    # date_filterを修正（fetched_atをci.fetched_atに置換、WHERE句がない場合は追加）
-    if date_filter:
-        analysis_date_filter = date_filter.replace("fetched_at", "ci.fetched_at")
-        if not analysis_date_filter.strip().startswith("WHERE"):
-            analysis_date_filter = "WHERE " + analysis_date_filter.replace("AND ", "")
+    # SQLインジェクション対策: パラメータ化クエリを使用
+    if date_param:
+        cursor.execute(
+            """
+            SELECT
+                ci.title,
+                aa.importance_score,
+                aa.relevance_score,
+                aa.keywords,
+                aa.summary,
+                dr.synthesized_content,
+                dr.search_results
+            FROM article_analysis aa
+            JOIN collected_info ci ON aa.article_id = ci.id
+            LEFT JOIN deep_research dr ON aa.article_id = dr.article_id
+            WHERE DATE(ci.fetched_at) = DATE(?)
+            ORDER BY aa.importance_score DESC, aa.relevance_score DESC
+            LIMIT ?
+            """,
+            (date_param, limit),
+        )
     else:
-        analysis_date_filter = ""
-    
-    cursor.execute(
-        f"""
-        SELECT
-            ci.title,
-            aa.importance_score,
-            aa.relevance_score,
-            aa.keywords,
-            aa.summary,
-            dr.synthesized_content,
-            dr.search_results
-        FROM article_analysis aa
-        JOIN collected_info ci ON aa.article_id = ci.id
-        LEFT JOIN deep_research dr ON aa.article_id = dr.article_id
-        {analysis_date_filter}
-        ORDER BY aa.importance_score DESC, aa.relevance_score DESC
-        LIMIT ?
-        """,
-        (limit,),
-    )
+        cursor.execute(
+            """
+            SELECT
+                ci.title,
+                aa.importance_score,
+                aa.relevance_score,
+                aa.keywords,
+                aa.summary,
+                dr.synthesized_content,
+                dr.search_results
+            FROM article_analysis aa
+            JOIN collected_info ci ON aa.article_id = ci.id
+            LEFT JOIN deep_research dr ON aa.article_id = dr.article_id
+            ORDER BY aa.importance_score DESC, aa.relevance_score DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
 
     analysis = []
     for row in cursor.fetchall():
