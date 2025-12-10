@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AIBackgroundWorker Viewer</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app">
+    <!-- サイドバー -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <h1>AIBackgroundWorker</h1>
+        <p class="subtitle">Activity Viewer</p>
+      </div>
+
+      <nav class="sidebar-nav">
+        <a href="#" class="nav-item active" data-page="dashboard">
+          <span class="icon">📊</span>
+          <span>ダッシュボード</span>
+        </a>
+        <a href="#" class="nav-item" data-page="lifelog">
+          <span class="icon">⏱️</span>
+          <span>ライフログ</span>
+        </a>
+        <a href="#" class="nav-item" data-page="browser">
+          <span class="icon">🌐</span>
+          <span>ブラウザ履歴</span>
+        </a>
+        <a href="#" class="nav-item" data-page="news">
+          <span class="icon">📰</span>
+          <span>ニュース</span>
+        </a>
+        <a href="#" class="nav-item" data-page="reports">
+          <span class="icon">📝</span>
+          <span>レポート</span>
+        </a>
+        <a href="#" class="nav-item" data-page="settings">
+          <span class="icon">⚙️</span>
+          <span>設定</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <button id="refreshBtn" class="btn btn-secondary">
+          <span class="icon">🔄</span>
+          <span>更新</span>
+        </button>
+        <button id="minimizeBtn" class="btn btn-secondary">
+          <span class="icon">➖</span>
+          <span>最小化</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- メインコンテンツ -->
+    <main class="main-content">
+      <!-- ヘッダー -->
+      <header class="content-header">
+        <h2 id="pageTitle">ダッシュボード</h2>
+        <div class="header-actions">
+          <span id="lastUpdated" class="last-updated">最終更新: --:--</span>
+          <button id="themeToggle" class="btn btn-icon" title="テーマ切り替え">
+            <span class="icon">🌙</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- コンテンツエリア -->
+      <div class="content-body">
+        <!-- ダッシュボードページ -->
+        <div id="dashboardPage" class="page active">
+          <div class="loading">データを読み込み中...</div>
+
+          <!-- サマリーカード -->
+          <div class="summary-grid" style="display: none;">
+            <div class="card">
+              <h3>今日のアクティビティ</h3>
+              <div id="lifelogSummary" class="card-content">
+                <div class="stat">
+                  <span class="stat-label">アクティブ時間</span>
+                  <span class="stat-value" id="activeTime">--</span>
+                </div>
+                <div class="stat">
+                  <span class="stat-label">アプリ使用数</span>
+                  <span class="stat-value" id="appCount">--</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <h3>ブラウザ履歴</h3>
+              <div id="browserSummary" class="card-content">
+                <div class="stat">
+                  <span class="stat-label">訪問サイト数</span>
+                  <span class="stat-value" id="visitCount">--</span>
+                </div>
+                <div class="stat">
+                  <span class="stat-label">閲覧時間</span>
+                  <span class="stat-value" id="browsingTime">--</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <h3>外部情報</h3>
+              <div id="infoSummary" class="card-content">
+                <div class="stat">
+                  <span class="stat-label">新着ニュース</span>
+                  <span class="stat-value" id="newsCount">--</span>
+                </div>
+                <div class="stat">
+                  <span class="stat-label">生成レポート</span>
+                  <span class="stat-value" id="reportCount">--</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 最近のアクティビティ -->
+          <div class="card" style="display: none;">
+            <h3>最近のアクティビティ</h3>
+            <div id="recentActivity" class="timeline">
+              <!-- タイムラインがここに表示される -->
+            </div>
+          </div>
+
+          <!-- 最新ニュース -->
+          <div class="card" style="display: none;">
+            <h3>最新ニュース</h3>
+            <div id="recentNews" class="news-list">
+              <!-- ニュース一覧がここに表示される -->
+            </div>
+          </div>
+        </div>
+
+        <!-- ライフログページ -->
+        <div id="lifelogPage" class="page">
+          <div class="card">
+            <h3>ライフログデータ</h3>
+            <div id="lifelogContent" class="card-content">
+              <p>ライフログデータを読み込み中...</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- ブラウザ履歴ページ -->
+        <div id="browserPage" class="page">
+          <div class="card">
+            <h3>ブラウザ履歴</h3>
+            <div id="browserContent" class="card-content">
+              <p>ブラウザ履歴を読み込み中...</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- ニュースページ -->
+        <div id="newsPage" class="page">
+          <div class="card">
+            <h3>ニュース一覧</h3>
+            <div id="newsContent" class="card-content">
+              <p>ニュースを読み込み中...</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- レポートページ -->
+        <div id="reportsPage" class="page">
+          <div class="card">
+            <h3>レポート一覧</h3>
+            <div id="reportsContent" class="card-content">
+              <p>レポートを読み込み中...</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 設定ページ -->
+        <div id="settingsPage" class="page">
+          <div class="card">
+            <h3>設定</h3>
+            <form id="settingsForm" class="settings-form">
+              <div class="form-group">
+                <label for="apiEndpoint">APIエンドポイント</label>
+                <input type="text" id="apiEndpoint" name="apiEndpoint" placeholder="http://localhost:8000">
+              </div>
+
+              <div class="form-group">
+                <label for="updateInterval">更新間隔（秒）</label>
+                <input type="number" id="updateInterval" name="updateInterval" min="60" step="60" placeholder="300">
+                <small>推奨: 300秒（5分）</small>
+              </div>
+
+              <div class="form-group">
+                <label class="checkbox-label">
+                  <input type="checkbox" id="notificationsEnabled" name="notificationsEnabled">
+                  <span>デスクトップ通知を有効にする</span>
+                </label>
+              </div>
+
+              <div class="form-group">
+                <label class="checkbox-label">
+                  <input type="checkbox" id="startMinimized" name="startMinimized">
+                  <span>起動時に最小化</span>
+                </label>
+              </div>
+
+              <div class="form-group">
+                <label for="theme">テーマ</label>
+                <select id="theme" name="theme">
+                  <option value="system">システム設定に従う</option>
+                  <option value="light">ライト</option>
+                  <option value="dark">ダーク</option>
+                </select>
+              </div>
+
+              <div class="form-actions">
+                <button type="submit" class="btn btn-primary">保存</button>
+                <button type="button" id="testApiBtn" class="btn btn-secondary">API接続テスト</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script src="js/dashboard.js"></script>
+  <script src="js/settings.js"></script>
+</body>
+</html>
