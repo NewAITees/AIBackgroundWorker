@@ -42,12 +42,47 @@ USER_PROMPT_TEMPLATE = """以下のテーマについて、深掘り調査用の
 【記事要約】
 {summary}
 
+【重要度判断理由】
+{importance_reason}
+
+【関連度判断理由】
+{relevance_reason}
+
+【深掘りすべきポイント】
+上記の判断理由を踏まえ、以下の観点から深掘りすべきポイントを特定してください：
+1. 元の記事の主張を裏付ける証拠やデータ
+2. 関連する学術論文や公式発表
+3. 業界専門家の見解や分析
+4. 類似事例や比較対象
+5. 今後の動向や影響
+
 上記の出力形式に従ってJSON出力してください。"""
 
 
-def build_prompt(theme: str, keywords: list[str], category: str, summary: str) -> dict[str, str]:
-    """検索クエリ生成プロンプトを構築."""
+def build_prompt(
+    theme: str,
+    keywords: list[str],
+    category: str,
+    summary: str,
+    importance_reason: str = "",
+    relevance_reason: str = "",
+) -> dict[str, str]:
+    """
+    検索クエリ生成プロンプトを構築.
+    
+    Args:
+        theme: テーマ
+        keywords: キーワードリスト
+        category: カテゴリ
+        summary: 記事要約
+        importance_reason: 重要度の判断理由（オプション）
+        relevance_reason: 関連度の判断理由（オプション）
+    """
     keywords_str = ", ".join(keywords)
+    # 判断理由が空の場合はデフォルトメッセージを使用
+    importance_reason_display = importance_reason or "判断理由が記録されていません"
+    relevance_reason_display = relevance_reason or "判断理由が記録されていません"
+    
     return {
         "system": SYSTEM_PROMPT,
         "user": USER_PROMPT_TEMPLATE.format(
@@ -55,5 +90,7 @@ def build_prompt(theme: str, keywords: list[str], category: str, summary: str) -
             keywords=keywords_str,
             category=category,
             summary=summary,
+            importance_reason=importance_reason_display,
+            relevance_reason=relevance_reason_display,
         ),
     }

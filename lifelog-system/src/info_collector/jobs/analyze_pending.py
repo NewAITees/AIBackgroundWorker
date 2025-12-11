@@ -62,6 +62,8 @@ def analyze_pending_articles(db_path: Path = DEFAULT_DB, batch_size: int = 10) -
             "category": "その他",
             "keywords": [],
             "one_line_summary": (article["title"] or "")[:50],
+            "importance_reason": "",
+            "relevance_reason": "",
             "model": "fallback",
         }
 
@@ -73,6 +75,8 @@ def analyze_pending_articles(db_path: Path = DEFAULT_DB, batch_size: int = 10) -
                     "category": parsed.get("category", analysis["category"]),
                     "keywords": parsed.get("keywords", analysis["keywords"]) or [],
                     "one_line_summary": parsed.get("one_line_summary", analysis["one_line_summary"]),
+                    "importance_reason": parsed.get("importance_reason", analysis["importance_reason"]) or "",
+                    "relevance_reason": parsed.get("relevance_reason", analysis["relevance_reason"]) or "",
                     "model": ollama.model if hasattr(ollama, "model") else "ollama",
                 }
             )
@@ -86,6 +90,8 @@ def analyze_pending_articles(db_path: Path = DEFAULT_DB, batch_size: int = 10) -
             summary=str(analysis["one_line_summary"]),
             model=str(analysis.get("model", "ollama")),
             analyzed_at=datetime.now(),
+            importance_reason=str(analysis.get("importance_reason", "")),
+            relevance_reason=str(analysis.get("relevance_reason", "")),
         )
         processed += 1
         logger.info("Analyzed article_id=%s (title=%s)", article["id"], article["title"])

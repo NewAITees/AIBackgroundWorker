@@ -41,21 +41,50 @@ USER_PROMPT_TEMPLATE = """以下の検索結果を統合して要約してくだ
 【元のテーマ】
 {theme}
 
+【元の記事の要点】
+{article_summary}
+
+【重要度・関連度スコア】
+- 重要度: {importance_score} ({importance_reason})
+- 関連度: {relevance_score} ({relevance_reason})
+
 【検索クエリ】
 {search_query}
 
 【検索結果】
 {search_results}
 
+【統合の観点】
+1. 検索結果が元の記事の主張を裏付けるかどうか
+2. 元の記事で不足していた情報が補完されているか
+3. 検索結果と元の記事の間に矛盾がないか
+4. 深掘り調査で得られた新規性や価値
+
 上記の出力形式に従ってJSON出力してください。"""
 
 
-def build_prompt(theme: str, search_query: str, search_results: list[dict[str, str]]) -> dict[str, str]:
+def build_prompt(
+    theme: str,
+    search_query: str,
+    search_results: list[dict[str, str]],
+    article_summary: str = "",
+    importance_score: float = 0.0,
+    relevance_score: float = 0.0,
+    importance_reason: str = "",
+    relevance_reason: str = "",
+) -> dict[str, str]:
     """
     検索結果統合プロンプトを構築.
 
     Args:
+        theme: テーマ
+        search_query: 検索クエリ
         search_results: [{"title": str, "snippet": str, "url": str}, ...]
+        article_summary: 元の記事の要約（オプション）
+        importance_score: 重要度スコア（オプション）
+        relevance_score: 関連度スコア（オプション）
+        importance_reason: 重要度の判断理由（オプション）
+        relevance_reason: 関連度の判断理由（オプション）
     """
     results_text = ""
     for i, result in enumerate(search_results[:10], 1):
@@ -64,10 +93,20 @@ def build_prompt(theme: str, search_query: str, search_results: list[dict[str, s
         results_text += f"要約: {result.get('snippet', 'N/A')}\n"
         results_text += f"URL: {result.get('url', 'N/A')}\n"
 
+    # デフォルト値の設定
+    article_summary_display = article_summary or "記事要約が記録されていません"
+    importance_reason_display = importance_reason or "判断理由が記録されていません"
+    relevance_reason_display = relevance_reason or "判断理由が記録されていません"
+
     return {
         "system": SYSTEM_PROMPT,
         "user": USER_PROMPT_TEMPLATE.format(
             theme=theme,
+            article_summary=article_summary_display,
+            importance_score=importance_score,
+            relevance_score=relevance_score,
+            importance_reason=importance_reason_display,
+            relevance_reason=relevance_reason_display,
             search_query=search_query,
             search_results=results_text,
         ),

@@ -64,13 +64,58 @@ def test_analyze_pending_inserts_analysis(tmp_path: Path, monkeypatch: pytest.Mo
     conn.close()
 
 
+def test_analyze_pending_saves_reasons(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """analyze_pending.pyで判断理由が取得・保存されることを確認."""
+    db_path = tmp_path / "ai_secretary.db"
+    repo = InfoCollectorRepository(str(db_path))
+
+    # Arrange: insert one collected article
+    conn = sqlite3.connect(db_path)
+    _insert_collected(conn, title="重要ニュース", content="生成AIが普及している。")
+
+    # Stub OllamaClient to return JSON with reasons
+    class StubClient:
+        model = "stub-model"
+
+        def generate(self, prompt, system=None, options=None):
+            return json.dumps(
+                {
+                    "theme": "AI普及",
+                    "keywords": ["AI", "生成AI"],
+                    "category": "AI",
+                    "importance_score": 0.9,
+                    "relevance_score": 0.8,
+                    "importance_reason": "AI技術の最新動向で、業界に大きな影響を与える可能性がある",
+                    "relevance_reason": "ユーザーの興味分野（AI・機械学習）と直接関連している",
+                    "one_line_summary": "AIが普及",
+                    "should_deep_research": True,
+                }
+            )
+
+    monkeypatch.setattr(analyze_pending, "OllamaClient", lambda: StubClient())
+
+    # Act
+    processed = analyze_pending.analyze_pending_articles(db_path=db_path, batch_size=5)
+
+    # Assert
+    assert processed == 1
+    cur = conn.execute(
+        "SELECT importance_reason, relevance_reason FROM article_analysis"
+    )
+    row = cur.fetchone()
+    assert row is not None
+    assert row[0] == "AI技術の最新動向で、業界に大きな影響を与える可能性がある"
+    assert row[1] == "ユーザーの興味分野（AI・機械学習）と直接関連している"
+    conn.close()
+
+
 def test_deep_research_creates_entry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     db_path = tmp_path / "ai_secretary.db"
     repo = InfoCollectorRepository(str(db_path))
     conn = sqlite3.connect(db_path)
     article_id = _insert_collected(conn, title="深掘り対象", content="AIに関する重要な記事")
 
-    # Insert analysis with high scores
+    # Insert analysis with high scores and reasons
     repo.save_analysis(
         article_id=article_id,
         importance=0.9,
@@ -80,17 +125,23 @@ def test_deep_research_creates_entry(tmp_path: Path, monkeypatch: pytest.MonkeyP
         summary="AI記事の要約",
         model="test",
         analyzed_at=datetime.now(),
+        importance_reason="重要な技術動向",
+        relevance_reason="ユーザーの興味分野と関連",
     )
 
     # Stub OllamaClient to return queries first, then synthesis
     class StubClient:
         def __init__(self):
             self.calls = 0
+            self.prompts = []
 
         def generate(self, prompt, system=None, options=None):
             self.calls += 1
+            self.prompts.append((prompt, system))
             if self.calls == 1:
+                # 検索クエリ生成
                 return json.dumps({"queries": [{"query": "AI トレンド", "purpose": "調査"}], "language": "ja"})
+            # 検索結果統合
             return json.dumps(
                 {
                     "key_findings": ["要約"],
@@ -110,7 +161,8 @@ def test_deep_research_creates_entry(tmp_path: Path, monkeypatch: pytest.MonkeyP
                 ]
             }
 
-    monkeypatch.setattr(deep_research, "OllamaClient", lambda: StubClient())
+    stub_client = StubClient()
+    monkeypatch.setattr(deep_research, "OllamaClient", lambda: stub_client)
     monkeypatch.setattr(deep_research, "DDGSearchClient", StubDDG)
 
     processed = deep_research.deep_research_articles(db_path=db_path, batch_size=5)
@@ -121,6 +173,16 @@ def test_deep_research_creates_entry(tmp_path: Path, monkeypatch: pytest.MonkeyP
     assert row is not None
     assert "AI トレンド" in row[0]
     assert row[1] == "統合結果"
+    
+    # プロンプトに判断理由が含まれていることを確認
+    assert len(stub_client.prompts) >= 2
+    # 検索クエリ生成プロンプトに判断理由が含まれている
+    query_prompt = stub_client.prompts[0][0]
+    assert "重要な技術動向" in query_prompt or "ユーザーの興味分野と関連" in query_prompt
+    # 検索結果統合プロンプトに判断理由が含まれている
+    synthesis_prompt = stub_client.prompts[1][0]
+    assert "重要な技術動向" in synthesis_prompt or "ユーザーの興味分野と関連" in synthesis_prompt
+    
     conn.close()
 
 

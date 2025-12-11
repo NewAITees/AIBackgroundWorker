@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import logging
 import re
 from datetime import datetime
@@ -76,21 +77,71 @@ def generate_theme_reports(
         logger.info("No theme groups found for report generation.")
         return []
     
+    # レポート生成日（レポート内容には使用）
     report_date = datetime.now().strftime("%Y-%m-%d")
     ollama = OllamaClient()
     output_dir.mkdir(parents=True, exist_ok=True)
     
+    # DBから既存のハッシュ値を取得（出力フォルダと照らし合わせるため）
+    existing_hashes = set(repo.get_existing_report_hashes()) if skip_existing else set()
+    
     generated_paths: List[Path] = []
     
     for theme, articles in theme_groups.items():
-        # ファイル名を生成（既存チェック）
+        # 記事IDのリストを取得してソート（同じ記事セットなら常に同じハッシュになる）
+        article_ids = sorted([article.get("article_id") for article in articles if article.get("article_id")])
+        if not article_ids:
+            logger.warning("No article IDs found for theme '%s', skipping", theme)
+            continue
+        
+        # 記事IDのセットをハッシュ化（同じ記事セットなら常に同じファイル名になる）
+        article_ids_str = ",".join(map(str, article_ids))
+        article_hash = hashlib.sha256(article_ids_str.encode()).hexdigest()[:12]  # 12文字のハッシュ
+        
+        # 記事の日付を取得（published_at を優先、なければ fetched_at を使用）
+        # 複数記事がある場合は最新の日付を使用
+        article_dates = []
+        for article in articles:
+            published_at = article.get("article_published_at")
+            fetched_at = article.get("article_fetched_at")
+            # published_at を優先、なければ fetched_at を使用
+            article_date_str = published_at if published_at else fetched_at
+            if article_date_str:
+                try:
+                    article_date = datetime.fromisoformat(article_date_str)
+                    article_dates.append(article_date)
+                except (ValueError, TypeError):
+                    # 日付パースに失敗した場合はスキップ
+                    pass
+        
+        # 最新の日付を使用（なければ現在の日付をフォールバック）
+        if article_dates:
+            news_date = max(article_dates).strftime("%Y-%m-%d")
+        else:
+            news_date = report_date
+        
+        # テーマ名をスラッグ化（可読性のため）
         theme_slug = _slugify(theme)
-        report_filename = f"article_{theme_slug}_{report_date}.md"
+        
+        # ファイル名を生成（テーマ名とハッシュの両方を含める）
+        # article_日付_テーマ_ハッシュの形式で、可読性と一意性を両立
+        report_filename = f"article_{news_date}_{theme_slug}_{article_hash}.md"
         report_path = output_dir / report_filename
         
-        if skip_existing and report_path.exists():
-            logger.info("Skipping existing report: %s", report_path)
-            continue
+        # 既存チェック: DB側のハッシュ値と出力フォルダ内のファイルを照らし合わせる
+        # （テーマ名が変わっても同じ記事セットならスキップ）
+        if skip_existing:
+            # DBに既存のハッシュ値があるかチェック
+            if article_hash in existing_hashes:
+                # DBに存在する場合、出力フォルダ内のファイルを検索
+                existing_files = list(output_dir.glob(f"article_*_{article_hash}.md"))
+                if existing_files:
+                    logger.info("Skipping existing report for article set (hash=%s): %s", article_hash, existing_files[0])
+                    continue
+                else:
+                    # DBには存在するがファイルがない場合もスキップ（既に生成済みとみなす）
+                    logger.info("Skipping existing report in DB (hash=%s), but file not found in output dir", article_hash)
+                    continue
         
         logger.info("Generating theme report for '%s' (%d articles)", theme, len(articles))
         
@@ -112,13 +163,14 @@ def generate_theme_reports(
         if not content:
             content = f"# レポート生成に失敗しました\n\nテーマ: {theme}\n\nデータは保存されていますが、LLM出力を取得できませんでした。"
         
-        # DB保存
+        # DB保存（ハッシュ値も保存）
         repo.save_report(
             title=f"{theme} - テーマレポート",
             report_date=report_date,
             content=content,
             article_count=len(articles),
             category="theme",
+            article_ids_hash=article_hash,
             created_at=datetime.now(),
         )
         

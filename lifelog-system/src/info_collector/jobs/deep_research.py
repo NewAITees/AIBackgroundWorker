@@ -59,12 +59,22 @@ def deep_research_articles(
         except Exception:
             keywords = []
 
+        # 判断理由を取得
+        importance_reason = (
+            row["importance_reason"] if "importance_reason" in row.keys() else ""
+        ) or ""
+        relevance_reason = (
+            row["relevance_reason"] if "relevance_reason" in row.keys() else ""
+        ) or ""
+
         # 1) 検索クエリ生成
         prompts = search_query_gen.build_prompt(
             theme=summary,
             keywords=[str(k) for k in keywords],
             category=row["category"] if "category" in row.keys() else "その他",
             summary=summary,
+            importance_reason=importance_reason,
+            relevance_reason=relevance_reason,
         )
         query_payload = _run_ollama_json(ollama, prompts["system"], prompts["user"])
         queries: List[str] = []
@@ -86,10 +96,28 @@ def deep_research_articles(
             continue
 
         # 3) 検索結果統合
+        # 元の分析結果を取得
+        importance_score = float(
+            row["importance_score"] if "importance_score" in row.keys() else 0.0
+        )
+        relevance_score = float(
+            row["relevance_score"] if "relevance_score" in row.keys() else 0.0
+        )
+        article_content = (
+            row["collected_content"] if "collected_content" in row.keys() else ""
+        ) or ""
+        # 記事内容の最初の500文字を要約として使用
+        article_summary_for_synthesis = article_content[:500] if article_content else summary
+
         synthesis_prompts = result_synthesis.build_prompt(
             theme=summary,
             search_query=", ".join(queries),
             search_results=combined_results[:10],
+            article_summary=article_summary_for_synthesis,
+            importance_score=importance_score,
+            relevance_score=relevance_score,
+            importance_reason=importance_reason,
+            relevance_reason=relevance_reason,
         )
         synthesis = _run_ollama_json(ollama, synthesis_prompts["system"], synthesis_prompts["user"])
 

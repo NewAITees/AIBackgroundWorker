@@ -149,6 +149,7 @@ class InfoCollectorRepository:
                     content TEXT NOT NULL,
                     article_count INTEGER,
                     category TEXT,
+                    article_ids_hash TEXT,
                     created_at TEXT NOT NULL
                 )
                 """
@@ -159,6 +160,30 @@ class InfoCollectorRepository:
                 ON reports(report_date DESC)
                 """
             )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_reports_hash
+                ON reports(article_ids_hash)
+                """
+            )
+            # 既存のテーブルにarticle_ids_hashカラムを追加（マイグレーション）
+            try:
+                conn.execute("ALTER TABLE reports ADD COLUMN article_ids_hash TEXT")
+            except sqlite3.OperationalError:
+                # カラムが既に存在する場合はスキップ
+                pass
+
+            # article_analysisテーブルに判断理由カラムを追加（マイグレーション）
+            try:
+                conn.execute("ALTER TABLE article_analysis ADD COLUMN importance_reason TEXT")
+            except sqlite3.OperationalError:
+                # カラムが既に存在する場合はスキップ
+                pass
+            try:
+                conn.execute("ALTER TABLE article_analysis ADD COLUMN relevance_reason TEXT")
+            except sqlite3.OperationalError:
+                # カラムが既に存在する場合はスキップ
+                pass
 
     def add_info(self, info: CollectedInfo) -> Optional[int]:
         """
@@ -407,15 +432,31 @@ class InfoCollectorRepository:
         summary: str,
         model: str,
         analyzed_at: datetime,
+        importance_reason: Optional[str] = None,
+        relevance_reason: Optional[str] = None,
     ) -> None:
-        """分析結果を保存."""
+        """
+        分析結果を保存.
+        
+        Args:
+            article_id: 記事ID
+            importance: 重要度スコア
+            relevance: 関連度スコア
+            category: カテゴリ
+            keywords: キーワードリスト
+            summary: 要約
+            model: 使用モデル
+            analyzed_at: 分析日時
+            importance_reason: 重要度の判断理由（オプション）
+            relevance_reason: 関連度の判断理由（オプション）
+        """
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO article_analysis
                 (article_id, importance_score, relevance_score, category,
-                 keywords, summary, model, analyzed_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 keywords, summary, model, analyzed_at, importance_reason, relevance_reason)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     article_id,
@@ -426,6 +467,8 @@ class InfoCollectorRepository:
                     summary,
                     model,
                     analyzed_at.isoformat(),
+                    importance_reason or "",
+                    relevance_reason or "",
                 ),
             )
 
@@ -437,6 +480,7 @@ class InfoCollectorRepository:
 
         Returns:
             article_analysis と collected_info を結合したRowリスト
+            （importance_reason と relevance_reason を含む）
         """
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
@@ -531,6 +575,7 @@ class InfoCollectorRepository:
         
         Returns:
             テーマ（summary）をキー、深掘り結果のリストを値とする辞書
+            （importance_reason と relevance_reason を含む）
         """
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
@@ -541,11 +586,15 @@ class InfoCollectorRepository:
                 a.summary AS theme,
                 a.importance_score,
                 a.relevance_score,
+                a.importance_reason,
+                a.relevance_reason,
                 a.category,
                 a.keywords,
                 c.title AS article_title,
                 c.url AS article_url,
-                c.content AS article_content
+                c.content AS article_content,
+                c.published_at AS article_published_at,
+                c.fetched_at AS article_fetched_at
             FROM deep_research d
             JOIN article_analysis a ON d.article_id = a.article_id
             JOIN collected_info c ON d.article_id = c.id
@@ -575,14 +624,26 @@ class InfoCollectorRepository:
         article_count: int,
         category: str,
         created_at: datetime,
+        article_ids_hash: Optional[str] = None,
     ) -> None:
-        """レポートを保存."""
+        """
+        レポートを保存.
+        
+        Args:
+            title: レポートタイトル
+            report_date: レポート日付
+            content: レポート内容（Markdown）
+            article_count: 記事数
+            category: カテゴリ（daily, theme等）
+            created_at: 作成日時
+            article_ids_hash: 記事IDセットのハッシュ値（重複チェック用）
+        """
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
                 """
                 INSERT INTO reports
-                (title, report_date, content, article_count, category, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                (title, report_date, content, article_count, category, article_ids_hash, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     title,
@@ -590,6 +651,27 @@ class InfoCollectorRepository:
                     content,
                     article_count,
                     category,
+                    article_ids_hash,
                     created_at.isoformat(),
                 ),
             )
+
+    def get_existing_report_hashes(self) -> list[str]:
+        """
+        DBに保存されている既存レポートのハッシュ値リストを取得.
+        
+        Returns:
+            既存レポートのハッシュ値リスト（NULL値は除外）
+        """
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.execute(
+            """
+            SELECT DISTINCT article_ids_hash
+            FROM reports
+            WHERE article_ids_hash IS NOT NULL AND article_ids_hash != ''
+            """
+        )
+        hashes = [row["article_ids_hash"] for row in cursor.fetchall()]
+        conn.close()
+        return hashes

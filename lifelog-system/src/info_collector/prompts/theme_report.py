@@ -74,7 +74,13 @@ def build_prompt(theme: str, articles: list[dict], report_date: str) -> dict[str
         article_details += f"\n### 記事 {idx}: {article.get('article_title', 'N/A')}\n"
         article_details += f"- **URL**: {article.get('article_url', 'N/A')}\n"
         article_details += f"- **重要度**: {article.get('importance_score', 0):.2f}\n"
+        importance_reason = article.get('importance_reason', '') or ''
+        if importance_reason:
+            article_details += f"  - **判断理由**: {importance_reason}\n"
         article_details += f"- **関連度**: {article.get('relevance_score', 0):.2f}\n"
+        relevance_reason = article.get('relevance_reason', '') or ''
+        if relevance_reason:
+            article_details += f"  - **判断理由**: {relevance_reason}\n"
         article_details += f"- **カテゴリ**: {article.get('category', 'N/A')}\n"
         keywords = article.get('keywords', '[]')
         if isinstance(keywords, str):
