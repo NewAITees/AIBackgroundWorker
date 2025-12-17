@@ -154,35 +154,53 @@ class InfoCollectorRepository:
                 )
                 """
             )
+            # 既存DBへのマイグレーション（不足カラムを追加）
+            self._migrate_schema(conn)
             conn.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_reports_date
                 ON reports(report_date DESC)
                 """
             )
-            conn.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_reports_hash
-                ON reports(article_ids_hash)
-                """
-            )
-            # 既存のテーブルにarticle_ids_hashカラムを追加（マイグレーション）
+            try:
+                conn.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_reports_hash
+                    ON reports(article_ids_hash)
+                    """
+                )
+            except sqlite3.OperationalError:
+                # カラムがない既存DBの場合に備えて無視（_migrate_schemaが後続で追加する）
+                pass
+
+    def _migrate_schema(self, conn: sqlite3.Connection) -> None:
+        """
+        既存DBで不足しているカラムを追加する軽量マイグレーション.
+        安全にALTER TABLEを試行し、存在していれば無視する。
+        """
+        cursor = conn.cursor()
+
+        def has_column(table: str, column: str) -> bool:
+            cursor.execute(f"PRAGMA table_info({table})")
+            return any(row[1] == column for row in cursor.fetchall())
+
+        # reports.article_ids_hash がなければ追加
+        if not has_column("reports", "article_ids_hash"):
             try:
                 conn.execute("ALTER TABLE reports ADD COLUMN article_ids_hash TEXT")
             except sqlite3.OperationalError:
-                # カラムが既に存在する場合はスキップ
                 pass
 
-            # article_analysisテーブルに判断理由カラムを追加（マイグレーション）
+        # article_analysis の判断理由カラムを追加
+        if not has_column("article_analysis", "importance_reason"):
             try:
                 conn.execute("ALTER TABLE article_analysis ADD COLUMN importance_reason TEXT")
             except sqlite3.OperationalError:
-                # カラムが既に存在する場合はスキップ
                 pass
+        if not has_column("article_analysis", "relevance_reason"):
             try:
                 conn.execute("ALTER TABLE article_analysis ADD COLUMN relevance_reason TEXT")
             except sqlite3.OperationalError:
-                # カラムが既に存在する場合はスキップ
                 pass
 
     def add_info(self, info: CollectedInfo) -> Optional[int]:
@@ -675,3 +693,33 @@ class InfoCollectorRepository:
         hashes = [row["article_ids_hash"] for row in cursor.fetchall()]
         conn.close()
         return hashes
+
+    def fetch_reports_by_date(
+        self,
+        report_date: str,
+        category: Optional[str] = None,
+    ) -> list[dict[str, Any]]:
+        """
+        指定日のレポートを取得.
+
+        Args:
+            report_date: レポート日付（YYYY-MM-DD）
+            category: カテゴリでの絞り込み（例: 'theme', 'integrated_daily'）
+
+        Returns:
+            レポートの辞書リスト（新しい順）
+        """
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+
+        query = "SELECT * FROM reports WHERE report_date = ?"
+        params: list[Any] = [report_date]
+        if category:
+            query += " AND category = ?"
+            params.append(category)
+        query += " ORDER BY created_at DESC"
+
+        cursor = conn.execute(query, params)
+        rows = [dict(r) for r in cursor.fetchall()]
+        conn.close()
+        return rows
