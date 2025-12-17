@@ -12,7 +12,7 @@ from typing import Any, Dict, List
 from src.ai_secretary.ollama_client import OllamaClient
 from src.info_collector.prompts import search_query_gen, result_synthesis
 from src.info_collector.repository import InfoCollectorRepository
-from src.info_collector.search import DDGSearchClient, filter_search_results
+from src.info_collector.search import DDGSearchClient, filter_search_results, filter_by_relevance
 
 logger = logging.getLogger(__name__)
 
@@ -89,11 +89,37 @@ def deep_research_articles(
         search_results_map = ddg.batch_search(queries, delay=1.5)
         combined_results: List[Dict[str, str]] = []
         for results in search_results_map.values():
-            combined_results.extend(filter_search_results(results, min_snippet_length=40))
+            # 基本的なフィルタリング（スニペット長、ドメイン除外）
+            basic_filtered = filter_search_results(results, min_snippet_length=40)
+            combined_results.extend(basic_filtered)
 
         if not combined_results:
             logger.warning("No search results for article_id=%s", article_id)
             continue
+
+        # 2-1) 関連性フィルタリング（LLM使用）
+        # 元の記事との関連性が高い検索結果のみを保持
+        article_content = (
+            row["collected_content"] if "collected_content" in row.keys() else ""
+        ) or ""
+        article_summary_for_filtering = article_content[:500] if article_content else summary
+        
+        relevant_results = filter_by_relevance(
+            results=combined_results,
+            article_theme=summary,
+            article_summary=article_summary_for_filtering,
+            keywords=[str(k) for k in keywords],
+            ollama_client=ollama,
+            min_relevance_score=0.5,  # 関連性スコア0.5以上を保持
+        )
+        
+        # 関連性フィルタリング後の結果が少ない場合は、元の結果を使用（安全策）
+        if len(relevant_results) < 3:
+            logger.warning("Too few relevant results (%d) for article_id=%s, using all results", 
+                          len(relevant_results), article_id)
+            combined_results = combined_results[:10]  # 最大10件に制限
+        else:
+            combined_results = relevant_results[:10]  # 関連性の高い上位10件
 
         # 3) 検索結果統合
         # 元の分析結果を取得
@@ -103,11 +129,8 @@ def deep_research_articles(
         relevance_score = float(
             row["relevance_score"] if "relevance_score" in row.keys() else 0.0
         )
-        article_content = (
-            row["collected_content"] if "collected_content" in row.keys() else ""
-        ) or ""
-        # 記事内容の最初の500文字を要約として使用
-        article_summary_for_synthesis = article_content[:500] if article_content else summary
+        # 記事内容の最初の500文字を要約として使用（既に取得済み）
+        article_summary_for_synthesis = article_summary_for_filtering
 
         synthesis_prompts = result_synthesis.build_prompt(
             theme=summary,
