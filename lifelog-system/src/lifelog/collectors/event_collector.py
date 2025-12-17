@@ -88,7 +88,11 @@ class EventClassifierImpl(EventClassifier):
                 severity = 90
 
         # ログレベルベースの分類（Linux syslog）
-        log_level = raw_event.get("level", "").lower()
+        log_level = raw_event.get("level", "")
+        # levelがlistの場合は最初の要素を取得
+        if isinstance(log_level, list):
+            log_level = str(log_level[0]) if log_level else ""
+        log_level = str(log_level).lower()
         if log_level in ["error", "err"]:
             event_type = "error"
             severity = 70
@@ -360,9 +364,14 @@ class LinuxSyslogCollectorImpl(LinuxSyslogCollector):
 
                 try:
                     item = json.loads(line)
+                    # PRIORITYがlistの場合は最初の要素を取得
+                    priority = item.get("PRIORITY")
+                    if isinstance(priority, list):
+                        priority = priority[0] if priority else None
+
                     raw_event = {
                         "timestamp": item.get("__REALTIME_TIMESTAMP"),
-                        "level": item.get("PRIORITY"),
+                        "level": priority,
                         "message": item.get("MESSAGE", ""),
                         "facility": item.get("SYSLOG_FACILITY"),
                         "process_name": item.get("_COMM"),

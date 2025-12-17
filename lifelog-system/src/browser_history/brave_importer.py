@@ -23,6 +23,7 @@ class BraveHistoryImporter:
     def __init__(self) -> None:
         """初期化."""
         self.default_profile_paths = [
+            # Windows環境（直接実行）
             Path.home()
             / "AppData"
             / "Local"
@@ -30,6 +31,16 @@ class BraveHistoryImporter:
             / "Brave-Browser"
             / "User Data"
             / "Default",
+            # WSL環境からWindowsにアクセス
+            Path("/mnt/c/Users")
+            / Path.home().name
+            / "AppData"
+            / "Local"
+            / "BraveSoftware"
+            / "Brave-Browser"
+            / "User Data"
+            / "Default",
+            # Linux環境
             Path.home() / ".config" / "BraveSoftware" / "Brave-Browser" / "Default",
         ]
 
