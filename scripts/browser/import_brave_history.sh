@@ -96,7 +96,10 @@ try:
     if output_json:
         print(json.dumps({"success": True, "imported_count": count}, ensure_ascii=False))
     else:
-        print(f"✓ {count}件の履歴をインポートしました")
+        if count > 0:
+            print(f"✓ {count}件の新しい履歴を追加しました")
+        else:
+            print(f"✓ 履歴を確認しましたが、新しいデータはありませんでした（既存データと重複）")
 
 except FileNotFoundError as e:
     if output_json:
