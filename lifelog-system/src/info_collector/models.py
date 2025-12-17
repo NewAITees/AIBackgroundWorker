@@ -9,7 +9,7 @@
 
 from datetime import datetime
 from typing import Optional, Dict, Any, Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class CollectedInfo(BaseModel):
@@ -30,8 +30,7 @@ class CollectedInfo(BaseModel):
         default_factory=dict, description="その他メタデータ"
     )
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SearchResult(CollectedInfo):
@@ -70,5 +69,4 @@ class InfoSummary(BaseModel):
     created_at: datetime = Field(default_factory=datetime.now, description="作成日時")
     query: Optional[str] = Field(None, description="検索クエリ（該当する場合）")
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
