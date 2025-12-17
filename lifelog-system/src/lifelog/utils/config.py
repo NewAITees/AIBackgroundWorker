@@ -29,6 +29,15 @@ class Config:
         with open(self.config_path, "r", encoding="utf-8") as f:
             self._config = yaml.safe_load(f)
 
+        # event_collection.yamlも読み込む（存在する場合）
+        event_collection_path = self.config_path.parent / "event_collection.yaml"
+        if event_collection_path.exists():
+            with open(event_collection_path, "r", encoding="utf-8") as f:
+                event_config = yaml.safe_load(f)
+                # event_collectionセクションをマージ
+                if event_config and "event_collection" in event_config:
+                    self._config["event_collection"] = event_config["event_collection"]
+
     def get(self, key: str, default: Any = None) -> Any:
         """
         設定値を取得.
