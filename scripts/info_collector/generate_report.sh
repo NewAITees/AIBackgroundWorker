@@ -18,12 +18,17 @@ cd "$LIFELOG_DIR" || exit 1
 HOURS=24
 DB_PATH="data/ai_secretary.db"
 OUTPUT_DIR="data/reports"
+TARGET_DATE=""
 
 # 引数解析
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --hours)
       HOURS="$2"
+      shift 2
+      ;;
+    --date)
+      TARGET_DATE="$2"
       shift 2
       ;;
     --db-path)
@@ -36,7 +41,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     *)
       echo "Unknown option: $1" >&2
-      echo "Usage: $0 [--hours N] [--db-path PATH] [--output-dir PATH]" >&2
+      echo "Usage: $0 [--hours N] [--date YYYY-MM-DD] [--db-path PATH] [--output-dir PATH]" >&2
       exit 1
       ;;
   esac
@@ -44,13 +49,21 @@ done
 
 LOG_FILE="$LOG_DIR/generate_report_$(date '+%Y%m%d').log"
 
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting report generation (past $HOURS hours)..." | tee -a "$LOG_FILE"
-
-# 標準出力とエラー出力の両方をログファイルに追記
-uv run python -m src.info_collector.jobs.generate_report \
-  --db-path "$DB_PATH" \
-  --output-dir "$OUTPUT_DIR" \
-  --hours "$HOURS" 2>&1 | tee -a "$LOG_FILE"
+if [ -n "$TARGET_DATE" ]; then
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting report generation for date: $TARGET_DATE..." | tee -a "$LOG_FILE"
+  # 日付指定の場合
+  uv run python -m src.info_collector.jobs.generate_report \
+    --db-path "$DB_PATH" \
+    --output-dir "$OUTPUT_DIR" \
+    --date "$TARGET_DATE" 2>&1 | tee -a "$LOG_FILE"
+else
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting report generation (past $HOURS hours)..." | tee -a "$LOG_FILE"
+  # 時間範囲指定の場合（既存の動作）
+  uv run python -m src.info_collector.jobs.generate_report \
+    --db-path "$DB_PATH" \
+    --output-dir "$OUTPUT_DIR" \
+    --hours "$HOURS" 2>&1 | tee -a "$LOG_FILE"
+fi
 
 EXIT_CODE=${PIPESTATUS[0]}
 
