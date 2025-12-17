@@ -52,15 +52,13 @@ class ActivityCollector:
         self.current_interval: Optional[dict[str, Any]] = None
         self.health_monitor = HealthMonitor()
         self._running = False
-        
+
         # イベント収集の初期化
         self.event_collector = None
         event_config = config.get("event_collection", {})
         if event_config.get("enabled", False):
             try:
-                self.event_collector = create_collector_for_platform_impl(
-                    config=event_config
-                )
+                self.event_collector = create_collector_for_platform_impl(config=event_config)
                 logger.info("Event collection enabled")
             except Exception as e:
                 logger.warning(f"Failed to initialize event collector: {e}")
@@ -254,7 +252,6 @@ class ActivityCollector:
         event_config = self.config.get("event_collection", {})
         collection_interval = event_config.get("collection_interval", 300)
         last_collection_time = None
-        privacy_config = event_config.get("privacy", {})
 
         while self._running:
             try:
@@ -267,20 +264,22 @@ class ActivityCollector:
                     # SystemEventをdictに変換
                     event_dicts = []
                     for event in events:
-                        event_dicts.append({
-                            "event_timestamp": event.event_timestamp,
-                            "event_type": event.event_type,
-                            "severity": event.severity,
-                            "source": event.source,
-                            "category": event.category,
-                            "event_id": event.event_id,
-                            "message": event.message,
-                            "message_hash": event.message_hash,
-                            "raw_data_json": event.raw_data_json,
-                            "process_name": event.process_name,
-                            "user_name": event.user_name,
-                            "machine_name": event.machine_name,
-                        })
+                        event_dicts.append(
+                            {
+                                "event_timestamp": event.event_timestamp,
+                                "event_type": event.event_type,
+                                "severity": event.severity,
+                                "source": event.source,
+                                "category": event.category,
+                                "event_id": event.event_id,
+                                "message": event.message,
+                                "message_hash": event.message_hash,
+                                "raw_data_json": event.raw_data_json,
+                                "process_name": event.process_name,
+                                "user_name": event.user_name,
+                                "machine_name": event.machine_name,
+                            }
+                        )
 
                     # バルク挿入
                     self.db.bulk_insert_events(event_dicts)

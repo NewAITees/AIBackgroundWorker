@@ -169,9 +169,7 @@ class BrowserHistoryRepository:
             エントリ（存在しない場合None）
         """
         with self._connect() as conn:
-            row = conn.execute(
-                "SELECT * FROM browser_history WHERE id = ?", (entry_id,)
-            ).fetchone()
+            row = conn.execute("SELECT * FROM browser_history WHERE id = ?", (entry_id,)).fetchone()
 
         if not row:
             return None

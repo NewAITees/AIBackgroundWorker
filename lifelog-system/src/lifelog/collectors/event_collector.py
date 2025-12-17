@@ -11,8 +11,7 @@ import subprocess
 import re
 import logging
 from datetime import datetime
-from typing import List, Optional, Dict, Any
-from pathlib import Path
+from typing import List, Optional
 
 from .event_collector_interface import (
     SystemEvent,
@@ -20,7 +19,6 @@ from .event_collector_interface import (
     EventCollector,
     WindowsEventLogCollector,
     LinuxSyslogCollector,
-    create_collector_for_platform,
 )
 
 logger = logging.getLogger(__name__)
@@ -257,7 +255,9 @@ class WindowsEventLogCollectorImpl(WindowsEventLogCollector):
     def get_supported_logs(self) -> List[str]:
         """Windows EventLogで利用可能なログのリストを取得"""
         try:
-            ps_cmd = "Get-WinEvent -ListLog * | Select-Object -ExpandProperty LogName | ConvertTo-Json"
+            ps_cmd = (
+                "Get-WinEvent -ListLog * | Select-Object -ExpandProperty LogName | ConvertTo-Json"
+            )
             result = subprocess.run(
                 ["powershell", "-Command", ps_cmd],
                 capture_output=True,
@@ -431,7 +431,9 @@ def create_collector_for_platform_impl(
         )
     elif platform_name in ["linux", "linux2"]:
         return LinuxSyslogCollectorImpl(
-            facility_filter=config.get("linux", {}).get("facility_filter", ["kern", "user", "daemon"]),
+            facility_filter=config.get("linux", {}).get(
+                "facility_filter", ["kern", "user", "daemon"]
+            ),
             priority_min=config.get("linux", {}).get("priority_min", "warning"),
             classifier=classifier,
             privacy_config=privacy_config,

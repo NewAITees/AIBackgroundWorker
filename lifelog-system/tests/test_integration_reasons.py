@@ -10,10 +10,11 @@ from pathlib import Path
 import pytest
 
 from src.info_collector.jobs import analyze_pending, deep_research, generate_theme_report
-from src.info_collector.repository import InfoCollectorRepository
 
 
-def _insert_collected(conn: sqlite3.Connection, title: str = "test title", content: str = "body") -> int:
+def _insert_collected(
+    conn: sqlite3.Connection, title: str = "test title", content: str = "body"
+) -> int:
     """Helper to insert a collected_info row."""
     now = datetime.now().isoformat()
     cur = conn.execute(
@@ -33,7 +34,6 @@ def test_end_to_end_reason_propagation(tmp_path: Path, monkeypatch: pytest.Monke
     """
     db_path = tmp_path / "ai_secretary.db"
     reports_dir = tmp_path / "reports"
-    repo = InfoCollectorRepository(str(db_path))
 
     # Step 1: 記事を追加
     conn = sqlite3.connect(db_path)
@@ -99,7 +99,9 @@ def test_end_to_end_reason_propagation(tmp_path: Path, monkeypatch: pytest.Monke
                 {
                     "key_findings": ["AI技術が急速に普及している"],
                     "detailed_summary": "AI技術の最新動向に関する深掘り調査結果",
-                    "sources": [{"url": "http://example.com", "title": "Example", "relevance": "high"}],
+                    "sources": [
+                        {"url": "http://example.com", "title": "Example", "relevance": "high"}
+                    ],
                 }
             )
 
@@ -110,7 +112,11 @@ def test_end_to_end_reason_propagation(tmp_path: Path, monkeypatch: pytest.Monke
         def batch_search(self, queries, delay=1.5):
             return {
                 queries[0]: [
-                    {"title": "Result", "snippet": "詳細なスニペット" * 10, "url": "http://example.com"}
+                    {
+                        "title": "Result",
+                        "snippet": "詳細なスニペット" * 10,
+                        "url": "http://example.com",
+                    }
                 ]
             }
 
@@ -176,5 +182,3 @@ AI技術が急速に普及している。
     assert "判断理由" in report_content
     assert "AI技術の最新動向で、業界に大きな影響を与える可能性がある" in report_content
     assert "ユーザーの興味分野（AI・機械学習）と直接関連している" in report_content
-
-

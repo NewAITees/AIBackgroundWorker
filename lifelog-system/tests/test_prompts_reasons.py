@@ -2,8 +2,6 @@
 プロンプト生成関数で判断理由が正しく含まれることを確認するテスト
 """
 
-import pytest
-
 from src.info_collector.prompts import search_query_gen, result_synthesis, theme_report
 
 
@@ -21,7 +19,7 @@ def test_search_query_gen_includes_reasons():
     assert "system" in prompt
     assert "user" in prompt
     user_prompt = prompt["user"]
-    
+
     # 判断理由が含まれていることを確認
     assert "重要な技術動向" in user_prompt
     assert "ユーザーの興味分野と関連" in user_prompt
@@ -42,7 +40,7 @@ def test_search_query_gen_without_reasons():
     assert "system" in prompt
     assert "user" in prompt
     user_prompt = prompt["user"]
-    
+
     # デフォルトメッセージが含まれていることを確認
     assert "判断理由が記録されていません" in user_prompt
 
@@ -68,7 +66,7 @@ def test_result_synthesis_includes_reasons():
     assert "system" in prompt
     assert "user" in prompt
     user_prompt = prompt["user"]
-    
+
     # 判断理由が含まれていることを確認
     assert "重要な技術動向" in user_prompt
     assert "ユーザーの興味分野と関連" in user_prompt
@@ -93,7 +91,7 @@ def test_result_synthesis_without_reasons():
     assert "system" in prompt
     assert "user" in prompt
     user_prompt = prompt["user"]
-    
+
     # デフォルトメッセージが含まれていることを確認
     assert "判断理由が記録されていません" in user_prompt
 
@@ -123,7 +121,7 @@ def test_theme_report_includes_reasons():
     assert "system" in prompt
     assert "user" in prompt
     user_prompt = prompt["user"]
-    
+
     # 判断理由が含まれていることを確認
     assert "重要な技術動向" in user_prompt
     assert "ユーザーの興味分野と関連" in user_prompt
@@ -154,4 +152,3 @@ def test_theme_report_without_reasons():
     assert "user" in prompt
     # 判断理由がなくてもエラーにならないことを確認
     assert "記事1" in prompt["user"]
-

@@ -37,7 +37,7 @@ CREATE INDEX IF NOT EXISTS idx_events_process ON system_events(process_name);
 -- 注意: SQLiteではビュー内のORDER BYは保証されないため、
 -- 使用時には必ず ORDER BY timestamp DESC を指定すること
 CREATE VIEW IF NOT EXISTS unified_timeline AS
-SELECT 
+SELECT
     'activity' as event_source,
     start_ts as timestamp,
     NULL as event_type,
@@ -51,7 +51,7 @@ JOIN apps a ON i.app_id = a.app_id
 
 UNION ALL
 
-SELECT 
+SELECT
     'system_event' as event_source,
     event_timestamp as timestamp,
     event_type,

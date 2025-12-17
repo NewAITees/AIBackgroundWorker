@@ -61,7 +61,9 @@ def load_lines(path: Path) -> List[str]:
     return lines
 
 
-def collect_rss(config: InfoCollectorConfig, repo: InfoCollectorRepository, limit: int) -> Dict[str, int]:
+def collect_rss(
+    config: InfoCollectorConfig, repo: InfoCollectorRepository, limit: int
+) -> Dict[str, int]:
     collector = RSSCollector()
     feeds = config.load_rss_feeds()
     if not feeds:
@@ -74,7 +76,9 @@ def collect_rss(config: InfoCollectorConfig, repo: InfoCollectorRepository, limi
     return {"feeds": len(feeds), "saved": saved}
 
 
-def collect_news(config: InfoCollectorConfig, repo: InfoCollectorRepository, limit: int) -> Dict[str, int]:
+def collect_news(
+    config: InfoCollectorConfig, repo: InfoCollectorRepository, limit: int
+) -> Dict[str, int]:
     collector = NewsCollector()
     sites = config.load_news_sites()
     if not sites:

@@ -228,14 +228,10 @@ class InfoCollectorRepository:
                         info.url,
                         info.content,
                         info.snippet,
-                        info.published_at.isoformat()
-                        if info.published_at
-                        else None,
+                        info.published_at.isoformat() if info.published_at else None,
                         info.fetched_at.isoformat(),
                         info.source_name,
-                        json.dumps(info.metadata, ensure_ascii=False)
-                        if info.metadata
-                        else None,
+                        json.dumps(info.metadata, ensure_ascii=False) if info.metadata else None,
                     ),
                 )
                 return cursor.lastrowid
@@ -247,9 +243,7 @@ class InfoCollectorRepository:
         """IDで情報を取得"""
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            cursor = conn.execute(
-                "SELECT * FROM collected_info WHERE id = ?", (info_id,)
-            )
+            cursor = conn.execute("SELECT * FROM collected_info WHERE id = ?", (info_id,))
             row = cursor.fetchone()
             return self._row_to_info(row) if row else None
 
@@ -350,9 +344,7 @@ class InfoCollectorRepository:
         """IDで要約を取得"""
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            cursor = conn.execute(
-                "SELECT * FROM info_summaries WHERE id = ?", (summary_id,)
-            )
+            cursor = conn.execute("SELECT * FROM info_summaries WHERE id = ?", (summary_id,))
             row = cursor.fetchone()
             return self._row_to_summary(row) if row else None
 
@@ -395,9 +387,7 @@ class InfoCollectorRepository:
             else None,
             fetched_at=datetime.fromisoformat(row["fetched_at"]),
             source_name=row["source_name"],
-            metadata=json.loads(row["metadata_json"])
-            if row["metadata_json"]
-            else {},
+            metadata=json.loads(row["metadata_json"]) if row["metadata_json"] else {},
         )
 
     def _row_to_summary(self, row: sqlite3.Row) -> InfoSummary:
@@ -407,9 +397,7 @@ class InfoCollectorRepository:
             summary_type=row["summary_type"],
             title=row["title"],
             summary_text=row["summary_text"],
-            source_info_ids=json.loads(row["source_info_ids"])
-            if row["source_info_ids"]
-            else [],
+            source_info_ids=json.loads(row["source_info_ids"]) if row["source_info_ids"] else [],
             created_at=datetime.fromisoformat(row["created_at"]),
             query=row["query"],
         )
@@ -455,7 +443,7 @@ class InfoCollectorRepository:
     ) -> None:
         """
         分析結果を保存.
-        
+
         Args:
             article_id: 記事ID
             importance: 重要度スコア
@@ -584,13 +572,15 @@ class InfoCollectorRepository:
         conn.close()
         return rows
 
-    def fetch_deep_research_by_theme(self, min_articles: int = 1) -> dict[str, list[dict[str, Any]]]:
+    def fetch_deep_research_by_theme(
+        self, min_articles: int = 1
+    ) -> dict[str, list[dict[str, Any]]]:
         """
         深掘り済み記事をテーマ（summary）ごとにグループ化して取得.
-        
+
         Args:
             min_articles: テーマごとの最小記事数（この数以上の記事があるテーマのみ返す）
-        
+
         Returns:
             テーマ（summary）をキー、深掘り結果のリストを値とする辞書
             （importance_reason と relevance_reason を含む）
@@ -599,7 +589,7 @@ class InfoCollectorRepository:
         conn.row_factory = sqlite3.Row
         cursor = conn.execute(
             """
-            SELECT 
+            SELECT
                 d.*,
                 a.summary AS theme,
                 a.importance_score,
@@ -622,7 +612,7 @@ class InfoCollectorRepository:
         )
         rows = [dict(r) for r in cursor.fetchall()]
         conn.close()
-        
+
         # テーマごとにグループ化
         theme_groups: dict[str, list[dict[str, Any]]] = {}
         for row in rows:
@@ -630,9 +620,13 @@ class InfoCollectorRepository:
             if theme not in theme_groups:
                 theme_groups[theme] = []
             theme_groups[theme].append(row)
-        
+
         # 最小記事数以上のテーマのみ返す
-        return {theme: articles for theme, articles in theme_groups.items() if len(articles) >= min_articles}
+        return {
+            theme: articles
+            for theme, articles in theme_groups.items()
+            if len(articles) >= min_articles
+        }
 
     def save_report(
         self,
@@ -646,7 +640,7 @@ class InfoCollectorRepository:
     ) -> None:
         """
         レポートを保存.
-        
+
         Args:
             title: レポートタイトル
             report_date: レポート日付
@@ -677,7 +671,7 @@ class InfoCollectorRepository:
     def get_existing_report_hashes(self) -> list[str]:
         """
         DBに保存されている既存レポートのハッシュ値リストを取得.
-        
+
         Returns:
             既存レポートのハッシュ値リスト（NULL値は除外）
         """

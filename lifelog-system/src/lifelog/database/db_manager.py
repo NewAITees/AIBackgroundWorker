@@ -252,7 +252,9 @@ class DatabaseManager:
         )
         conn.commit()
 
-    def cleanup_old_data(self, retention_days: int = 30, event_retention_days: Optional[int] = None) -> None:
+    def cleanup_old_data(
+        self, retention_days: int = 30, event_retention_days: Optional[int] = None
+    ) -> None:
         """
         古いデータの削除.
 
@@ -265,7 +267,9 @@ class DatabaseManager:
 
         cutoff_date = datetime.now() - timedelta(days=retention_days)
         health_cutoff = datetime.now() - timedelta(days=7)
-        event_cutoff = datetime.now() - timedelta(days=event_retention_days if event_retention_days is not None else retention_days)
+        event_cutoff = datetime.now() - timedelta(
+            days=event_retention_days if event_retention_days is not None else retention_days
+        )
 
         cursor.execute(
             """
@@ -297,7 +301,9 @@ class DatabaseManager:
             )
             deleted_events = cursor.rowcount
             if deleted_events > 0:
-                logger.info(f"Cleaned up {deleted_events} system events older than {event_retention_days or retention_days} days")
+                logger.info(
+                    f"Cleaned up {deleted_events} system events older than {event_retention_days or retention_days} days"
+                )
 
         # 使用されなくなったアプリの削除
         cursor.execute(

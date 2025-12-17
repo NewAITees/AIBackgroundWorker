@@ -8,7 +8,6 @@
 """
 
 from typing import List, Optional, Dict, Any
-from datetime import datetime
 
 from .models import CollectedInfo, InfoSummary
 from .repository import InfoCollectorRepository
@@ -44,9 +43,7 @@ class InfoSummarizer:
             要約結果（summary, raw_data, statistics）
         """
         # 情報取得
-        info_list = self.repository.search_info(
-            source_type=source_type, limit=limit
-        )
+        info_list = self.repository.search_info(source_type=source_type, limit=limit)
 
         if not info_list:
             return {
@@ -93,7 +90,7 @@ class InfoSummarizer:
         if not info_list:
             return {
                 "query": query,
-                "summary": f'「{query}」に関する情報は見つかりませんでした。',
+                "summary": f"「{query}」に関する情報は見つかりませんでした。",
                 "raw_data": [],
                 "statistics": {"total_count": 0},
             }
@@ -118,7 +115,10 @@ class InfoSummarizer:
         }
 
     def _generate_llm_summary(
-        self, info_list: List[CollectedInfo], source_type: Optional[str] = None, query: Optional[str] = None
+        self,
+        info_list: List[CollectedInfo],
+        source_type: Optional[str] = None,
+        query: Optional[str] = None,
     ) -> str:
         """LLMで要約を生成"""
         # プロンプト構築
@@ -136,16 +136,19 @@ class InfoSummarizer:
             return self._generate_fallback_summary(info_list, source_type, query)
 
     def _build_summary_prompt(
-        self, info_list: List[CollectedInfo], source_type: Optional[str] = None, query: Optional[str] = None
+        self,
+        info_list: List[CollectedInfo],
+        source_type: Optional[str] = None,
+        query: Optional[str] = None,
     ) -> str:
         """要約プロンプトを構築"""
         header = "以下の情報を要約してください:\n\n"
 
         if query:
-            header = f'「{query}」に関する情報を要約してください:\n\n'
+            header = f"「{query}」に関する情報を要約してください:\n\n"
         elif source_type:
             type_names = {"search": "検索結果", "rss": "RSSフィード", "news": "ニュース記事"}
-            header = f'{type_names.get(source_type, source_type)}を要約してください:\n\n'
+            header = f"{type_names.get(source_type, source_type)}を要約してください:\n\n"
 
         items = []
         for i, info in enumerate(info_list[:10], 1):  # 最大10件
@@ -163,16 +166,19 @@ class InfoSummarizer:
         return header + "\n".join(items) + footer
 
     def _generate_fallback_summary(
-        self, info_list: List[CollectedInfo], source_type: Optional[str] = None, query: Optional[str] = None
+        self,
+        info_list: List[CollectedInfo],
+        source_type: Optional[str] = None,
+        query: Optional[str] = None,
     ) -> str:
         """フォールバック要約（テンプレートベース）"""
         lines = []
 
         if query:
-            lines.append(f'## 「{query}」に関する情報まとめ\n')
+            lines.append(f"## 「{query}」に関する情報まとめ\n")
         elif source_type:
             type_names = {"search": "検索結果", "rss": "RSSフィード", "news": "ニュース記事"}
-            lines.append(f'## {type_names.get(source_type, source_type)}まとめ\n')
+            lines.append(f"## {type_names.get(source_type, source_type)}まとめ\n")
         else:
             lines.append("## 収集情報まとめ\n")
 
@@ -211,15 +217,18 @@ class InfoSummarizer:
             "title": info.title,
             "url": info.url,
             "snippet": info.snippet,
-            "published_at": info.published_at.isoformat()
-            if info.published_at
-            else None,
+            "published_at": info.published_at.isoformat() if info.published_at else None,
             "fetched_at": info.fetched_at.isoformat(),
             "source_name": info.source_name,
         }
 
     def save_summary(
-        self, summary_type: str, title: str, summary_text: str, source_info_ids: List[int], query: Optional[str] = None
+        self,
+        summary_type: str,
+        title: str,
+        summary_text: str,
+        source_info_ids: List[int],
+        query: Optional[str] = None,
     ) -> int:
         """要約をDBに保存"""
         summary = InfoSummary(

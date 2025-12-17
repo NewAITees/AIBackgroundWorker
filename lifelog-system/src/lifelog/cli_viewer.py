@@ -16,7 +16,10 @@ from pathlib import Path
 
 from src.lifelog.database.db_manager import DatabaseManager
 from src.browser_history.repository import BrowserHistoryRepository
-from src.viewer_service.queries import info_queries, dashboard_queries, lifelog_queries, browser_queries
+from src.viewer_service.queries import (
+    info_queries,
+    dashboard_queries,
+)
 from src.viewer_service.models import DashboardParams
 
 
@@ -78,9 +81,7 @@ def show_daily_summary(db: DatabaseManager, date: str = None) -> None:
         )
 
     print("-" * 70)
-    print(
-        f"{'TOTAL':<30} {format_duration(total_seconds):<12} {format_duration(total_active):<12}"
-    )
+    print(f"{'TOTAL':<30} {format_duration(total_seconds):<12} {format_duration(total_active):<12}")
 
 
 def show_hourly_activity(db: DatabaseManager, date: str = None) -> None:
@@ -206,9 +207,7 @@ def show_health_metrics(db: DatabaseManager, hours: int = 24) -> None:
         return
 
     print(f"\n=== Health Metrics (Last {hours} hours) ===\n")
-    print(
-        f"{'Time':<20} {'CPU%':<8} {'Mem(MB)':<10} {'Queue':<8} {'Delay(s)':<10} {'Drops':<8}"
-    )
+    print(f"{'Time':<20} {'CPU%':<8} {'Mem(MB)':<10} {'Queue':<8} {'Delay(s)':<10} {'Drops':<8}")
     print("-" * 75)
 
     for row in rows:
@@ -219,9 +218,7 @@ def show_health_metrics(db: DatabaseManager, hours: int = 24) -> None:
         delay = row[4]
         drops = row[5]
 
-        print(
-            f"{ts:<20} {cpu:<8.1f} {mem:<10.1f} {queue:<8} {delay:<10.2f} {drops:<8}"
-        )
+        print(f"{ts:<20} {cpu:<8.1f} {mem:<10.1f} {queue:<8} {delay:<10.2f} {drops:<8}")
 
     # 最新のメトリクス
     if rows:
@@ -265,7 +262,6 @@ def show_browser_stats(date: str = None) -> None:
     """ブラウザ統計を表示."""
     repo = BrowserHistoryRepository()
 
-    import sqlite3
     conn = repo._connect()
     cursor = conn.cursor()
 
@@ -277,7 +273,7 @@ def show_browser_stats(date: str = None) -> None:
         params.append(date)
         print(f"\n=== Browser Statistics for {date} ===\n")
     else:
-        print(f"\n=== Browser Statistics (All Time) ===\n")
+        print("\n=== Browser Statistics (All Time) ===\n")
 
     # 総件数
     cursor.execute(f"SELECT COUNT(*) FROM browser_history {date_filter}", params)
@@ -312,7 +308,7 @@ def show_browser_stats(date: str = None) -> None:
 
     # 時間帯別集計
     if date:
-        query = f"""
+        query = """
             SELECT
                 strftime('%H', visit_time) as hour,
                 COUNT(*) as count
@@ -337,21 +333,21 @@ def show_news(limit: int = 10, date: str = None) -> None:
     """最新ニュースを表示."""
     root = Path(__file__).resolve().parents[2]
     info_db_path = root / "data" / "ai_secretary.db"
-    
+
     if not info_db_path.exists():
         print("Error: ai_secretary.db not found")
         return
-    
+
     news = info_queries.get_latest_news(info_db_path, limit=limit)
-    
+
     if not news:
         print("\nNo news found")
         return
-    
+
     print(f"\n=== Latest News (Last {limit} items) ===\n")
     print(f"{'Time':<20} {'Source':<20} {'Title':<60}")
     print("-" * 100)
-    
+
     for item in news:
         time_str = item.published_at.strftime("%Y-%m-%d %H:%M:%S") if item.published_at else "N/A"
         title = item.title[:58] if len(item.title) > 58 else item.title
@@ -363,17 +359,18 @@ def show_reports(limit: int = 5) -> None:
     """生成されたレポートを表示."""
     root = Path(__file__).resolve().parents[2]
     info_db_path = root / "data" / "ai_secretary.db"
-    
+
     if not info_db_path.exists():
         print("Error: ai_secretary.db not found")
         return
-    
+
     # reportsテーブルから直接取得
     import sqlite3
+
     conn = sqlite3.connect(f"file:{info_db_path}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
-    
+
     cursor.execute(
         """
         SELECT title, report_date, content, category, created_at
@@ -383,21 +380,23 @@ def show_reports(limit: int = 5) -> None:
         """,
         (limit,),
     )
-    
+
     rows = cursor.fetchall()
     conn.close()
-    
+
     if not rows:
         print("\nNo reports found")
         return
-    
+
     print(f"\n=== Latest Reports (Last {limit} items) ===\n")
     for row in rows:
         print(f"Date: {row['report_date']}")
         print(f"Title: {row['title']}")
-        if row['category']:
+        if row["category"]:
             print(f"Category: {row['category']}")
-        content_preview = row['content'][:200] + "..." if len(row['content']) > 200 else row['content']
+        content_preview = (
+            row["content"][:200] + "..." if len(row["content"]) > 200 else row["content"]
+        )
         print(f"Preview: {content_preview}")
         print("-" * 80)
 
@@ -407,25 +406,23 @@ def show_dashboard(date: str = None, limit: int = 5) -> None:
     root = Path(__file__).resolve().parents[2]
     lifelog_db_path = root / "data" / "lifelog.db"
     info_db_path = root / "data" / "ai_secretary.db"
-    
+
     if date is None:
         date = datetime.now().strftime("%Y-%m-%d")
-    
+
     if not lifelog_db_path.exists():
         print("Error: lifelog.db not found")
         return
-    
+
     try:
         params = DashboardParams(date=date, limit=limit, hours=6, full=False)
-        dashboard_data = dashboard_queries.get_dashboard_data(
-            lifelog_db_path, info_db_path, params
-        )
+        dashboard_data = dashboard_queries.get_dashboard_data(lifelog_db_path, info_db_path, params)
     except Exception as e:
         print(f"Error loading dashboard data: {e}")
         return
-    
+
     print(f"\n=== Dashboard for {date} ===\n")
-    
+
     # Lifelog
     if dashboard_data.lifelog and dashboard_data.lifelog.total_active_seconds is not None:
         print("📊 Lifelog:")
@@ -437,7 +434,7 @@ def show_dashboard(date: str = None, limit: int = 5) -> None:
             for app in dashboard_data.lifelog.top_apps[:5]:
                 print(f"    - {app.process}: {format_duration(app.total_seconds)}")
         print()
-    
+
     # Browser
     if dashboard_data.browser:
         if dashboard_data.browser.recent:
@@ -449,7 +446,7 @@ def show_dashboard(date: str = None, limit: int = 5) -> None:
                 title = entry.title[:50] if entry.title else "(No title)"
                 print(f"    [{time_str}] {title}")
             print()
-    
+
     # Info Collector
     if dashboard_data.info:
         if dashboard_data.info.news:
@@ -465,16 +462,16 @@ def show_view(date: str = None) -> None:
     """今日のサマリーを表示（デフォルトコマンド）."""
     if date is None:
         date = datetime.now().strftime("%Y-%m-%d")
-    
+
     root = Path(__file__).resolve().parents[2]
     db_path = str(root / "data" / "lifelog.db")
-    
+
     if not Path(db_path).exists():
         print(f"Error: Database not found: {db_path}")
         return
-    
+
     db = DatabaseManager(db_path)
-    
+
     # 簡易サマリー表示
     print(f"\n=== Today's Summary ({date}) ===\n")
     show_daily_summary(db, date)
@@ -486,16 +483,16 @@ def show_recent(hours: int = 6) -> None:
     """直近N時間の活動を表示."""
     root = Path(__file__).resolve().parents[2]
     db_path = str(root / "data" / "lifelog.db")
-    
+
     if not Path(db_path).exists():
         print(f"Error: Database not found: {db_path}")
         return
-    
+
     db = DatabaseManager(db_path)
-    
+
     print(f"\n=== Recent Activity (Last {hours} hours) ===\n")
     show_timeline(db, hours)
-    
+
     # 最新ニュースも表示
     info_db_path = root / "data" / "ai_secretary.db"
     if info_db_path.exists():
@@ -510,15 +507,11 @@ def main() -> None:
 
     # summary コマンド
     summary_parser = subparsers.add_parser("summary", help="Show daily summary")
-    summary_parser.add_argument(
-        "--date", type=str, help="Date (YYYY-MM-DD, default: today)"
-    )
+    summary_parser.add_argument("--date", type=str, help="Date (YYYY-MM-DD, default: today)")
 
     # hourly コマンド
     hourly_parser = subparsers.add_parser("hourly", help="Show hourly activity")
-    hourly_parser.add_argument(
-        "--date", type=str, help="Date (YYYY-MM-DD, default: today)"
-    )
+    hourly_parser.add_argument("--date", type=str, help="Date (YYYY-MM-DD, default: today)")
 
     # timeline コマンド
     timeline_parser = subparsers.add_parser("timeline", help="Show recent timeline")
@@ -537,9 +530,7 @@ def main() -> None:
     browser_parser.add_argument(
         "--limit", type=int, default=20, help="Number of entries to show (default: 20)"
     )
-    browser_parser.add_argument(
-        "--date", type=str, help="Date (YYYY-MM-DD, default: all)"
-    )
+    browser_parser.add_argument("--date", type=str, help="Date (YYYY-MM-DD, default: all)")
 
     # browser-stats コマンド
     browser_stats_parser = subparsers.add_parser("browser-stats", help="Show browser statistics")
@@ -549,9 +540,7 @@ def main() -> None:
 
     # view コマンド（デフォルト）
     view_parser = subparsers.add_parser("view", help="Show today's summary (default)")
-    view_parser.add_argument(
-        "--date", type=str, help="Date (YYYY-MM-DD, default: today)"
-    )
+    view_parser.add_argument("--date", type=str, help="Date (YYYY-MM-DD, default: today)")
 
     # recent コマンド
     recent_parser = subparsers.add_parser("recent", help="Show recent activity")
@@ -564,9 +553,7 @@ def main() -> None:
     news_parser.add_argument(
         "--limit", type=int, default=10, help="Number of items to show (default: 10)"
     )
-    news_parser.add_argument(
-        "--date", type=str, help="Date (YYYY-MM-DD, default: all)"
-    )
+    news_parser.add_argument("--date", type=str, help="Date (YYYY-MM-DD, default: all)")
 
     # reports コマンド
     reports_parser = subparsers.add_parser("reports", help="Show latest reports")
@@ -576,9 +563,7 @@ def main() -> None:
 
     # dashboard コマンド
     dashboard_parser = subparsers.add_parser("dashboard", help="Show integrated dashboard")
-    dashboard_parser.add_argument(
-        "--date", type=str, help="Date (YYYY-MM-DD, default: today)"
-    )
+    dashboard_parser.add_argument("--date", type=str, help="Date (YYYY-MM-DD, default: today)")
     dashboard_parser.add_argument(
         "--limit", type=int, default=5, help="Number of items per category (default: 5)"
     )

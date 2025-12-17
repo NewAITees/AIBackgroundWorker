@@ -2,7 +2,6 @@
 Collectors tests for lifelog-system.
 """
 
-import pytest
 from src.lifelog.utils.privacy import stable_hash, extract_domain_if_browser, is_sensitive_process
 from src.lifelog.collectors.health_monitor import HealthMonitor
 

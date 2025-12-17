@@ -159,4 +159,3 @@ sudo systemctl start lifelog-daemon.service
 # 状態を確認
 sudo systemctl status lifelog-daemon.service
 ```
-

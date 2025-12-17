@@ -1,11 +1,9 @@
 """FastAPI routes for viewer service."""
 
 from datetime import datetime
-from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Query, HTTPException, Request
-from fastapi.responses import JSONResponse
 
 from ..models import (
     DashboardData,
@@ -13,9 +11,6 @@ from ..models import (
     LifelogData,
     BrowserData,
     InfoData,
-    BrowserEntry,
-    NewsItem,
-    ReportItem,
 )
 from ..queries.dashboard_queries import get_dashboard_data
 from ..queries.lifelog_queries import (

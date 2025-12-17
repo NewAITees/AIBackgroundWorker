@@ -59,8 +59,7 @@ class BraveHistoryImporter:
                 if user_dir.name in ["All Users", "Default", "Default User", "Public"]:
                     continue
                 candidate = (
-                    user_dir
-                    / "AppData/Local/BraveSoftware/Brave-Browser/User Data/Default/History"
+                    user_dir / "AppData/Local/BraveSoftware/Brave-Browser/User Data/Default/History"
                 )
                 if candidate.exists():
                     return candidate
@@ -72,8 +71,7 @@ class BraveHistoryImporter:
 
         # macOS環境
         mac_path = (
-            Path.home()
-            / "Library/Application Support/BraveSoftware/Brave-Browser/Default/History"
+            Path.home() / "Library/Application Support/BraveSoftware/Brave-Browser/Default/History"
         )
         if mac_path.exists():
             return mac_path

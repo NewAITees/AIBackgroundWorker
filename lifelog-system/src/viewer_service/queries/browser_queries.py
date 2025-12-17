@@ -29,9 +29,7 @@ def _extract_domain(url: str) -> Optional[str]:
         return None
 
 
-def get_browser_data(
-    db_path: Path, date: Optional[str] = None, limit: int = 20
-) -> BrowserData:
+def get_browser_data(db_path: Path, date: Optional[str] = None, limit: int = 20) -> BrowserData:
     """ブラウザ履歴データを取得.
 
     Args:
@@ -104,9 +102,7 @@ def get_browser_data(
 
     top_domains = [
         DomainStats(domain=domain, count=count)
-        for domain, count in sorted(
-            domain_counts.items(), key=lambda x: x[1], reverse=True
-        )[:10]
+        for domain, count in sorted(domain_counts.items(), key=lambda x: x[1], reverse=True)[:10]
     ]
 
     # 総訪問数
@@ -118,9 +114,7 @@ def get_browser_data(
     return BrowserData(recent=recent, top_domains=top_domains, total_visits=total_visits)
 
 
-def search_browser_history(
-    db_path: Path, query: str, limit: int = 50
-) -> List[BrowserEntry]:
+def search_browser_history(db_path: Path, query: str, limit: int = 50) -> List[BrowserEntry]:
     """ブラウザ履歴を検索.
 
     Args:

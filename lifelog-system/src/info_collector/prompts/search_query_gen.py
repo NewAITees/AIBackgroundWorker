@@ -88,7 +88,7 @@ def build_prompt(
 ) -> dict[str, str]:
     """
     検索クエリ生成プロンプトを構築.
-    
+
     Args:
         theme: テーマ
         keywords: キーワードリスト
@@ -101,7 +101,7 @@ def build_prompt(
     # 判断理由が空の場合はデフォルトメッセージを使用
     importance_reason_display = importance_reason or "判断理由が記録されていません"
     relevance_reason_display = relevance_reason or "判断理由が記録されていません"
-    
+
     return {
         "system": SYSTEM_PROMPT,
         "user": USER_PROMPT_TEMPLATE.format(

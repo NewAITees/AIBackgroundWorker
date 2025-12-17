@@ -39,13 +39,9 @@ class RSSCollector(BaseCollector):
                 # 公開日時のパース
                 published_at = None
                 if hasattr(entry, "published_parsed") and entry.published_parsed:
-                    published_at = datetime.fromtimestamp(
-                        time.mktime(entry.published_parsed)
-                    )
+                    published_at = datetime.fromtimestamp(time.mktime(entry.published_parsed))
                 elif hasattr(entry, "updated_parsed") and entry.updated_parsed:
-                    published_at = datetime.fromtimestamp(
-                        time.mktime(entry.updated_parsed)
-                    )
+                    published_at = datetime.fromtimestamp(time.mktime(entry.updated_parsed))
 
                 # エントリ作成
                 entries.append(

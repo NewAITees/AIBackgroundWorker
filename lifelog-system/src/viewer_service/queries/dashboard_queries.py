@@ -6,7 +6,6 @@ DashboardDataとして返す。
 
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 from ..models import DashboardData, DashboardParams
 from .lifelog_queries import get_daily_summary
@@ -39,9 +38,7 @@ def get_dashboard_data(
     browser_data = get_browser_data(info_db, date=date, limit=params.limit)
 
     # Info Collectorデータ
-    info_data = get_info_data(
-        info_db, date=date, limit=params.limit, full=params.full
-    )
+    info_data = get_info_data(info_db, date=date, limit=params.limit, full=params.full)
 
     return DashboardData(
         generated_at=datetime.now(),

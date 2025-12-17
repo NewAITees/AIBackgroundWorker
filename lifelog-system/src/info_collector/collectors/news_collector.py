@@ -10,7 +10,7 @@ NOTE: 現在はBeautifulSoup4による基本的なスクレイピング実装。
       JavaScript必須サイトにはplaywright-mcpを使用する拡張が可能。
 """
 
-from typing import List, Optional
+from typing import List
 from datetime import datetime
 import requests
 from bs4 import BeautifulSoup
@@ -41,9 +41,7 @@ class NewsCollector(BaseCollector):
             ニュース記事のリスト
         """
         try:
-            response = requests.get(
-                site_url, headers=self.headers, timeout=self.timeout
-            )
+            response = requests.get(site_url, headers=self.headers, timeout=self.timeout)
             response.raise_for_status()
             response.encoding = response.apparent_encoding
 
@@ -108,11 +106,7 @@ class NewsCollector(BaseCollector):
                 for header in headers:
                     link = header.find("a")
                     if link and link.get("href"):
-                        articles.append(
-                            self._create_article_from_link(
-                                link, base_url, site_name
-                            )
-                        )
+                        articles.append(self._create_article_from_link(link, base_url, site_name))
 
         # articleタグがある場合
         for article in article_elements:
@@ -149,9 +143,7 @@ class NewsCollector(BaseCollector):
 
         return articles
 
-    def _create_article_from_link(
-        self, link_elem, base_url: str, site_name: str
-    ) -> NewsArticle:
+    def _create_article_from_link(self, link_elem, base_url: str, site_name: str) -> NewsArticle:
         """リンク要素から記事オブジェクトを作成"""
         title = link_elem.get_text().strip()
         url = urljoin(base_url, link_elem.get("href"))

@@ -14,32 +14,30 @@ import pytest
 import requests
 
 from src.info_collector.jobs import analyze_pending, deep_research, generate_report
-from src.info_collector.repository import InfoCollectorRepository
 
 
 def test_full_pipeline_real_services(tmp_path: Path):
     """収集済み1件を分析→深掘り→レポート生成まで通す."""
     # Windows側のOllamaに127.0.0.1でアクセス（WSLからWindowsのOllamaに接続）
     ollama_url = "http://127.0.0.1:11434"
-    
+
     # OllamaのAPIエンドポイントが利用可能か確認
     try:
         resp = requests.get(f"{ollama_url}/api/tags", timeout=5)
         resp.raise_for_status()
     except (requests.RequestException, requests.Timeout) as e:
         pytest.fail(f"Ollama API not available at {ollama_url}: {e}")
-    
+
     # 環境変数でOllamaの設定を指定（テスト実行中のみ有効）
     original_base_url = os.environ.get("OLLAMA_BASE_URL")
     original_model = os.environ.get("OLLAMA_MODEL")
-    
+
     try:
         os.environ["OLLAMA_BASE_URL"] = ollama_url
         os.environ["OLLAMA_MODEL"] = "gpt-oss:20b"
 
         db_path = tmp_path / "ai_secretary.db"
         reports_dir = tmp_path / "reports"
-        repo = InfoCollectorRepository(str(db_path))
 
         # 収集データを1件投入
         conn = sqlite3.connect(db_path)
@@ -85,7 +83,7 @@ def test_full_pipeline_real_services(tmp_path: Path):
             os.environ.pop("OLLAMA_BASE_URL", None)
         else:
             os.environ["OLLAMA_BASE_URL"] = original_base_url
-        
+
         if original_model is None:
             os.environ.pop("OLLAMA_MODEL", None)
         else:

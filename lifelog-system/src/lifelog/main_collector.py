@@ -11,7 +11,6 @@ import logging
 import signal
 import sys
 import time
-from pathlib import Path
 
 from src.lifelog.database.db_manager import DatabaseManager
 from src.lifelog.collectors.activity_collector import ActivityCollector

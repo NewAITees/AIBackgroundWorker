@@ -204,26 +204,28 @@ def test_cleanup_old_data(db_manager):
     # 古いイベントと最近のイベントを追加
     old_event_time = datetime.now() - timedelta(days=40)
     recent_event_time = datetime.now()
-    db_manager.bulk_insert_events([
-        {
-            "event_timestamp": old_event_time,
-            "event_type": "error",
-            "severity": 80,
-            "source": "test",
-            "category": "system",
-            "message": "old event",
-            "machine_name": "test",
-        },
-        {
-            "event_timestamp": recent_event_time,
-            "event_type": "info",
-            "severity": 50,
-            "source": "test",
-            "category": "system",
-            "message": "recent event",
-            "machine_name": "test",
-        },
-    ])
+    db_manager.bulk_insert_events(
+        [
+            {
+                "event_timestamp": old_event_time,
+                "event_type": "error",
+                "severity": 80,
+                "source": "test",
+                "category": "system",
+                "message": "old event",
+                "machine_name": "test",
+            },
+            {
+                "event_timestamp": recent_event_time,
+                "event_type": "info",
+                "severity": 50,
+                "source": "test",
+                "category": "system",
+                "message": "recent event",
+                "machine_name": "test",
+            },
+        ]
+    )
 
     # クリーンアップ実行（30日保持）
     db_manager.cleanup_old_data(retention_days=30)
@@ -248,9 +250,10 @@ def test_migration_adds_events_table_and_views(tmp_path):
     # 既存DBを作成（system_eventsなし）
     db_path = tmp_path / "existing.db"
     conn = sqlite3.connect(str(db_path))
-    
+
     # 基本的なテーブルのみ作成
-    conn.execute("""
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS apps (
             app_id INTEGER PRIMARY KEY AUTOINCREMENT,
             process_name TEXT NOT NULL,
@@ -259,8 +262,10 @@ def test_migration_adds_events_table_and_views(tmp_path):
             last_seen DATETIME NOT NULL,
             UNIQUE(process_name, process_path_hash)
         )
-    """)
-    conn.execute("""
+    """
+    )
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS activity_intervals (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             start_ts DATETIME NOT NULL,
@@ -271,25 +276,28 @@ def test_migration_adds_events_table_and_views(tmp_path):
             is_idle INTEGER NOT NULL DEFAULT 0,
             FOREIGN KEY(app_id) REFERENCES apps(app_id)
         )
-    """)
+    """
+    )
     conn.commit()
     conn.close()
 
     # マイグレーション実行
     manager = DatabaseManager(str(db_path))
-    
+
     # system_eventsテーブルとビューが追加されたか確認
     conn = manager._get_connection()
     cursor = conn.cursor()
-    
+
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='system_events'")
     assert cursor.fetchone() is not None, "system_events table should exist"
-    
+
     cursor.execute("SELECT name FROM sqlite_master WHERE type='view' AND name='unified_timeline'")
     assert cursor.fetchone() is not None, "unified_timeline view should exist"
-    
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='view' AND name='daily_event_summary'")
+
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='view' AND name='daily_event_summary'"
+    )
     assert cursor.fetchone() is not None, "daily_event_summary view should exist"
-    
+
     manager.close()
     Path(db_path).unlink(missing_ok=True)

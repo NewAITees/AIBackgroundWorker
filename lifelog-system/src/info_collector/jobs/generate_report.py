@@ -6,7 +6,7 @@ import argparse
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 from src.ai_secretary.ollama_client import OllamaClient
 from src.info_collector.prompts import report_generation
@@ -31,7 +31,7 @@ def generate_daily_report(
     """
     直近hours時間の分析・深掘り結果から日次レポートを生成.
     ライフログデータも含める（オプション）.
-    
+
     Args:
         target_date: レポート対象日（YYYY-MM-DD）。Noneの場合は自動判定:
             - 実行時刻が朝6時以降なら前日
@@ -55,11 +55,12 @@ def generate_daily_report(
         logger.info("Using recent window: past %d hours (since %s)", hours, since)
 
     repo = InfoCollectorRepository(str(db_path))
-    
+
     # 分析・深掘り結果を取得
     analyses = repo.fetch_recent_analysis(since)
     deep = repo.fetch_recent_deep_research(since)
     if target_date_start and target_date_end:
+
         def is_in_target_date(record: dict) -> bool:
             """レコードが対象日の範囲内かどうかを判定"""
             timestamp_str = record.get("analyzed_at") or record.get("researched_at")
@@ -105,15 +106,21 @@ def generate_daily_report(
                         lifelog_db_path = default_lifelog
                     else:
                         lifelog_db_path = db_path.parent / "lifelog.db"
-                
+
                 if lifelog_db_path and lifelog_db_path.exists():
                     aggregator = DailyReportDataAggregator(lifelog_db_path, db_path)
                     data = aggregator.aggregate_daily_data(report_date, detail_level="summary")
                     if data.lifelog_data:
-                        logger.info("No analyzed articles for %s, but lifelog data exists. Generating report with lifelog only.", report_date)
+                        logger.info(
+                            "No analyzed articles for %s, but lifelog data exists. Generating report with lifelog only.",
+                            report_date,
+                        )
                         # 空のリストで続行（ライフログデータのみのレポート）
                     else:
-                        logger.info("No analyzed articles or lifelog data for %s to include in report.", report_date)
+                        logger.info(
+                            "No analyzed articles or lifelog data for %s to include in report.",
+                            report_date,
+                        )
                         return None
                 else:
                     logger.info("No analyzed articles for %s to include in report.", report_date)
@@ -132,9 +139,11 @@ def generate_daily_report(
     lifelog_data = None
     browser_history = None
     events = None
-    
+
     if include_lifelog and target_date_start is None:
-        logger.info("Skipping lifelog inclusion for rolling window; provide --date to include lifelog data.")
+        logger.info(
+            "Skipping lifelog inclusion for rolling window; provide --date to include lifelog data."
+        )
     if include_lifelog and target_date_start is not None:
         try:
             if lifelog_db_path is None:
@@ -145,17 +154,22 @@ def generate_daily_report(
                 else:
                     # db_pathと同じディレクトリを試行
                     lifelog_db_path = db_path.parent / "lifelog.db"
-            
+
             if lifelog_db_path and lifelog_db_path.exists():
                 aggregator = DailyReportDataAggregator(lifelog_db_path, db_path)
                 data = aggregator.aggregate_daily_data(report_date, detail_level="summary")
                 lifelog_data = data.lifelog_data
                 browser_history = data.browser_history
                 events = data.events
-                logger.info("Including lifelog data in report: %d intervals, %d browser entries", 
-                           len(lifelog_data), len(browser_history))
+                logger.info(
+                    "Including lifelog data in report: %d intervals, %d browser entries",
+                    len(lifelog_data),
+                    len(browser_history),
+                )
             else:
-                logger.warning("Lifelog database not found at %s, skipping lifelog data", lifelog_db_path)
+                logger.warning(
+                    "Lifelog database not found at %s, skipping lifelog data", lifelog_db_path
+                )
         except Exception as exc:  # noqa: BLE001
             logger.warning("Failed to load lifelog data: %s, continuing without it", exc)
 
@@ -170,7 +184,9 @@ def generate_daily_report(
 
     content = ""
     try:
-        content = ollama.generate(prompt=prompts["user"], system=prompts["system"], options={"temperature": 0.5})
+        content = ollama.generate(
+            prompt=prompts["user"], system=prompts["system"], options={"temperature": 0.5}
+        )
     except Exception as exc:  # noqa: BLE001
         logger.error("Report generation failed: %s", exc)
 
@@ -198,11 +214,25 @@ def generate_daily_report(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate daily report from analysis results.")
     parser.add_argument("--db-path", type=str, default=str(DEFAULT_DB))
-    parser.add_argument("--lifelog-db-path", type=str, default=None, help="Path to lifelog database (optional)")
+    parser.add_argument(
+        "--lifelog-db-path", type=str, default=None, help="Path to lifelog database (optional)"
+    )
     parser.add_argument("--output-dir", type=str, default=str(DEFAULT_REPORT_DIR))
-    parser.add_argument("--hours", type=int, default=24, help="Lookback window in hours (used when --date is not specified)")
-    parser.add_argument("--date", type=str, default=None, help="Target date for report (YYYY-MM-DD). If omitted, a rolling window using --hours is used")
-    parser.add_argument("--no-lifelog", action="store_true", help="Exclude lifelog data from report")
+    parser.add_argument(
+        "--hours",
+        type=int,
+        default=24,
+        help="Lookback window in hours (used when --date is not specified)",
+    )
+    parser.add_argument(
+        "--date",
+        type=str,
+        default=None,
+        help="Target date for report (YYYY-MM-DD). If omitted, a rolling window using --hours is used",
+    )
+    parser.add_argument(
+        "--no-lifelog", action="store_true", help="Exclude lifelog data from report"
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")

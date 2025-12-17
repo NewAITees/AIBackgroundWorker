@@ -9,5 +9,3 @@ WorkingDirectory=/home/perso/analysis/AIBackgroundWorker
 Environment="HOME=/home/perso"
 Environment="PATH=/home/perso/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 ExecStart=/usr/bin/bash -c 'cd /home/perso/analysis/AIBackgroundWorker && ./scripts/browser/poll_brave_history.sh --once >> logs/brave_poll.log 2>&1'
-
-

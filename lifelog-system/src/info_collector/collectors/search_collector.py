@@ -7,7 +7,7 @@ DuckDuckGo検索コレクター
 - src/info_collector/repository.py - データ永続化
 """
 
-from typing import List, Optional
+from typing import List
 from datetime import datetime
 from duckduckgo_search import DDGS
 

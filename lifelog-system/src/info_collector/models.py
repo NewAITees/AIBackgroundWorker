@@ -22,13 +22,9 @@ class CollectedInfo(BaseModel):
     content: Optional[str] = Field(None, description="記事本文（取得可能な場合）")
     snippet: Optional[str] = Field(None, description="要約・抜粋")
     published_at: Optional[datetime] = Field(None, description="公開日時")
-    fetched_at: datetime = Field(
-        default_factory=datetime.now, description="取得日時"
-    )
+    fetched_at: datetime = Field(default_factory=datetime.now, description="取得日時")
     source_name: Optional[str] = Field(None, description="ソース名（フィード名、サイト名等）")
-    metadata: Optional[Dict[str, Any]] = Field(
-        default_factory=dict, description="その他メタデータ"
-    )
+    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="その他メタデータ")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -63,9 +59,7 @@ class InfoSummary(BaseModel):
     summary_type: str = Field(..., description="要約タイプ: 'daily', 'topic', 'search'")
     title: str = Field(..., description="要約タイトル")
     summary_text: str = Field(..., description="LLM生成要約本文")
-    source_info_ids: list[int] = Field(
-        default_factory=list, description="参照元collected_info.id"
-    )
+    source_info_ids: list[int] = Field(default_factory=list, description="参照元collected_info.id")
     created_at: datetime = Field(default_factory=datetime.now, description="作成日時")
     query: Optional[str] = Field(None, description="検索クエリ（該当する場合）")
 

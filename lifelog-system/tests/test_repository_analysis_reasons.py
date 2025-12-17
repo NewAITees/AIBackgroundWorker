@@ -2,7 +2,6 @@
 リポジトリ層の判断理由保存・取得機能のテスト
 """
 
-import json
 import sqlite3
 import tempfile
 from datetime import datetime
@@ -269,4 +268,3 @@ def test_database_migration_adds_reason_columns(repo: InfoCollectorRepository):
     assert "relevance_reason" in columns
     assert columns["importance_reason"] == "TEXT"
     assert columns["relevance_reason"] == "TEXT"
-

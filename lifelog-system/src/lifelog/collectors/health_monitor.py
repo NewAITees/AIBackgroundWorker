@@ -97,9 +97,7 @@ class HealthMonitor:
 
         # 遅延チェック
         if metrics.get("collection_delay_p95", 0) > config.get("collection_delay_p95", 3.0):
-            violations.append(
-                f"Collection delay P95 > {config.get('collection_delay_p95')}s"
-            )
+            violations.append(f"Collection delay P95 > {config.get('collection_delay_p95')}s")
 
         # ドロップ率チェック
         if self.dropped_count > 0:

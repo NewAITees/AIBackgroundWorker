@@ -10,17 +10,16 @@ Usage:
 import argparse
 import json
 import logging
-import os
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 # プロジェクトルートをパスに追加
 project_root = Path(__file__).resolve().parent.parent.parent
 lifelog_system_path = project_root / "lifelog-system"
 sys.path.insert(0, str(lifelog_system_path))
 
+# ruff: noqa: E402
 from src.lifelog.database.db_manager import DatabaseManager
 from src.lifelog.utils.privacy import stable_hash
 
@@ -168,7 +167,9 @@ def merge_windows_logs(
                     # 必須フィールドチェック
                     required_fields = ["start", "end", "process_name", "exe_path"]
                     if not all(field in record for field in required_fields):
-                        logger.warning(f"Missing required fields in line {line_num}: {line.strip()}")
+                        logger.warning(
+                            f"Missing required fields in line {line_num}: {line.strip()}"
+                        )
                         skipped_count += 1
                         continue
 
@@ -183,9 +184,7 @@ def merge_windows_logs(
                     app_id = get_or_create_app(db, process_name, exe_path, start_ts)
 
                     # 活動区間挿入
-                    insert_activity_interval(
-                        db, start_ts, end_ts, app_id, window_title, is_idle
-                    )
+                    insert_activity_interval(db, start_ts, end_ts, app_id, window_title, is_idle)
 
                     processed_count += 1
 
@@ -247,9 +246,7 @@ def main() -> None:
 
     logger.info(f"Merging Windows logs from {source_file} to {db_path}")
 
-    processed, skipped = merge_windows_logs(
-        source_file, db_path, mark_processed=not args.no_marker
-    )
+    processed, skipped = merge_windows_logs(source_file, db_path, mark_processed=not args.no_marker)
 
     logger.info(f"Merge completed: {processed} processed, {skipped} skipped")
 

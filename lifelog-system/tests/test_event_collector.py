@@ -29,7 +29,11 @@ def test_privacy_config_hashes_message_and_user():
         raw_event,
         source="test",
         classifier=EventClassifierImpl(),
-        privacy_config={"hash_messages": True, "store_message_hash_only": True, "hash_user_names": True},
+        privacy_config={
+            "hash_messages": True,
+            "store_message_hash_only": True,
+            "hash_user_names": True,
+        },
     )
 
     assert event.message == ""  # message stripped when store_message_hash_only

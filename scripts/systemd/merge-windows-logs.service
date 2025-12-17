@@ -9,4 +9,3 @@ WorkingDirectory=/home/perso/analysis/AIBackgroundWorker/lifelog-system
 Environment="HOME=/home/perso"
 Environment="PATH=/home/perso/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 ExecStart=/usr/bin/bash -c 'cd /home/perso/analysis/AIBackgroundWorker/lifelog-system && uv run python ../scripts/lifelog/merge_windows_logs.py'
-

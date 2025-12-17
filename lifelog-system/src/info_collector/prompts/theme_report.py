@@ -59,12 +59,12 @@ USER_PROMPT_TEMPLATE = """以下のテーマに関する深掘り調査結果か
 def build_prompt(theme: str, articles: list[dict], report_date: str) -> dict[str, str]:
     """
     テーマベースレポート生成プロンプトを構築.
-    
+
     Args:
         theme: テーマ名（summary）
         articles: テーマに関連する深掘り済み記事のリスト
         report_date: レポート生成日
-    
+
     Returns:
         system と user プロンプトを含む辞書
     """
@@ -74,51 +74,53 @@ def build_prompt(theme: str, articles: list[dict], report_date: str) -> dict[str
         article_details += f"\n### 記事 {idx}: {article.get('article_title', 'N/A')}\n"
         article_details += f"- **URL**: {article.get('article_url', 'N/A')}\n"
         article_details += f"- **重要度**: {article.get('importance_score', 0):.2f}\n"
-        importance_reason = article.get('importance_reason', '') or ''
+        importance_reason = article.get("importance_reason", "") or ""
         if importance_reason:
             article_details += f"  - **判断理由**: {importance_reason}\n"
         article_details += f"- **関連度**: {article.get('relevance_score', 0):.2f}\n"
-        relevance_reason = article.get('relevance_reason', '') or ''
+        relevance_reason = article.get("relevance_reason", "") or ""
         if relevance_reason:
             article_details += f"  - **判断理由**: {relevance_reason}\n"
         article_details += f"- **カテゴリ**: {article.get('category', 'N/A')}\n"
-        keywords = article.get('keywords', '[]')
+        keywords = article.get("keywords", "[]")
         if isinstance(keywords, str):
             try:
                 import json
+
                 keywords = json.loads(keywords)
             except Exception:
                 keywords = []
         if keywords:
             article_details += f"- **キーワード**: {', '.join([str(k) for k in keywords[:5]])}\n"
-        content = article.get('article_content', '') or article.get('snippet', '')
+        content = article.get("article_content", "") or article.get("snippet", "")
         if content:
             # 本文の最初の200文字を表示
             article_details += f"- **概要**: {content[:200]}...\n"
-    
+
     # 深掘り調査結果をフォーマット
     deep_research_results = ""
     for idx, article in enumerate(articles, 1):
-        synthesized = article.get('synthesized_content', '')
+        synthesized = article.get("synthesized_content", "")
         if synthesized:
             deep_research_results += f"\n### 記事 {idx} の深掘り調査結果\n"
             deep_research_results += f"{synthesized}\n"
-            
+
             # ソース情報
-            sources = article.get('sources', '[]')
+            sources = article.get("sources", "[]")
             if isinstance(sources, str):
                 try:
                     import json
+
                     sources = json.loads(sources)
                 except Exception:
                     sources = []
             if sources:
                 deep_research_results += "\n**参考ソース**:\n"
                 for source in sources[:5]:  # 最大5件
-                    url = source.get('url', '') if isinstance(source, dict) else str(source)
+                    url = source.get("url", "") if isinstance(source, dict) else str(source)
                     if url:
                         deep_research_results += f"- {url}\n"
-    
+
     return {
         "system": SYSTEM_PROMPT,
         "user": USER_PROMPT_TEMPLATE.format(

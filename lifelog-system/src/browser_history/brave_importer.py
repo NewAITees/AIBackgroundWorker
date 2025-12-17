@@ -8,7 +8,6 @@ import sqlite3
 import logging
 from pathlib import Path
 from typing import Optional
-from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +23,13 @@ class BraveHistoryImporter:
     def __init__(self) -> None:
         """初期化."""
         self.default_profile_paths = [
-            Path.home() / "AppData" / "Local" / "BraveSoftware" / "Brave-Browser" / "User Data" / "Default",
+            Path.home()
+            / "AppData"
+            / "Local"
+            / "BraveSoftware"
+            / "Brave-Browser"
+            / "User Data"
+            / "Default",
             Path.home() / ".config" / "BraveSoftware" / "Brave-Browser" / "Default",
         ]
 
@@ -94,7 +99,7 @@ class BraveHistoryImporter:
             conn.row_factory = sqlite3.Row
 
             query = """
-                SELECT 
+                SELECT
                     url,
                     title,
                     visit_count,
@@ -136,5 +141,3 @@ class BraveHistoryImporter:
                 temp_history.unlink()
                 if temp_history.parent.exists():
                     temp_history.parent.rmdir()
-
-

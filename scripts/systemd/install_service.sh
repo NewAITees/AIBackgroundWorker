@@ -71,4 +71,3 @@ echo "  sudo journalctl -u lifelog-daemon.service -f"
 echo "  sudo journalctl -u merge-windows-logs.service -f"
 echo "  sudo journalctl -u brave-history-poller.service -f"
 echo "  tail -f /home/perso/analysis/AIBackgroundWorker/logs/brave_poll.log"
-

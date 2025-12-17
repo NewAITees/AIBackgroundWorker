@@ -99,47 +99,51 @@ def build_prompt(
 
     important = [a for a in articles if a.get("importance_score", 0) >= 0.7]
     important_topics = "\n".join(
-        [f"- {a.get('summary', a.get('title', 'N/A'))} (重要度: {a.get('importance_score', 0):.2f})" for a in important[:10]]
+        [
+            f"- {a.get('summary', a.get('title', 'N/A'))} (重要度: {a.get('importance_score', 0):.2f})"
+            for a in important[:10]
+        ]
     )
 
     deep_research_text = ""
     for dr in deep_research:
-        theme = dr.get('theme', 'N/A')
-        synthesized = dr.get('synthesized_content', '')
-        
+        theme = dr.get("theme", "N/A")
+        synthesized = dr.get("synthesized_content", "")
+
         # URLを抽出（search_resultsとsourcesから）
         urls = []
         try:
             import json
+
             # search_resultsからURLを抽出
-            search_results_str = dr.get('search_results', '[]')
+            search_results_str = dr.get("search_results", "[]")
             if isinstance(search_results_str, str):
                 search_results = json.loads(search_results_str)
             else:
                 search_results = search_results_str or []
-            
+
             for result in search_results[:5]:  # 上位5件
-                if isinstance(result, dict) and result.get('url'):
-                    urls.append(result['url'])
-            
+                if isinstance(result, dict) and result.get("url"):
+                    urls.append(result["url"])
+
             # sourcesからURLを抽出
-            sources_str = dr.get('sources', '[]')
+            sources_str = dr.get("sources", "[]")
             if isinstance(sources_str, str):
                 sources = json.loads(sources_str)
             else:
                 sources = sources_str or []
-            
+
             for source in sources[:5]:  # 上位5件
-                if isinstance(source, dict) and source.get('url'):
-                    if source['url'] not in urls:  # 重複を避ける
-                        urls.append(source['url'])
+                if isinstance(source, dict) and source.get("url"):
+                    if source["url"] not in urls:  # 重複を避ける
+                        urls.append(source["url"])
         except (json.JSONDecodeError, TypeError, AttributeError):
             pass
-        
+
         deep_research_text += f"\n### {theme}\n"
         deep_research_text += f"{synthesized}\n"
         if urls:
-            deep_research_text += f"\n**参考URL:**\n"
+            deep_research_text += "\n**参考URL:**\n"
             for url in urls[:10]:  # 最大10件
                 deep_research_text += f"- {url}\n"
 
@@ -147,14 +151,37 @@ def build_prompt(
     lifelog_summary = "データなし"
     if lifelog_data:
         from collections import defaultdict
-        from datetime import datetime, timedelta
-        
+        from datetime import datetime
+
         # Windows/WSLの区別（process_nameで判断）
         # WSL特有のプロセス: wsl, bash, zsh, sh, python (WSL環境), uv, rsync, docker (WSL内), etc.
         # Windows特有のプロセス: explorer.exe, chrome.exe, brave.exe, StartMenu, etc.
-        wsl_processes = {'wsl', 'bash', 'zsh', 'sh', 'fish', 'uv', 'python3', 'python', 'rsync', 'docker'}
-        windows_processes = {'.exe', 'explorer', 'brave', 'chrome', 'claude', 'cursor', 'startmenu', 'obs64', 'steam', 'duckov', 'neeview'}
-        
+        wsl_processes = {
+            "wsl",
+            "bash",
+            "zsh",
+            "sh",
+            "fish",
+            "uv",
+            "python3",
+            "python",
+            "rsync",
+            "docker",
+        }
+        windows_processes = {
+            ".exe",
+            "explorer",
+            "brave",
+            "chrome",
+            "claude",
+            "cursor",
+            "startmenu",
+            "obs64",
+            "steam",
+            "duckov",
+            "neeview",
+        }
+
         hourly_activity = defaultdict(int)
         app_usage = defaultdict(int)
         wsl_app_usage = defaultdict(int)
@@ -162,16 +189,16 @@ def build_prompt(
         total_active = 0
         wsl_active = 0
         windows_active = 0
-        
+
         # 重複時間を考慮した集計（時間帯ごとに最大値を取る）
         time_slots = {}  # {(hour, minute_slot): max_duration}
-        
+
         for entry in lifelog_data:
             timestamp_str = entry.get("timestamp") or entry.get("start_ts")
             process_name = entry.get("process_name", "Unknown")
             duration = entry.get("duration_seconds", 0)
             is_idle = entry.get("is_idle", False)
-            
+
             if timestamp_str:
                 try:
                     if isinstance(timestamp_str, str):
@@ -181,7 +208,7 @@ def build_prompt(
                     hour = ts.hour
                     minute_slot = (ts.minute // 15) * 15  # 15分単位でスロット化
                     slot_key = (hour, minute_slot)
-                    
+
                     if not is_idle:
                         # 重複時間を考慮：同じ時間スロットで最大値を保持
                         if slot_key not in time_slots or duration > time_slots[slot_key]:
@@ -189,18 +216,20 @@ def build_prompt(
                         hourly_activity[hour] += duration
                 except (ValueError, AttributeError):
                     pass
-            
+
             app_usage[process_name] += duration
-            
+
             # Windows/WSLの区別
             process_lower = process_name.lower()
             # WSL判定: WSL特有のプロセス名を含む、かつ.exeがついていない
-            is_wsl = (any(wsl_proc in process_lower for wsl_proc in wsl_processes) and 
-                     not process_name.endswith('.exe'))
+            is_wsl = any(
+                wsl_proc in process_lower for wsl_proc in wsl_processes
+            ) and not process_name.endswith(".exe")
             # Windows判定: .exeがついている、またはWindows特有のプロセス名を含む
-            is_windows = (process_name.endswith('.exe') or 
-                         any(proc in process_lower for proc in windows_processes))
-            
+            is_windows = process_name.endswith(".exe") or any(
+                proc in process_lower for proc in windows_processes
+            )
+
             if not is_idle:
                 total_active += duration
                 if is_wsl:
@@ -212,55 +241,67 @@ def build_prompt(
                 else:
                     # どちらでもない場合は、process_nameから推測
                     # デフォルトではWindowsとして扱う（.exeがない場合もWindowsアプリの可能性）
-                    if 'docker' in process_lower or 'wsl' in process_lower:
+                    if "docker" in process_lower or "wsl" in process_lower:
                         wsl_app_usage[process_name] += duration
                         wsl_active += duration
                     else:
                         # その他はWindowsとして扱う
                         windows_app_usage[process_name] += duration
                         windows_active += duration
-        
+
         # 重複を考慮した実際の活動時間（15分スロットの合計）
         deduplicated_active = sum(time_slots.values())
-        
+
         # 時間帯別の集計（重複考慮後）
         morning_active = sum(d for (h, _), d in time_slots.items() if 6 <= h < 12)
         day_active = sum(d for (h, _), d in time_slots.items() if 12 <= h < 18)
         evening_active = sum(d for (h, _), d in time_slots.items() if 18 <= h < 22)
         night_active = sum(d for (h, _), d in time_slots.items() if h >= 22 or h < 6)
-        
+
         lifelog_summary = f"ライフログデータ: {len(lifelog_data)} 件のインターバル\n"
-        lifelog_summary += f"総活動時間（重複除外後）: {deduplicated_active // 3600}時間{(deduplicated_active % 3600) // 60}分\n"
+        lifelog_summary += (
+            f"総活動時間（重複除外後）: {deduplicated_active // 3600}時間{(deduplicated_active % 3600) // 60}分\n"
+        )
         if wsl_active > 0 or windows_active > 0:
             lifelog_summary += f"  - WSL環境: {wsl_active // 3600}時間{(wsl_active % 3600) // 60}分\n"
-            lifelog_summary += f"  - Windows環境: {windows_active // 3600}時間{(windows_active % 3600) // 60}分\n"
+            lifelog_summary += (
+                f"  - Windows環境: {windows_active // 3600}時間{(windows_active % 3600) // 60}分\n"
+            )
             if wsl_active > 0 and windows_active > 0:
-                lifelog_summary += f"  ※ WindowsとWSLが同時に動作しているため、重複時間を除外して集計しています\n"
+                lifelog_summary += "  ※ WindowsとWSLが同時に動作しているため、重複時間を除外して集計しています\n"
         lifelog_summary += f"主なアプリケーション: {', '.join([f'{k} ({v//60}分)' for k, v in sorted(app_usage.items(), key=lambda x: x[1], reverse=True)[:5]])}\n"
         if wsl_app_usage or windows_app_usage:
             if wsl_app_usage:
                 top_wsl = sorted(wsl_app_usage.items(), key=lambda x: x[1], reverse=True)[:3]
-                lifelog_summary += f"  - WSL主要アプリ: {', '.join([f'{k} ({v//60}分)' for k, v in top_wsl])}\n"
+                lifelog_summary += (
+                    f"  - WSL主要アプリ: {', '.join([f'{k} ({v//60}分)' for k, v in top_wsl])}\n"
+                )
             if windows_app_usage:
-                top_windows = sorted(windows_app_usage.items(), key=lambda x: x[1], reverse=True)[:3]
-                lifelog_summary += f"  - Windows主要アプリ: {', '.join([f'{k} ({v//60}分)' for k, v in top_windows])}\n"
+                top_windows = sorted(windows_app_usage.items(), key=lambda x: x[1], reverse=True)[
+                    :3
+                ]
+                lifelog_summary += (
+                    f"  - Windows主要アプリ: {', '.join([f'{k} ({v//60}分)' for k, v in top_windows])}\n"
+                )
         lifelog_summary += f"時間帯別活動（重複除外後）: 朝({morning_active//3600}時間), 昼({day_active//3600}時間), 夕方({evening_active//3600}時間), 夜({night_active//3600}時間)"
 
     # ブラウザ履歴の要約
     browser_summary = "データなし"
     if browser_history:
         from collections import defaultdict
+
         domain_count = defaultdict(int)
         for entry in browser_history:
             url = entry.get("url", "")
             if url:
                 try:
                     from urllib.parse import urlparse
+
                     domain = urlparse(url).netloc
                     domain_count[domain] += 1
                 except Exception:
                     pass
-        
+
         browser_summary = f"ブラウザ履歴: {len(browser_history)} 件\n"
         browser_summary += f"主なアクセス先: {', '.join([f'{k} ({v}回)' for k, v in sorted(domain_count.items(), key=lambda x: x[1], reverse=True)[:10]])}"
 

@@ -17,4 +17,3 @@ else
   # 引数がある場合はそのままCLIビューアーに渡す
   uv run python -m src.lifelog.cli_viewer "$@"
 fi
-

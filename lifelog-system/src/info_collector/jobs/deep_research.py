@@ -19,7 +19,9 @@ logger = logging.getLogger(__name__)
 DEFAULT_DB = Path("data/ai_secretary.db")
 
 
-def _run_ollama_json(client: OllamaClient, system: str, user: str, temperature: float = 0.3) -> dict[str, Any] | None:
+def _run_ollama_json(
+    client: OllamaClient, system: str, user: str, temperature: float = 0.3
+) -> dict[str, Any] | None:
     try:
         response = client.generate(prompt=user, system=system, options={"temperature": temperature})
         if not response:
@@ -79,7 +81,9 @@ def deep_research_articles(
         query_payload = _run_ollama_json(ollama, prompts["system"], prompts["user"])
         queries: List[str] = []
         if query_payload and isinstance(query_payload, dict):
-            queries = [q.get("query", "") for q in query_payload.get("queries", []) if q.get("query")]
+            queries = [
+                q.get("query", "") for q in query_payload.get("queries", []) if q.get("query")
+            ]
 
         if not queries:
             logger.warning("No queries generated for article_id=%s", article_id)
@@ -103,7 +107,7 @@ def deep_research_articles(
             row["collected_content"] if "collected_content" in row.keys() else ""
         ) or ""
         article_summary_for_filtering = article_content[:500] if article_content else summary
-        
+
         relevant_results = filter_by_relevance(
             results=combined_results,
             article_theme=summary,
@@ -112,11 +116,14 @@ def deep_research_articles(
             ollama_client=ollama,
             min_relevance_score=0.5,  # 関連性スコア0.5以上を保持
         )
-        
+
         # 関連性フィルタリング後の結果が少ない場合は、元の結果を使用（安全策）
         if len(relevant_results) < 3:
-            logger.warning("Too few relevant results (%d) for article_id=%s, using all results", 
-                          len(relevant_results), article_id)
+            logger.warning(
+                "Too few relevant results (%d) for article_id=%s, using all results",
+                len(relevant_results),
+                article_id,
+            )
             combined_results = combined_results[:10]  # 最大10件に制限
         else:
             combined_results = relevant_results[:10]  # 関連性の高い上位10件
@@ -126,9 +133,7 @@ def deep_research_articles(
         importance_score = float(
             row["importance_score"] if "importance_score" in row.keys() else 0.0
         )
-        relevance_score = float(
-            row["relevance_score"] if "relevance_score" in row.keys() else 0.0
-        )
+        relevance_score = float(row["relevance_score"] if "relevance_score" in row.keys() else 0.0)
         # 記事内容の最初の500文字を要約として使用（既に取得済み）
         article_summary_for_synthesis = article_summary_for_filtering
 

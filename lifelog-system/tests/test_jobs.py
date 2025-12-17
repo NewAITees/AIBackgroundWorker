@@ -9,7 +9,9 @@ from src.info_collector.jobs import analyze_pending, deep_research, generate_rep
 from src.info_collector.repository import InfoCollectorRepository
 
 
-def _insert_collected(conn: sqlite3.Connection, title: str = "test title", content: str = "body") -> int:
+def _insert_collected(
+    conn: sqlite3.Connection, title: str = "test title", content: str = "body"
+) -> int:
     """Helper to insert a collected_info row."""
     now = datetime.now().isoformat()
     cur = conn.execute(
@@ -25,7 +27,6 @@ def _insert_collected(conn: sqlite3.Connection, title: str = "test title", conte
 
 def test_analyze_pending_inserts_analysis(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     db_path = tmp_path / "ai_secretary.db"
-    repo = InfoCollectorRepository(str(db_path))
 
     # Arrange: insert one collected article
     conn = sqlite3.connect(db_path)
@@ -67,7 +68,6 @@ def test_analyze_pending_inserts_analysis(tmp_path: Path, monkeypatch: pytest.Mo
 def test_analyze_pending_saves_reasons(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """analyze_pending.pyで判断理由が取得・保存されることを確認."""
     db_path = tmp_path / "ai_secretary.db"
-    repo = InfoCollectorRepository(str(db_path))
 
     # Arrange: insert one collected article
     conn = sqlite3.connect(db_path)
@@ -99,9 +99,7 @@ def test_analyze_pending_saves_reasons(tmp_path: Path, monkeypatch: pytest.Monke
 
     # Assert
     assert processed == 1
-    cur = conn.execute(
-        "SELECT importance_reason, relevance_reason FROM article_analysis"
-    )
+    cur = conn.execute("SELECT importance_reason, relevance_reason FROM article_analysis")
     row = cur.fetchone()
     assert row is not None
     assert row[0] == "AI技術の最新動向で、業界に大きな影響を与える可能性がある"
@@ -140,13 +138,17 @@ def test_deep_research_creates_entry(tmp_path: Path, monkeypatch: pytest.MonkeyP
             self.prompts.append((prompt, system))
             if self.calls == 1:
                 # 検索クエリ生成
-                return json.dumps({"queries": [{"query": "AI トレンド", "purpose": "調査"}], "language": "ja"})
+                return json.dumps(
+                    {"queries": [{"query": "AI トレンド", "purpose": "調査"}], "language": "ja"}
+                )
             # 検索結果統合
             return json.dumps(
                 {
                     "key_findings": ["要約"],
                     "detailed_summary": "統合結果",
-                    "sources": [{"url": "http://example.com", "title": "Example", "relevance": "high"}],
+                    "sources": [
+                        {"url": "http://example.com", "title": "Example", "relevance": "high"}
+                    ],
                 }
             )
 
@@ -157,7 +159,11 @@ def test_deep_research_creates_entry(tmp_path: Path, monkeypatch: pytest.MonkeyP
         def batch_search(self, queries, delay=1.5):
             return {
                 queries[0]: [
-                    {"title": "Result", "snippet": "詳細なスニペット" * 10, "url": "http://example.com"}
+                    {
+                        "title": "Result",
+                        "snippet": "詳細なスニペット" * 10,
+                        "url": "http://example.com",
+                    }
                 ]
             }
 
@@ -173,7 +179,7 @@ def test_deep_research_creates_entry(tmp_path: Path, monkeypatch: pytest.MonkeyP
     assert row is not None
     assert "AI トレンド" in row[0]
     assert row[1] == "統合結果"
-    
+
     # プロンプトに判断理由が含まれていることを確認
     assert len(stub_client.prompts) >= 2
     # 検索クエリ生成プロンプトに判断理由が含まれている
@@ -182,7 +188,7 @@ def test_deep_research_creates_entry(tmp_path: Path, monkeypatch: pytest.MonkeyP
     # 検索結果統合プロンプトに判断理由が含まれている
     synthesis_prompt = stub_client.prompts[1][0]
     assert "重要な技術動向" in synthesis_prompt or "ユーザーの興味分野と関連" in synthesis_prompt
-    
+
     conn.close()
 
 
@@ -218,7 +224,9 @@ def test_generate_report_creates_markdown(tmp_path: Path, monkeypatch: pytest.Mo
 
     monkeypatch.setattr(generate_report, "OllamaClient", lambda: StubClient())
 
-    report_path = generate_report.generate_daily_report(db_path=db_path, output_dir=reports_dir, hours=48)
+    report_path = generate_report.generate_daily_report(
+        db_path=db_path, output_dir=reports_dir, hours=48
+    )
 
     assert report_path is not None
     assert report_path.exists()

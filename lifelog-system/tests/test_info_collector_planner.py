@@ -1,4 +1,3 @@
-import tempfile
 from pathlib import Path
 
 from src.info_collector.repository import InfoCollectorRepository

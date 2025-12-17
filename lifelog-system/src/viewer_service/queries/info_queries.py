@@ -89,9 +89,7 @@ def get_info_data(
                 url=row["url"],
                 source=row["source_name"] or "Unknown",
                 published_at=(
-                    datetime.fromisoformat(row["published_at"])
-                    if row["published_at"]
-                    else None
+                    datetime.fromisoformat(row["published_at"]) if row["published_at"] else None
                 ),
                 summary=summary,
             )
@@ -130,9 +128,7 @@ def get_info_data(
                 url=row["url"],
                 feed_name=row["source_name"] or "Unknown",
                 published_at=(
-                    datetime.fromisoformat(row["published_at"])
-                    if row["published_at"]
-                    else None
+                    datetime.fromisoformat(row["published_at"]) if row["published_at"] else None
                 ),
                 summary=summary,
             )
@@ -212,9 +208,7 @@ def get_info_data(
         content_head = content[:500] if not full else content
         report_latest = ReportItem(
             title=report_row["title"],
-            report_date=datetime.fromisoformat(
-                report_row["created_at"]
-            ).strftime("%Y-%m-%d"),
+            report_date=datetime.fromisoformat(report_row["created_at"]).strftime("%Y-%m-%d"),
             content_head=content_head,
             full_content=content if full else None,
         )
@@ -268,7 +262,9 @@ def get_info_data(
         deep_research = None
         if row["synthesized_content"] or row["search_results"]:
             try:
-                search_results_data = json.loads(row["search_results"]) if row["search_results"] else []
+                search_results_data = (
+                    json.loads(row["search_results"]) if row["search_results"] else []
+                )
                 deep_research = {
                     "synthesized_content": row["synthesized_content"],
                     "search_results": search_results_data,
@@ -337,9 +333,7 @@ def get_latest_news(db_path: Path, limit: int = 20) -> List[NewsItem]:
                 url=row["url"],
                 source=row["source_name"] or "Unknown",
                 published_at=(
-                    datetime.fromisoformat(row["published_at"])
-                    if row["published_at"]
-                    else None
+                    datetime.fromisoformat(row["published_at"]) if row["published_at"] else None
                 ),
                 summary=row["snippet"],
             )
@@ -381,9 +375,7 @@ def get_reports(db_path: Path, limit: int = 5) -> List[ReportItem]:
         reports.append(
             ReportItem(
                 title=row["title"],
-                report_date=datetime.fromisoformat(
-                    row["created_at"]
-                ).strftime("%Y-%m-%d"),
+                report_date=datetime.fromisoformat(row["created_at"]).strftime("%Y-%m-%d"),
                 content_head=row["summary_text"][:500],
                 full_content=None,
             )

@@ -7,7 +7,7 @@
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import List
 
 from ..models import (
     LifelogData,
@@ -80,9 +80,7 @@ def get_daily_summary(db_path: Path, date: str) -> LifelogData:
             process=row["process"],
             total_seconds=row["total_seconds"],
             percentage=(
-                round(row["total_seconds"] / total_active * 100, 1)
-                if total_active > 0
-                else 0
+                round(row["total_seconds"] / total_active * 100, 1) if total_active > 0 else 0
             ),
         )
         for row in cursor.fetchall()

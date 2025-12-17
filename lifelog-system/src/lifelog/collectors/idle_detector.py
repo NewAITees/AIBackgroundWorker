@@ -4,7 +4,6 @@ Idle time detector for lifelog-system.
 Linux互換実装（WSL2対応）
 """
 
-import time
 import logging
 
 

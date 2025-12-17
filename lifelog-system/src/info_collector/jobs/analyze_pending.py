@@ -7,7 +7,7 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 from src.ai_secretary.ollama_client import OllamaClient
 from src.info_collector.prompts import theme_extraction
@@ -70,13 +70,21 @@ def analyze_pending_articles(db_path: Path = DEFAULT_DB, batch_size: int = 10) -
         if parsed:
             analysis.update(
                 {
-                    "importance_score": parsed.get("importance_score", analysis["importance_score"]),
+                    "importance_score": parsed.get(
+                        "importance_score", analysis["importance_score"]
+                    ),
                     "relevance_score": parsed.get("relevance_score", analysis["relevance_score"]),
                     "category": parsed.get("category", analysis["category"]),
                     "keywords": parsed.get("keywords", analysis["keywords"]) or [],
-                    "one_line_summary": parsed.get("one_line_summary", analysis["one_line_summary"]),
-                    "importance_reason": parsed.get("importance_reason", analysis["importance_reason"]) or "",
-                    "relevance_reason": parsed.get("relevance_reason", analysis["relevance_reason"]) or "",
+                    "one_line_summary": parsed.get(
+                        "one_line_summary", analysis["one_line_summary"]
+                    ),
+                    "importance_reason": parsed.get(
+                        "importance_reason", analysis["importance_reason"]
+                    )
+                    or "",
+                    "relevance_reason": parsed.get("relevance_reason", analysis["relevance_reason"])
+                    or "",
                     "model": ollama.model if hasattr(ollama, "model") else "ollama",
                 }
             )
