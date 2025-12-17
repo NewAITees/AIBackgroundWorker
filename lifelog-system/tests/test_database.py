@@ -3,8 +3,9 @@ Database tests for lifelog-system.
 """
 
 import pytest
+import sqlite3
 import tempfile
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from src.lifelog.database.db_manager import DatabaseManager
@@ -36,6 +37,12 @@ def test_database_initialization(db_manager):
     assert "apps" in tables
     assert "activity_intervals" in tables
     assert "health_snapshots" in tables
+    assert "system_events" in tables
+
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='view'")
+    views = {row[0] for row in cursor.fetchall()}
+    assert "unified_timeline" in views
+    assert "daily_event_summary" in views
 
 
 def test_get_or_create_app(db_manager):
@@ -101,6 +108,36 @@ def test_bulk_insert_intervals(db_manager):
     assert rows[1][2] == 1
 
 
+def test_events_roundtrip(db_manager):
+    """system_eventsのCRUDとビューの存在確認."""
+    now = datetime.now()
+    events = [
+        {
+            "event_timestamp": now,
+            "event_type": "error",
+            "severity": 80,
+            "source": "linux_syslog",
+            "category": "system",
+            "event_id": 1001,
+            "message": "kernel panic",
+            "message_hash": "hash",
+            "raw_data_json": "{}",
+            "process_name": "kernel",
+            "user_name": None,
+            "machine_name": "test-machine",
+        }
+    ]
+
+    db_manager.bulk_insert_events(events)
+
+    fetched = db_manager.get_events_by_date_range(
+        now - timedelta(minutes=1), now + timedelta(minutes=1)
+    )
+    assert len(fetched) == 1
+    assert fetched[0]["event_type"] == "error"
+    assert fetched[0]["severity"] == 80
+
+
 def test_save_health_snapshot(db_manager):
     """ヘルススナップショット保存のテスト."""
     metrics = {
@@ -164,6 +201,30 @@ def test_cleanup_old_data(db_manager):
 
     db_manager.bulk_insert_intervals(intervals)
 
+    # 古いイベントと最近のイベントを追加
+    old_event_time = datetime.now() - timedelta(days=40)
+    recent_event_time = datetime.now()
+    db_manager.bulk_insert_events([
+        {
+            "event_timestamp": old_event_time,
+            "event_type": "error",
+            "severity": 80,
+            "source": "test",
+            "category": "system",
+            "message": "old event",
+            "machine_name": "test",
+        },
+        {
+            "event_timestamp": recent_event_time,
+            "event_type": "info",
+            "severity": 50,
+            "source": "test",
+            "category": "system",
+            "message": "recent event",
+            "machine_name": "test",
+        },
+    ])
+
     # クリーンアップ実行（30日保持）
     db_manager.cleanup_old_data(retention_days=30)
 
@@ -175,3 +236,60 @@ def test_cleanup_old_data(db_manager):
 
     # 古いデータは削除され、最近のデータのみ残る
     assert count == 1
+
+    # イベントも同様にクリーンアップされているか確認
+    cursor.execute("SELECT COUNT(*) FROM system_events")
+    event_count = cursor.fetchone()[0]
+    assert event_count == 1  # 最近のイベントのみ残る
+
+
+def test_migration_adds_events_table_and_views(tmp_path):
+    """既存DBへのマイグレーション機能のテスト."""
+    # 既存DBを作成（system_eventsなし）
+    db_path = tmp_path / "existing.db"
+    conn = sqlite3.connect(str(db_path))
+    
+    # 基本的なテーブルのみ作成
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS apps (
+            app_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            process_name TEXT NOT NULL,
+            process_path_hash TEXT NOT NULL,
+            first_seen DATETIME NOT NULL,
+            last_seen DATETIME NOT NULL,
+            UNIQUE(process_name, process_path_hash)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS activity_intervals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            start_ts DATETIME NOT NULL,
+            end_ts DATETIME NOT NULL,
+            app_id INTEGER NOT NULL,
+            window_hash TEXT NOT NULL,
+            domain TEXT,
+            is_idle INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY(app_id) REFERENCES apps(app_id)
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+    # マイグレーション実行
+    manager = DatabaseManager(str(db_path))
+    
+    # system_eventsテーブルとビューが追加されたか確認
+    conn = manager._get_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='system_events'")
+    assert cursor.fetchone() is not None, "system_events table should exist"
+    
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='view' AND name='unified_timeline'")
+    assert cursor.fetchone() is not None, "unified_timeline view should exist"
+    
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='view' AND name='daily_event_summary'")
+    assert cursor.fetchone() is not None, "daily_event_summary view should exist"
+    
+    manager.close()
+    Path(db_path).unlink(missing_ok=True)

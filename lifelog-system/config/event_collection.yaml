@@ -1,0 +1,84 @@
+# イベント収集設定
+
+event_collection:
+  # イベント収集を有効化
+  enabled: true
+  
+  # 収集間隔（秒）
+  collection_interval: 300  # 5分ごと
+  
+  # Windows設定
+  windows:
+    enabled: true
+    log_names:
+      - Application
+      - System
+      - Security
+    event_levels:  # 収集するイベントレベル
+      - Error
+      - Warning
+      - Critical
+    max_events_per_collection: 1000
+  
+  # Linux設定
+  linux:
+    enabled: true
+    facility_filter:
+      - kern
+      - user
+      - daemon
+      - auth
+    priority_min: "warning"  # warning以上を収集
+  
+  # イベント分類ルール
+  classification:
+    # イベントID/メッセージパターンによる分類ルール
+    rules:
+      # セキュリティ関連
+      - pattern: ".*security.*|.*auth.*|.*login.*|.*logout.*"
+        event_type: "warning"
+        severity: 80
+        category: "security"
+      
+      # エラー関連
+      - pattern: ".*error.*|.*failed.*|.*exception.*"
+        event_type: "error"
+        severity: 70
+        category: "system"
+      
+      # ネットワーク関連
+      - pattern: ".*network.*|.*connection.*|.*socket.*"
+        event_type: "info"
+        severity: 50
+        category: "network"
+      
+      # ストレージ関連
+      - pattern: ".*disk.*|.*storage.*|.*file system.*"
+        event_type: "warning"
+        severity: 60
+        category: "storage"
+      
+      # パフォーマンス関連
+      - pattern: ".*performance.*|.*slow.*|.*timeout.*"
+        event_type: "warning"
+        severity: 65
+        category: "performance"
+  
+  # プライバシー設定
+  privacy:
+    # メッセージをハッシュ化するか
+    hash_messages: true
+    
+    # ハッシュのみ保存（メッセージ本文は保存しない）
+    store_message_hash_only: false
+    
+    # ユーザー名をハッシュ化するか
+    hash_user_names: true
+    
+    # 除外するメッセージパターン
+    exclude_patterns: []
+  
+  # データ保持設定
+  retention:
+    # イベントデータの保持期間（日）
+    days: 30

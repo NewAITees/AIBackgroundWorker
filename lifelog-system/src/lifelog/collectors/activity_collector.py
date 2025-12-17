@@ -15,6 +15,7 @@ from ..database.db_manager import DatabaseManager
 from .foreground_tracker import get_foreground_info
 from .idle_detector import get_idle_seconds
 from .health_monitor import HealthMonitor
+from .event_collector import create_collector_for_platform_impl
 
 
 logger = logging.getLogger(__name__)
@@ -51,6 +52,18 @@ class ActivityCollector:
         self.current_interval: Optional[dict[str, Any]] = None
         self.health_monitor = HealthMonitor()
         self._running = False
+        
+        # イベント収集の初期化
+        self.event_collector = None
+        event_config = config.get("event_collection", {})
+        if event_config.get("enabled", False):
+            try:
+                self.event_collector = create_collector_for_platform_impl(
+                    config=event_config
+                )
+                logger.info("Event collection enabled")
+            except Exception as e:
+                logger.warning(f"Failed to initialize event collector: {e}")
 
     def start_collection(self) -> None:
         """収集ループとバルク書き込みを並行実行."""
@@ -67,6 +80,11 @@ class ActivityCollector:
         # ヘルスモニタリングスレッド
         health_thread = threading.Thread(target=self._health_monitoring_loop, daemon=True)
         health_thread.start()
+
+        # イベント収集スレッド
+        if self.event_collector:
+            event_thread = threading.Thread(target=self._event_collection_loop, daemon=True)
+            event_thread.start()
 
         logger.info("Activity collection started")
 
@@ -227,3 +245,48 @@ class ActivityCollector:
 
             except Exception as e:
                 logger.error(f"Health monitoring error: {e}", exc_info=True)
+
+    def _event_collection_loop(self) -> None:
+        """イベント収集ループ."""
+        if not self.event_collector:
+            return
+
+        event_config = self.config.get("event_collection", {})
+        collection_interval = event_config.get("collection_interval", 300)
+        last_collection_time = None
+        privacy_config = event_config.get("privacy", {})
+
+        while self._running:
+            try:
+                time.sleep(collection_interval)
+
+                # イベント収集
+                events = self.event_collector.collect_events(since=last_collection_time)
+
+                if events:
+                    # SystemEventをdictに変換
+                    event_dicts = []
+                    for event in events:
+                        event_dicts.append({
+                            "event_timestamp": event.event_timestamp,
+                            "event_type": event.event_type,
+                            "severity": event.severity,
+                            "source": event.source,
+                            "category": event.category,
+                            "event_id": event.event_id,
+                            "message": event.message,
+                            "message_hash": event.message_hash,
+                            "raw_data_json": event.raw_data_json,
+                            "process_name": event.process_name,
+                            "user_name": event.user_name,
+                            "machine_name": event.machine_name,
+                        })
+
+                    # バルク挿入
+                    self.db.bulk_insert_events(event_dicts)
+                    logger.debug(f"Collected and saved {len(event_dicts)} events")
+                    last_collection_time = datetime.now()
+
+            except Exception as e:
+                logger.error(f"Event collection error: {e}", exc_info=True)
+                time.sleep(60)  # エラー時は1分待機
