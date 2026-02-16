@@ -205,6 +205,13 @@ def generate_daily_report(
 
     # ファイル保存
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Obsidianリンクセクションを追加
+    from src.info_collector.jobs.obsidian_links import build_obsidian_links_section
+
+    links_section = build_obsidian_links_section(output_dir, report_date)
+    content += links_section
+
     report_path = output_dir / f"report_{report_date}.md"
     report_path.write_text(content, encoding="utf-8")
     logger.info("Report written to %s", report_path)
