@@ -3,13 +3,13 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-PROJECT_DIR="$ROOT_DIR/lifelog-system"
+PROJECT_DIR="${LIFELOG_PROJECT_DIR:-$ROOT_DIR/lifelog-system}"
 CLEANUP_SCRIPT="$ROOT_DIR/scripts/logs/cleanup_logs.sh"
-PID_FILE="$ROOT_DIR/lifelog.pid"
-LOG_FILE="$ROOT_DIR/logs/lifelog_daemon.log"
-WIN_LOGGER_PID_FILE="$ROOT_DIR/windows_logger.pid"
-WIN_LOG_FILE="$ROOT_DIR/logs/windows_logger.log"
-WIN_JSON_FILE="$ROOT_DIR/logs/windows_foreground.jsonl"
+PID_FILE="${LIFELOG_PID_FILE:-$ROOT_DIR/lifelog.pid}"
+LOG_FILE="${LIFELOG_LOG_FILE:-$ROOT_DIR/logs/lifelog_daemon.log}"
+WIN_LOGGER_PID_FILE="${WIN_LOGGER_PID_FILE:-$ROOT_DIR/windows_logger.pid}"
+WIN_LOG_FILE="${WIN_LOG_FILE:-$ROOT_DIR/logs/windows_logger.log}"
+WIN_JSON_FILE="${WIN_JSON_FILE:-$ROOT_DIR/logs/windows_foreground.jsonl}"
 
 # 環境変数でWindows側の前面ウィンドウロガーを起動するか制御
 # ENABLE_WINDOWS_FOREGROUND_LOGGER=1 で有効化

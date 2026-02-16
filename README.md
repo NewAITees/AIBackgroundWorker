@@ -48,6 +48,14 @@ sudo systemctl enable --now info-collector.timer
 - `lifelog-system/config/info_collector/search_queries.txt`: ベース検索クエリ（フォールバック）
 - `lifelog-system/config/info_collector/interests.txt`: ユーザー興味（Ollamaプロンプト用）
 
+## メンテナンス
+
+重複ディレクトリ（`x/x` や想定外の `logs`/`scripts`）の監査:
+
+```bash
+uv run python scripts/system/audit_duplicate_dirs.py
+```
+
 ### データ可視化機能
 
 - **データ閲覧機能**

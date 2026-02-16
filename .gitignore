@@ -214,8 +214,12 @@ scripts/logs/
 !scripts/logs/
 scripts/logs/*
 !scripts/logs/cleanup_logs.sh
+scripts/logs/*.processed
 lifelog-system/data/
 lifelog-system/logs/
+lifelog-system/scripts/logs/
+lifelog-system/scripts/logs/*
+lifelog-system/scripts/logs/*.processed
 lifelog-system/lifelog-system/
 lifelog-system/lifelog.pid
 lifelog-system/windows_logger.pid

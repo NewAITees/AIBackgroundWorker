@@ -297,7 +297,16 @@ class LinuxSyslogCollectorImpl(LinuxSyslogCollector):
         classifier: EventClassifier = None,
         privacy_config: Optional[dict] = None,
     ):
-        super().__init__(facility_filter, priority_min, classifier)
+        normalized_facility_filter = [
+            _safe_text(v) for v in (facility_filter or ["kern", "user", "daemon"])
+        ]
+        normalized_priority_min = _safe_text(priority_min)
+        if isinstance(priority_min, list):
+            normalized_priority_min = _safe_text(priority_min[0] if priority_min else "warning")
+        if not normalized_priority_min:
+            normalized_priority_min = "warning"
+
+        super().__init__(normalized_facility_filter, normalized_priority_min, classifier)
         self.privacy_config = privacy_config or {}
 
     def collect_events(
@@ -377,11 +386,11 @@ class LinuxSyslogCollectorImpl(LinuxSyslogCollector):
                     raw_event = {
                         "timestamp": item.get("__REALTIME_TIMESTAMP"),
                         "level": priority,
-                        "message": item.get("MESSAGE", ""),
-                        "facility": item.get("SYSLOG_FACILITY"),
-                        "process_name": item.get("_COMM"),
-                        "user_name": item.get("_UID"),
-                        "machine_name": item.get("_HOSTNAME", ""),
+                        "message": _safe_text(item.get("MESSAGE", "")),
+                        "facility": _safe_text(item.get("SYSLOG_FACILITY")),
+                        "process_name": _safe_text(item.get("_COMM")),
+                        "user_name": _safe_text(item.get("_UID")),
+                        "machine_name": _safe_text(item.get("_HOSTNAME", "")),
                     }
 
                     # タイムスタンプ変換（マイクロ秒からdatetime）

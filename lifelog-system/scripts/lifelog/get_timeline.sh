@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
-# PC活動のタイムラインを取得
+# Compatibility wrapper for root script.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+ROOT_SCRIPT="$ROOT_DIR/scripts/lifelog/get_timeline.sh"
 
-# デフォルトは直近2時間
-HOURS="${1:-2}"
+if [ ! -x "$ROOT_SCRIPT" ]; then
+  echo "root script not found or not executable: $ROOT_SCRIPT" >&2
+  exit 1
+fi
 
-cd "$ROOT_DIR"
-uv run python -m src.lifelog.cli_viewer timeline --hours "$HOURS"
+exec "$ROOT_SCRIPT" "$@"

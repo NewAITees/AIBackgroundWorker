@@ -510,7 +510,7 @@ class InfoCollectorRepository:
                     ),
                 )
 
-        self._run_with_lock_retry(_op)
+        self._run_with_lock_retry(_op, retries=8, base_sleep=0.3)
 
     def fetch_deep_research_targets(
         self, min_importance: float = 0.7, min_relevance: float = 0.6, limit: int = 5

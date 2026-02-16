@@ -1,10 +1,13 @@
 @echo off
-REM Windows Lifelog起動バッチファイル（タスクスケジューラ用）
+REM Compatibility wrapper for scripts/windows/start-lifelog.bat
 
-REM スクリプトのディレクトリを取得
 set SCRIPT_DIR=%~dp0
+set ROOT_BAT=%SCRIPT_DIR%..\..\..\scripts\windows\start-lifelog.bat
 
-REM PowerShellスクリプトをバックグラウンドで起動（ウィンドウ非表示）
-powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File "%SCRIPT_DIR%foreground_logger.ps1"
+if not exist "%ROOT_BAT%" (
+  echo root script not found: %ROOT_BAT%
+  exit /b 1
+)
 
-exit /b 0
+call "%ROOT_BAT%" %*
+exit /b %ERRORLEVEL%
