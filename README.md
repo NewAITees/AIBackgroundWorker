@@ -65,11 +65,10 @@ uv run python scripts/system/audit_duplicate_dirs.py
 
 ## プロジェクト構成
 
-- `lifelog-system/`: メインのライフログシステム（PC活動の記録）
-- `browser/`: ブラウザ情報収集モジュール
-- `info_collector/`: 外部情報収集モジュール（ニュース、RSS等）
-- `lifelog/`: ライフログ関連ユーティリティ
-- `windows/`: Windows関連機能
+- `lifelog-system/`: メインのライフログシステム本体（`src/`, `config/`, `tests/`）
+- `scripts/`: 運用スクリプト群（`lifelog`, `info_collector`, `browser`, `systemd`, `windows`）
+- `logs/`: 実行ログ出力先
+- `desktop-viewer/`: デスクトップ向けビューア
 - `docs/`: ドキュメント
 
 ## クイックスタート

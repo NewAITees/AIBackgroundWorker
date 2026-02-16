@@ -23,7 +23,6 @@ TARGET_DIRS=(
   "$PROJECT_ROOT/logs"
   "$PROJECT_ROOT/scripts/logs"
   "$PROJECT_ROOT/lifelog-system/logs"
-  "$PROJECT_ROOT/lifelog-system/scripts/logs"
 )
 
 LOG_EXTENSIONS=(

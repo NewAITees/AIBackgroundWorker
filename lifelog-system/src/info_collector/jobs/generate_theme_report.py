@@ -138,7 +138,7 @@ def generate_theme_reports(
                 # DBに存在する場合、出力フォルダ内のファイルを検索
                 existing_files = list(output_dir.glob(f"article_*_{article_hash}.md"))
                 if existing_files:
-                    logger.info(
+                    logger.debug(
                         "Skipping existing report for article set (hash=%s): %s",
                         article_hash,
                         existing_files[0],
@@ -146,7 +146,7 @@ def generate_theme_reports(
                     continue
                 else:
                     # DBには存在するがファイルがない場合もスキップ（既に生成済みとみなす）
-                    logger.info(
+                    logger.debug(
                         "Skipping existing report in DB (hash=%s), but file not found in output dir",
                         article_hash,
                     )

@@ -11,7 +11,7 @@ echo ""
 # 引数がない場合はメニュー表示
 if [ $# -eq 0 ]; then
   echo "使い方:"
-  echo "  $0 [analyze|deep|report|all|errors|today]"
+  echo "  $0 [analyze|deep|report|all|errors|today|health]"
   echo ""
   echo "オプション:"
   echo "  analyze  - 分析ジョブのログを表示"
@@ -20,6 +20,7 @@ if [ $# -eq 0 ]; then
   echo "  all      - すべてのログファイルを表示"
   echo "  errors   - エラーのみを表示"
   echo "  today    - 今日のログのみを表示"
+  echo "  health   - 主要問題の発生件数サマリを表示"
   echo ""
   echo "例:"
   echo "  $0 deep      # 深掘りログを表示"
@@ -51,7 +52,37 @@ case "$1" in
     ;;
   errors)
     echo "=== エラーログ（すべて） ==="
-    grep -i "error\|warning\|failed\|exception" "$LOG_DIR"/*.log 2>/dev/null | tail -50
+    rg -n -i "error|warning|failed|exception" "$LOG_DIR"/*.log 2>/dev/null | tail -50
+    ;;
+  health)
+    TODAY=$(date +%Y%m%d)
+    TODAY_FILES=("$LOG_DIR"/*_"${TODAY}".log)
+
+    echo "=== 健康状態サマリ（${TODAY}） ==="
+    echo ""
+
+    # 今日のログに限定して件数を表示（ファイルがない場合は0）
+    if [ -f "${TODAY_FILES[0]}" ]; then
+      DB_LOCKS=$(rg -n "database is locked" "${TODAY_FILES[@]}" 2>/dev/null | wc -l)
+      RUNPY_WARN=$(rg -n "RuntimeWarning: 'src\\.info_collector\\.jobs\\." "${TODAY_FILES[@]}" 2>/dev/null | wc -l)
+      DDG_WARN=$(rg -n "duckduckgo_search.*renamed to .*ddgs" "${TODAY_FILES[@]}" 2>/dev/null | wc -l)
+      NO_RESULTS=$(rg -n "No search results for article_id|Too few relevant results" "${TODAY_FILES[@]}" 2>/dev/null | wc -l)
+    else
+      DB_LOCKS=0
+      RUNPY_WARN=0
+      DDG_WARN=0
+      NO_RESULTS=0
+    fi
+
+    echo "database is locked: $DB_LOCKS"
+    echo "runpy RuntimeWarning: $RUNPY_WARN"
+    echo "duckduckgo_search rename warning: $DDG_WARN"
+    echo "deep_research no-result warnings: $NO_RESULTS"
+    echo ""
+    echo "詳細例（直近20件）:"
+    rg -n -i \
+      "database is locked|RuntimeWarning: 'src\\.info_collector\\.jobs\\.|duckduckgo_search.*renamed to .*ddgs|No search results for article_id|Too few relevant results" \
+      "$LOG_DIR"/*.log 2>/dev/null | tail -20
     ;;
   today)
     TODAY=$(date +%Y%m%d)

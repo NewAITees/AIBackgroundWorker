@@ -27,7 +27,6 @@ ALLOWED_NAMED_DIRS = {
         "logs",
         "scripts/logs",
         "lifelog-system/logs",
-        "lifelog-system/scripts/logs",
     },
 }
 
