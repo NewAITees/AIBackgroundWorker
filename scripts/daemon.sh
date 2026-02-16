@@ -4,6 +4,7 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PROJECT_DIR="$ROOT_DIR/lifelog-system"
+CLEANUP_SCRIPT="$ROOT_DIR/scripts/logs/cleanup_logs.sh"
 PID_FILE="$ROOT_DIR/lifelog.pid"
 LOG_FILE="$ROOT_DIR/logs/lifelog_daemon.log"
 WIN_LOGGER_PID_FILE="$ROOT_DIR/windows_logger.pid"
@@ -29,6 +30,9 @@ start() {
     fi
 
     echo "Starting lifelog daemon..."
+    if [ -x "$CLEANUP_SCRIPT" ]; then
+        "$CLEANUP_SCRIPT" || true
+    fi
     cd "$PROJECT_DIR"
     nohup uv run python -m src.lifelog.main_collector > "$LOG_FILE" 2>&1 &
     echo $! > "$PID_FILE"

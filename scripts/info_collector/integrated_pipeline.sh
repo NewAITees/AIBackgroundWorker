@@ -8,9 +8,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 LIFELOG_DIR="$PROJECT_ROOT/lifelog-system"
 LOG_DIR="$PROJECT_ROOT/logs/info_collector"
+CLEANUP_SCRIPT="$PROJECT_ROOT/scripts/logs/cleanup_logs.sh"
 
 # ログディレクトリ作成
 mkdir -p "$LOG_DIR"
+
+# ログ肥大化の抑制（失敗しても本処理は継続）
+if [ -x "$CLEANUP_SCRIPT" ]; then
+  "$CLEANUP_SCRIPT" || true
+fi
 
 # デフォルト値（分析・深掘りの比率向上のため緩和）
 ANALYZE_BATCH_SIZE=50  # 30 → 50 に増加（より多くの記事を分析）

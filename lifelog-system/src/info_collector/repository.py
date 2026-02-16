@@ -9,6 +9,7 @@
 
 import sqlite3
 import json
+import time
 from datetime import datetime, timedelta
 from typing import Optional, List, Any
 from pathlib import Path
@@ -28,9 +29,36 @@ class InfoCollectorRepository:
         """DBディレクトリの存在確認・作成"""
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
 
+    def _connect(self) -> sqlite3.Connection:
+        """
+        DB接続を取得.
+        競合時の `database is locked` を避けるため timeout/busy_timeout を長めに設定する。
+        """
+        conn = sqlite3.connect(self.db_path, timeout=30.0)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA busy_timeout=30000")
+        return conn
+
+    @staticmethod
+    def _is_lock_error(exc: Exception) -> bool:
+        return isinstance(exc, sqlite3.OperationalError) and "database is locked" in str(exc).lower()
+
+    def _run_with_lock_retry(self, fn, retries: int = 5, base_sleep: float = 0.2):
+        """
+        `database is locked` 発生時に指数バックオフで再試行する。
+        """
+        for attempt in range(retries + 1):
+            try:
+                return fn()
+            except Exception as exc:  # noqa: BLE001
+                if not self._is_lock_error(exc) or attempt >= retries:
+                    raise
+                time.sleep(base_sleep * (2**attempt))
+
     def _init_tables(self) -> None:
         """テーブル初期化（存在しない場合のみ作成）"""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS collected_info (
@@ -213,35 +241,38 @@ class InfoCollectorRepository:
         Returns:
             追加されたレコードのID（重複時はNone）
         """
-        with sqlite3.connect(self.db_path) as conn:
-            try:
-                cursor = conn.execute(
-                    """
-                    INSERT INTO collected_info (
-                        source_type, title, url, content, snippet,
-                        published_at, fetched_at, source_name, metadata_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        info.source_type,
-                        info.title,
-                        info.url,
-                        info.content,
-                        info.snippet,
-                        info.published_at.isoformat() if info.published_at else None,
-                        info.fetched_at.isoformat(),
-                        info.source_name,
-                        json.dumps(info.metadata, ensure_ascii=False) if info.metadata else None,
-                    ),
-                )
-                return cursor.lastrowid
-            except sqlite3.IntegrityError:
-                # 重複時はスキップ
-                return None
+        def _op() -> Optional[int]:
+            with self._connect() as conn:
+                try:
+                    cursor = conn.execute(
+                        """
+                        INSERT INTO collected_info (
+                            source_type, title, url, content, snippet,
+                            published_at, fetched_at, source_name, metadata_json
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            info.source_type,
+                            info.title,
+                            info.url,
+                            info.content,
+                            info.snippet,
+                            info.published_at.isoformat() if info.published_at else None,
+                            info.fetched_at.isoformat(),
+                            info.source_name,
+                            json.dumps(info.metadata, ensure_ascii=False) if info.metadata else None,
+                        ),
+                    )
+                    return cursor.lastrowid
+                except sqlite3.IntegrityError:
+                    # 重複時はスキップ
+                    return None
+
+        return self._run_with_lock_retry(_op)
 
     def get_info_by_id(self, info_id: int) -> Optional[CollectedInfo]:
         """IDで情報を取得"""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute("SELECT * FROM collected_info WHERE id = ?", (info_id,))
             row = cursor.fetchone()
@@ -296,7 +327,7 @@ class InfoCollectorRepository:
         """
         params.append(limit)
 
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(sql, params)
             return [self._row_to_info(row) for row in cursor.fetchall()]
@@ -312,7 +343,7 @@ class InfoCollectorRepository:
             削除件数
         """
         cutoff_date = datetime.now() - timedelta(days=days)
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             cursor = conn.execute(
                 "DELETE FROM collected_info WHERE fetched_at < ?",
                 (cutoff_date.isoformat(),),
@@ -321,7 +352,7 @@ class InfoCollectorRepository:
 
     def add_summary(self, summary: InfoSummary) -> int:
         """要約を追加"""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             cursor = conn.execute(
                 """
                 INSERT INTO info_summaries (
@@ -342,7 +373,7 @@ class InfoCollectorRepository:
 
     def get_summary_by_id(self, summary_id: int) -> Optional[InfoSummary]:
         """IDで要約を取得"""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute("SELECT * FROM info_summaries WHERE id = ?", (summary_id,))
             row = cursor.fetchone()
@@ -368,7 +399,7 @@ class InfoCollectorRepository:
             """
             params = (limit,)
 
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(sql, params)
             return [self._row_to_summary(row) for row in cursor.fetchall()]
@@ -411,7 +442,7 @@ class InfoCollectorRepository:
         Returns:
             collected_info行を含むRowリスト
         """
-        conn = sqlite3.connect(self.db_path)
+        conn = self._connect()
         conn.row_factory = sqlite3.Row
         cursor = conn.execute(
             """
@@ -456,27 +487,30 @@ class InfoCollectorRepository:
             importance_reason: 重要度の判断理由（オプション）
             relevance_reason: 関連度の判断理由（オプション）
         """
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
-                """
-                INSERT OR REPLACE INTO article_analysis
-                (article_id, importance_score, relevance_score, category,
-                 keywords, summary, model, analyzed_at, importance_reason, relevance_reason)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    article_id,
-                    importance,
-                    relevance,
-                    category,
-                    json.dumps(keywords, ensure_ascii=False),
-                    summary,
-                    model,
-                    analyzed_at.isoformat(),
-                    importance_reason or "",
-                    relevance_reason or "",
-                ),
-            )
+        def _op() -> None:
+            with self._connect() as conn:
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO article_analysis
+                    (article_id, importance_score, relevance_score, category,
+                     keywords, summary, model, analyzed_at, importance_reason, relevance_reason)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        article_id,
+                        importance,
+                        relevance,
+                        category,
+                        json.dumps(keywords, ensure_ascii=False),
+                        summary,
+                        model,
+                        analyzed_at.isoformat(),
+                        importance_reason or "",
+                        relevance_reason or "",
+                    ),
+                )
+
+        self._run_with_lock_retry(_op)
 
     def fetch_deep_research_targets(
         self, min_importance: float = 0.7, min_relevance: float = 0.6, limit: int = 5
@@ -488,7 +522,7 @@ class InfoCollectorRepository:
             article_analysis と collected_info を結合したRowリスト
             （importance_reason と relevance_reason を含む）
         """
-        conn = sqlite3.connect(self.db_path)
+        conn = self._connect()
         conn.row_factory = sqlite3.Row
         cursor = conn.execute(
             """
@@ -518,27 +552,30 @@ class InfoCollectorRepository:
         researched_at: datetime,
     ) -> None:
         """深掘り結果を保存."""
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
-                """
-                INSERT OR REPLACE INTO deep_research
-                (article_id, search_query, search_results,
-                 synthesized_content, sources, researched_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    article_id,
-                    search_query,
-                    json.dumps(search_results, ensure_ascii=False),
-                    synthesized_content,
-                    json.dumps(sources, ensure_ascii=False),
-                    researched_at.isoformat(),
-                ),
-            )
+        def _op() -> None:
+            with self._connect() as conn:
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO deep_research
+                    (article_id, search_query, search_results,
+                     synthesized_content, sources, researched_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        article_id,
+                        search_query,
+                        json.dumps(search_results, ensure_ascii=False),
+                        synthesized_content,
+                        json.dumps(sources, ensure_ascii=False),
+                        researched_at.isoformat(),
+                    ),
+                )
+
+        self._run_with_lock_retry(_op)
 
     def fetch_recent_analysis(self, since_iso: str) -> list[dict[str, Any]]:
         """指定日時以降の分析結果を取得."""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._connect()
         conn.row_factory = sqlite3.Row
         cursor = conn.execute(
             """
@@ -556,7 +593,7 @@ class InfoCollectorRepository:
 
     def fetch_recent_deep_research(self, since_iso: str) -> list[dict[str, Any]]:
         """指定日時以降の深掘り結果を取得."""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._connect()
         conn.row_factory = sqlite3.Row
         cursor = conn.execute(
             """
@@ -585,7 +622,7 @@ class InfoCollectorRepository:
             テーマ（summary）をキー、深掘り結果のリストを値とする辞書
             （importance_reason と relevance_reason を含む）
         """
-        conn = sqlite3.connect(self.db_path)
+        conn = self._connect()
         conn.row_factory = sqlite3.Row
         cursor = conn.execute(
             """
@@ -650,23 +687,26 @@ class InfoCollectorRepository:
             created_at: 作成日時
             article_ids_hash: 記事IDセットのハッシュ値（重複チェック用）
         """
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
-                """
-                INSERT INTO reports
-                (title, report_date, content, article_count, category, article_ids_hash, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    title,
-                    report_date,
-                    content,
-                    article_count,
-                    category,
-                    article_ids_hash,
-                    created_at.isoformat(),
-                ),
-            )
+        def _op() -> None:
+            with self._connect() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO reports
+                    (title, report_date, content, article_count, category, article_ids_hash, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        title,
+                        report_date,
+                        content,
+                        article_count,
+                        category,
+                        article_ids_hash,
+                        created_at.isoformat(),
+                    ),
+                )
+
+        self._run_with_lock_retry(_op)
 
     def get_existing_report_hashes(self) -> list[str]:
         """
@@ -675,7 +715,7 @@ class InfoCollectorRepository:
         Returns:
             既存レポートのハッシュ値リスト（NULL値は除外）
         """
-        conn = sqlite3.connect(self.db_path)
+        conn = self._connect()
         conn.row_factory = sqlite3.Row
         cursor = conn.execute(
             """
@@ -703,7 +743,7 @@ class InfoCollectorRepository:
         Returns:
             レポートの辞書リスト（新しい順）
         """
-        conn = sqlite3.connect(self.db_path)
+        conn = self._connect()
         conn.row_factory = sqlite3.Row
 
         query = "SELECT * FROM reports WHERE report_date = ?"

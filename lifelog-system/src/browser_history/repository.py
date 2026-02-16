@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
@@ -39,9 +40,25 @@ class BrowserHistoryRepository:
 
     def _connect(self) -> sqlite3.Connection:
         """データベース接続を作成"""
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path, timeout=30.0)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA busy_timeout=30000")
         conn.row_factory = sqlite3.Row
         return conn
+
+    @staticmethod
+    def _is_lock_error(exc: Exception) -> bool:
+        return isinstance(exc, sqlite3.OperationalError) and "database is locked" in str(exc).lower()
+
+    def _run_with_lock_retry(self, fn, retries: int = 5, base_sleep: float = 0.2):
+        for attempt in range(retries + 1):
+            try:
+                return fn()
+            except Exception as exc:  # noqa: BLE001
+                if not self._is_lock_error(exc) or attempt >= retries:
+                    raise
+                time.sleep(base_sleep * (2**attempt))
 
     def _ensure_tables(self) -> None:
         """テーブルを作成（存在しない場合）"""
@@ -127,36 +144,39 @@ class BrowserHistoryRepository:
         """
         now = datetime.now(timezone.utc).isoformat()
 
-        with self._connect() as conn:
-            try:
-                cursor = conn.execute(
-                    """
-                    INSERT INTO browser_history (
-                        url, title, visit_time, visit_count,
-                        transition_type, source_browser, imported_at,
-                        brave_url_id, brave_visit_id
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        entry.url,
-                        entry.title,
-                        entry.visit_time.isoformat(),
-                        entry.visit_count,
-                        entry.transition_type,
-                        entry.source_browser,
-                        now,
-                        entry.brave_url_id,
-                        entry.brave_visit_id,
-                    ),
-                )
-                entry.id = cursor.lastrowid
-                entry.imported_at = datetime.fromisoformat(now)
-                conn.commit()
-                return entry
-            except sqlite3.IntegrityError:
-                # 重複エントリは無視
-                conn.rollback()
-                return None
+        def _op() -> Optional[BrowserHistoryEntry]:
+            with self._connect() as conn:
+                try:
+                    cursor = conn.execute(
+                        """
+                        INSERT INTO browser_history (
+                            url, title, visit_time, visit_count,
+                            transition_type, source_browser, imported_at,
+                            brave_url_id, brave_visit_id
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            entry.url,
+                            entry.title,
+                            entry.visit_time.isoformat(),
+                            entry.visit_count,
+                            entry.transition_type,
+                            entry.source_browser,
+                            now,
+                            entry.brave_url_id,
+                            entry.brave_visit_id,
+                        ),
+                    )
+                    entry.id = cursor.lastrowid
+                    entry.imported_at = datetime.fromisoformat(now)
+                    conn.commit()
+                    return entry
+                except sqlite3.IntegrityError:
+                    # 重複エントリは無視
+                    conn.rollback()
+                    return None
+
+        return self._run_with_lock_retry(_op)
 
     def get_entry(self, entry_id: int) -> Optional[BrowserHistoryEntry]:
         """
@@ -274,16 +294,19 @@ class BrowserHistoryRepository:
         """
         now = datetime.now(timezone.utc).isoformat()
 
-        with self._connect() as conn:
-            conn.execute(
-                """
-                INSERT INTO browser_import_log (
-                    source_path, imported_at, record_count, last_visit_time, status
-                ) VALUES (?, ?, ?, ?, ?)
-                """,
-                (source_path, now, record_count, last_visit_time, "success"),
-            )
-            conn.commit()
+        def _op() -> None:
+            with self._connect() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO browser_import_log (
+                        source_path, imported_at, record_count, last_visit_time, status
+                    ) VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (source_path, now, record_count, last_visit_time, "success"),
+                )
+                conn.commit()
+
+        self._run_with_lock_retry(_op)
 
     def _row_to_entry(self, row: sqlite3.Row) -> BrowserHistoryEntry:
         """SQLiteの行をBrowserHistoryEntryに変換"""

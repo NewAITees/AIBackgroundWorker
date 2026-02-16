@@ -211,6 +211,9 @@ lifelog.pid
 windows_logger.pid
 logs/
 scripts/logs/
+!scripts/logs/
+scripts/logs/*
+!scripts/logs/cleanup_logs.sh
 lifelog-system/data/
 lifelog-system/logs/
 lifelog-system/lifelog.pid

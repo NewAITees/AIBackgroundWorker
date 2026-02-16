@@ -24,6 +24,15 @@ from .event_collector_interface import (
 logger = logging.getLogger(__name__)
 
 
+def _safe_text(value: object) -> str:
+    """list等が渡されても安全に文字列化する。"""
+    if isinstance(value, list):
+        return " ".join(str(v) for v in value)
+    if value is None:
+        return ""
+    return str(value)
+
+
 class EventClassifierImpl(EventClassifier):
     """イベント分類・重要度判定の実装"""
 
@@ -59,7 +68,7 @@ class EventClassifierImpl(EventClassifier):
         category = "other"
 
         # ルールベースの分類
-        message = raw_event.get("message", "").lower()
+        message = _safe_text(raw_event.get("message", "")).lower()
         for rule in self._normalized_rules:
             pattern = rule.get("pattern")
             if not pattern:
@@ -88,11 +97,7 @@ class EventClassifierImpl(EventClassifier):
                 severity = 90
 
         # ログレベルベースの分類（Linux syslog）
-        log_level = raw_event.get("level", "")
-        # levelがlistの場合は最初の要素を取得
-        if isinstance(log_level, list):
-            log_level = str(log_level[0]) if log_level else ""
-        log_level = str(log_level).lower()
+        log_level = _safe_text(raw_event.get("level", "")).lower()
         if log_level in ["error", "err"]:
             event_type = "error"
             severity = 70

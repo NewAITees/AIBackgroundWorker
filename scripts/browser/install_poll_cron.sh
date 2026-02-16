@@ -14,13 +14,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 POLL_SCRIPT="$PROJECT_ROOT/scripts/browser/poll_brave_history.sh"
+CLEANUP_SCRIPT="$PROJECT_ROOT/scripts/logs/cleanup_logs.sh"
 LOG_FILE="$PROJECT_ROOT/logs/brave_poll.log"
 
 # ログディレクトリ作成
 mkdir -p "$(dirname "$LOG_FILE")"
 
 # 5分ごとの実行行
-CRON_LINE="*/5 * * * * cd \"$PROJECT_ROOT\" && \"$POLL_SCRIPT\" --interval 300 >> \"$LOG_FILE\" 2>&1"
+CRON_LINE="*/5 * * * * cd \"$PROJECT_ROOT\" && \"$CLEANUP_SCRIPT\" >> \"$LOG_FILE\" 2>&1 && \"$POLL_SCRIPT\" --interval 300 >> \"$LOG_FILE\" 2>&1"
 
 # 既存crontabを取得（なければ空）
 TMP_CRON="$(mktemp)"

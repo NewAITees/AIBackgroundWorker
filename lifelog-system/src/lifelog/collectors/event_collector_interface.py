@@ -177,7 +177,10 @@ class EventClassifier:
             pass
 
         # ログレベルベースの分類（Linux syslog）
-        log_level = raw_event.get("level", "").lower()
+        log_level = raw_event.get("level", "")
+        if isinstance(log_level, list):
+            log_level = " ".join(str(v) for v in log_level)
+        log_level = str(log_level).lower()
         if log_level in ["error", "err"]:
             event_type = "error"
             severity = 70

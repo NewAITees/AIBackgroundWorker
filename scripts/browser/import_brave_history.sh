@@ -88,6 +88,9 @@ try:
 
     if profile_path:
         profile_path_obj = Path(profile_path)
+        # profileディレクトリが指定された場合に History ファイルを補完
+        if profile_path_obj.is_dir():
+            profile_path_obj = profile_path_obj / "History"
     else:
         profile_path_obj = None
 

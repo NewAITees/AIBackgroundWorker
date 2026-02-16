@@ -103,6 +103,12 @@ class BraveHistoryImporter:
             brave_history_path = self.find_brave_history_path()
             if brave_history_path is None:
                 raise FileNotFoundError("Brave History file not found")
+        else:
+            # --profile-path としてディレクトリが渡された場合は History を補完
+            if brave_history_path.is_dir():
+                brave_history_path = brave_history_path / "History"
+            if not brave_history_path.exists():
+                raise FileNotFoundError(f"Brave History file not found: {brave_history_path}")
 
         # 一時コピー作成（ブラウザ起動中のロック回避）
         temp_copy = Path("/tmp/brave_history_temp.db")
@@ -117,7 +123,13 @@ class BraveHistoryImporter:
             last_visit_time = None
 
             for entry in entries:
-                added_entry = self.repository.add_entry(entry)
+                try:
+                    added_entry = self.repository.add_entry(entry)
+                except sqlite3.OperationalError as exc:
+                    if "database is locked" in str(exc).lower():
+                        logger.warning("Skipped browser history entry due DB lock: %s", entry.url)
+                        continue
+                    raise
 
                 # 重複でない場合のみカウント
                 if added_entry is not None:
@@ -129,11 +141,17 @@ class BraveHistoryImporter:
 
             # インポートログを記録
             if imported_count > 0:
-                self.repository.log_import(
-                    str(brave_history_path),
-                    imported_count,
-                    last_visit_time.isoformat() if last_visit_time else None,
-                )
+                try:
+                    self.repository.log_import(
+                        str(brave_history_path),
+                        imported_count,
+                        last_visit_time.isoformat() if last_visit_time else None,
+                    )
+                except sqlite3.OperationalError as exc:
+                    if "database is locked" in str(exc).lower():
+                        logger.warning("Skipped import log write due DB lock")
+                    else:
+                        raise
 
             return imported_count
 

@@ -8,6 +8,7 @@ See: doc/design/database_design.md
 import sqlite3
 import threading
 import logging
+import time
 from datetime import datetime, timedelta
 from typing import Any, Optional, List
 from pathlib import Path
@@ -48,7 +49,7 @@ class DatabaseManager:
 
     def _init_database(self) -> None:
         """データベースの初期化とPRAGMA設定."""
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path, timeout=30.0, check_same_thread=False)
 
         # PRAGMA設定
         for pragma in get_pragma_settings():
@@ -66,7 +67,9 @@ class DatabaseManager:
         既存DBへのマイグレーションを実行.
         system_eventsテーブルとビューが存在しない場合に追加する.
         """
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path, timeout=30.0, check_same_thread=False)
+        for pragma in get_pragma_settings():
+            conn.execute(pragma)
         cursor = conn.cursor()
 
         try:
@@ -121,9 +124,55 @@ class DatabaseManager:
             SQLite接続オブジェクト
         """
         if not hasattr(self._local, "conn"):
-            self._local.conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            self._local.conn = sqlite3.connect(self.db_path, timeout=30.0, check_same_thread=False)
             self._local.conn.row_factory = sqlite3.Row
+            for pragma in get_pragma_settings():
+                self._local.conn.execute(pragma)
         return self._local.conn
+
+    def _get_or_create_app_in_tx(
+        self, cursor: sqlite3.Cursor, process_name: str, process_path_hash: str
+    ) -> int:
+        """既存トランザクション内でapp_idを取得/作成する。"""
+        cursor.execute(
+            """
+            SELECT app_id FROM apps
+            WHERE process_name = ? AND process_path_hash = ?
+        """,
+            (process_name, process_path_hash),
+        )
+        row = cursor.fetchone()
+        now = datetime.now()
+        if row:
+            cursor.execute(
+                """
+                UPDATE apps SET last_seen = ? WHERE app_id = ?
+            """,
+                (now, row["app_id"]),
+            )
+            return row["app_id"]
+
+        cursor.execute(
+            """
+            INSERT INTO apps (process_name, process_path_hash, first_seen, last_seen)
+            VALUES (?, ?, ?, ?)
+        """,
+            (process_name, process_path_hash, now, now),
+        )
+        return cursor.lastrowid
+
+    @staticmethod
+    def _is_lock_error(exc: Exception) -> bool:
+        return isinstance(exc, sqlite3.OperationalError) and "database is locked" in str(exc).lower()
+
+    def _run_with_lock_retry(self, fn, retries: int = 5, base_sleep: float = 0.2):
+        for attempt in range(retries + 1):
+            try:
+                return fn()
+            except Exception as exc:  # noqa: BLE001
+                if not self._is_lock_error(exc) or attempt >= retries:
+                    raise
+                time.sleep(base_sleep * (2**attempt))
 
     def get_or_create_app(self, process_name: str, process_path_hash: str) -> int:
         """
@@ -139,37 +188,9 @@ class DatabaseManager:
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        # 既存チェック
-        cursor.execute(
-            """
-            SELECT app_id FROM apps
-            WHERE process_name = ? AND process_path_hash = ?
-        """,
-            (process_name, process_path_hash),
-        )
-
-        row = cursor.fetchone()
-        if row:
-            # 最終確認日時を更新
-            cursor.execute(
-                """
-                UPDATE apps SET last_seen = ? WHERE app_id = ?
-            """,
-                (datetime.now(), row["app_id"]),
-            )
-            conn.commit()
-            return row["app_id"]
-
-        # 新規作成
-        cursor.execute(
-            """
-            INSERT INTO apps (process_name, process_path_hash, first_seen, last_seen)
-            VALUES (?, ?, ?, ?)
-        """,
-            (process_name, process_path_hash, datetime.now(), datetime.now()),
-        )
+        app_id = self._get_or_create_app_in_tx(cursor, process_name, process_path_hash)
         conn.commit()
-        return cursor.lastrowid
+        return app_id
 
     def bulk_insert_intervals(self, intervals: list[dict[str, Any]]) -> None:
         """
@@ -181,14 +202,15 @@ class DatabaseManager:
         if not intervals:
             return
 
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
-        try:
+        def _op() -> None:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.execute("BEGIN IMMEDIATE")
             records = []
             for interval in intervals:
-                # app_id を取得または作成
-                app_id = self.get_or_create_app(
+                # app_id を取得または作成（同一トランザクション内）
+                app_id = self._get_or_create_app_in_tx(
+                    cursor,
                     interval["process_name"], interval["process_path_hash"]
                 )
 
@@ -216,7 +238,10 @@ class DatabaseManager:
             conn.commit()
             logger.debug(f"Bulk inserted {len(records)} intervals")
 
+        try:
+            self._run_with_lock_retry(_op)
         except Exception as e:
+            conn = self._get_connection()
             conn.rollback()
             logger.error(f"Bulk insert failed: {e}")
             raise
@@ -228,29 +253,31 @@ class DatabaseManager:
         Args:
             metrics: メトリクスデータ
         """
-        conn = self._get_connection()
-        cursor = conn.cursor()
+        def _op() -> None:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO health_snapshots
+                (ts, cpu_percent, mem_mb, queue_depth,
+                 collection_delay_p50, collection_delay_p95,
+                 dropped_events, db_write_time_p95)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+                (
+                    metrics["timestamp"],
+                    metrics["cpu_percent"],
+                    metrics["mem_mb"],
+                    metrics["queue_depth"],
+                    metrics["collection_delay_p50"],
+                    metrics["collection_delay_p95"],
+                    metrics["dropped_events"],
+                    metrics["db_write_time_p95"],
+                ),
+            )
+            conn.commit()
 
-        cursor.execute(
-            """
-            INSERT INTO health_snapshots
-            (ts, cpu_percent, mem_mb, queue_depth,
-             collection_delay_p50, collection_delay_p95,
-             dropped_events, db_write_time_p95)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-            (
-                metrics["timestamp"],
-                metrics["cpu_percent"],
-                metrics["mem_mb"],
-                metrics["queue_depth"],
-                metrics["collection_delay_p50"],
-                metrics["collection_delay_p95"],
-                metrics["dropped_events"],
-                metrics["db_write_time_p95"],
-            ),
-        )
-        conn.commit()
+        self._run_with_lock_retry(_op)
 
     def cleanup_old_data(
         self, retention_days: int = 30, event_retention_days: Optional[int] = None
@@ -326,10 +353,9 @@ class DatabaseManager:
         if not events:
             return
 
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
-        try:
+        def _op() -> None:
+            conn = self._get_connection()
+            cursor = conn.cursor()
             records = []
             for event in events:
                 records.append(
@@ -364,7 +390,10 @@ class DatabaseManager:
             conn.commit()
             logger.debug(f"Bulk inserted {len(records)} events")
 
+        try:
+            self._run_with_lock_retry(_op)
         except Exception as e:
+            conn = self._get_connection()
             conn.rollback()
             logger.error(f"Bulk insert events failed: {e}")
             raise
