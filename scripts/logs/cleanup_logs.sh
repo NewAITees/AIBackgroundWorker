@@ -21,7 +21,9 @@ KEEP_TAIL_BYTES=$((LOG_KEEP_TAIL_MB * 1024 * 1024))
 
 TARGET_DIRS=(
   "$PROJECT_ROOT/logs"
+  "$PROJECT_ROOT/scripts/logs"
   "$PROJECT_ROOT/lifelog-system/logs"
+  "$PROJECT_ROOT/lifelog-system/scripts/logs"
 )
 
 LOG_EXTENSIONS=(

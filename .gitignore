@@ -216,6 +216,7 @@ scripts/logs/*
 !scripts/logs/cleanup_logs.sh
 lifelog-system/data/
 lifelog-system/logs/
+lifelog-system/lifelog-system/
 lifelog-system/lifelog.pid
 lifelog-system/windows_logger.pid
 

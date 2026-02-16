@@ -44,8 +44,21 @@ def parse_iso_datetime(dt_str: str) -> datetime:
     return datetime.fromisoformat(dt_str)
 
 
+def run_db_with_retry(db: DatabaseManager, fn):
+    """
+    DB操作をロックリトライ付きで実行.
+
+    DatabaseManager側の `_run_with_lock_retry` があればそれを利用し、
+    ない場合はそのまま実行する。
+    """
+    retry_fn = getattr(db, "_run_with_lock_retry", None)
+    if callable(retry_fn):
+        return retry_fn(fn)
+    return fn()
+
+
 def get_or_create_app(
-    db: DatabaseManager, process_name: str, process_path: str, timestamp: datetime
+    db: DatabaseManager, process_name: str, process_path: str
 ) -> int:
     """
     アプリケーション情報を取得または作成.
@@ -54,34 +67,11 @@ def get_or_create_app(
         db: データベースマネージャー
         process_name: プロセス名
         process_path: 実行ファイルパス
-        timestamp: タイムスタンプ
-
     Returns:
         app_id
     """
     process_path_hash = stable_hash(process_path)
-
-    # 既存レコード確認
-    cursor = db._get_connection().execute(
-        "SELECT app_id FROM apps WHERE process_name = ? AND process_path_hash = ?",
-        (process_name, process_path_hash),
-    )
-    row = cursor.fetchone()
-
-    if row:
-        # last_seen更新
-        db._get_connection().execute(
-            "UPDATE apps SET last_seen = ? WHERE app_id = ?",
-            (timestamp, row[0]),
-        )
-        return row[0]
-    else:
-        # 新規作成
-        cursor = db._get_connection().execute(
-            "INSERT INTO apps (process_name, process_path_hash, first_seen, last_seen) VALUES (?, ?, ?, ?)",
-            (process_name, process_path_hash, timestamp, timestamp),
-        )
-        return cursor.lastrowid
+    return run_db_with_retry(db, lambda: db.get_or_create_app(process_name, process_path_hash))
 
 
 def insert_activity_interval(
@@ -105,18 +95,25 @@ def insert_activity_interval(
     """
     window_hash = stable_hash(window_title)
 
+    conn = db._get_connection()
     # 重複チェック（同じ start_ts, app_id, window_hash のレコードがあればスキップ）
-    cursor = db._get_connection().execute(
-        "SELECT id FROM activity_intervals WHERE start_ts = ? AND app_id = ? AND window_hash = ?",
-        (start_ts, app_id, window_hash),
+    cursor = run_db_with_retry(
+        db,
+        lambda: conn.execute(
+            "SELECT id FROM activity_intervals WHERE start_ts = ? AND app_id = ? AND window_hash = ?",
+            (start_ts, app_id, window_hash),
+        ),
     )
     if cursor.fetchone():
         logger.debug(f"Skipping duplicate record: {start_ts} - {app_id}")
         return
 
-    db._get_connection().execute(
-        "INSERT INTO activity_intervals (start_ts, end_ts, app_id, window_hash, is_idle) VALUES (?, ?, ?, ?, ?)",
-        (start_ts, end_ts, app_id, window_hash, 1 if is_idle else 0),
+    run_db_with_retry(
+        db,
+        lambda: conn.execute(
+            "INSERT INTO activity_intervals (start_ts, end_ts, app_id, window_hash, is_idle) VALUES (?, ?, ?, ?, ?)",
+            (start_ts, end_ts, app_id, window_hash, 1 if is_idle else 0),
+        ),
     )
 
 
@@ -154,6 +151,7 @@ def merge_windows_logs(
             logger.warning("Invalid marker file, starting from beginning")
 
     try:
+        line_num = last_processed_line
         with open(source_file, "r", encoding="utf-8", errors="replace") as f:
             for line_num, line in enumerate(f, start=1):
                 # 処理済みの行はスキップ
@@ -181,7 +179,7 @@ def merge_windows_logs(
                     is_idle = record.get("is_idle", False)  # デフォルトはFalse
 
                     # アプリID取得または作成
-                    app_id = get_or_create_app(db, process_name, exe_path, start_ts)
+                    app_id = get_or_create_app(db, process_name, exe_path)
 
                     # 活動区間挿入
                     insert_activity_interval(db, start_ts, end_ts, app_id, window_title, is_idle)
@@ -189,7 +187,7 @@ def merge_windows_logs(
                     processed_count += 1
 
                     if processed_count % 100 == 0:
-                        db._get_connection().commit()
+                        run_db_with_retry(db, lambda: db._get_connection().commit())
                         logger.info(f"Processed {processed_count} records...")
 
                 except json.JSONDecodeError as e:
@@ -204,7 +202,7 @@ def merge_windows_logs(
                     marker_file.write_text(str(line_num))
 
         # 最終コミット
-        db._get_connection().commit()
+        run_db_with_retry(db, lambda: db._get_connection().commit())
 
         # 最終マーカー更新
         if mark_processed:
