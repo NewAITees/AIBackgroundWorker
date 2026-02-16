@@ -17,7 +17,7 @@ cd "$LIFELOG_DIR" || exit 1
 # デフォルト値
 MIN_ARTICLES=1
 DB_PATH="data/ai_secretary.db"
-OUTPUT_DIR="data/reports"
+OUTPUT_DIR="/mnt/c/YellowMable/00_Raw"
 
 # 引数解析
 while [[ $# -gt 0 ]]; do

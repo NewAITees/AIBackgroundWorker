@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_LIFELOG_DB = Path("data/lifelog.db")
 DEFAULT_INFO_DB = Path("data/ai_secretary.db")
-DEFAULT_REPORT_DIR = Path("data/reports")
+DEFAULT_REPORT_DIR = Path("/mnt/c/YellowMable/00_Raw")
 
 
 def generate_integrated_daily_report(

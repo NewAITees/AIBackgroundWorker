@@ -17,7 +17,7 @@ cd "$LIFELOG_DIR" || exit 1
 # デフォルト値
 HOURS=24
 DB_PATH="data/ai_secretary.db"
-OUTPUT_DIR="data/reports"
+OUTPUT_DIR="/mnt/c/YellowMable/00_Raw"
 TARGET_DATE=""
 
 # 引数解析

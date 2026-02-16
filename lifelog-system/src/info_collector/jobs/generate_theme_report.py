@@ -17,7 +17,7 @@ from src.info_collector.repository import InfoCollectorRepository
 logger = logging.getLogger(__name__)
 
 DEFAULT_DB = Path("data/ai_secretary.db")
-DEFAULT_REPORT_DIR = Path("data/reports")
+DEFAULT_REPORT_DIR = Path("/mnt/c/YellowMable/00_Raw")
 
 
 def _slugify(text: str) -> str:
