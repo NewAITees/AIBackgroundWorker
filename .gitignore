@@ -215,3 +215,6 @@ lifelog-system/data/
 lifelog-system/logs/
 lifelog-system/lifelog.pid
 lifelog-system/windows_logger.pid
+
+# Serena
+.serena/
