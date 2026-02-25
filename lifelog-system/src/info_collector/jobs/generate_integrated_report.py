@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Callable, Any
@@ -24,7 +25,8 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_LIFELOG_DB = Path("data/lifelog.db")
 DEFAULT_INFO_DB = Path("data/ai_secretary.db")
-DEFAULT_REPORT_DIR = Path("/mnt/c/YellowMable/00_Raw")
+DEFAULT_YELLOWMABLE_DIR = Path(os.getenv("YELLOWMABLE_DIR", "/mnt/c/YellowMable"))
+DEFAULT_REPORT_DIR = DEFAULT_YELLOWMABLE_DIR / "00_Raw"
 
 
 def generate_integrated_daily_report(

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
+from collections import Counter
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
@@ -17,7 +19,159 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_DB = Path("data/ai_secretary.db")
 DEFAULT_LIFELOG_DB = Path("data/lifelog.db")
-DEFAULT_REPORT_DIR = Path("/mnt/c/YellowMable/00_Raw")
+DEFAULT_YELLOWMABLE_DIR = Path(os.getenv("YELLOWMABLE_DIR", "/mnt/c/YellowMable"))
+DEFAULT_REPORT_DIR = DEFAULT_YELLOWMABLE_DIR / "00_Raw"
+MIN_REPORT_CHARS = 800
+
+
+def _fmt_seconds(seconds: int) -> str:
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    return f"{hours}時間{minutes}分"
+
+
+def _build_fallback_report(
+    report_date: str,
+    analyses: list[dict],
+    deep: list[dict],
+    lifelog_data: Optional[list[dict]],
+    browser_history: Optional[list[dict]],
+    events: Optional[list[dict]],
+) -> str:
+    """LLM失敗時の最低品質を担保する構造化レポートを生成する."""
+    lines = [
+        f"# {report_date} 情報収集レポート（フォールバック）",
+        "",
+        "## 概要",
+        "LLM応答が不安定だったため、収集済みデータから自動で構造化したレポートを出力しています。",
+        "",
+    ]
+
+    lines.extend(
+        [
+            "## 収集データ件数",
+            f"- 分析記事: {len(analyses)}件",
+            f"- 深掘り調査: {len(deep)}件",
+            f"- ライフログ: {len(lifelog_data or [])}件",
+            f"- ブラウザ履歴: {len(browser_history or [])}件",
+            f"- イベント: {len(events or [])}件",
+            "",
+        ]
+    )
+
+    if analyses:
+        category_counter = Counter(a.get("category", "その他") for a in analyses)
+        lines.append("## 主要カテゴリ")
+        for cat, count in category_counter.most_common(8):
+            lines.append(f"- {cat}: {count}件")
+        lines.append("")
+
+        lines.append("## 重要トピック")
+        important = sorted(analyses, key=lambda a: a.get("importance_score", 0), reverse=True)[:8]
+        for item in important:
+            title = item.get("title") or item.get("summary") or "N/A"
+            importance = item.get("importance_score", 0)
+            relevance = item.get("relevance_score", 0)
+            lines.append(f"- {title}（重要度 {importance:.2f} / 関連度 {relevance:.2f}）")
+        lines.append("")
+
+    if deep:
+        lines.append("## 深掘り調査の要点")
+        for item in deep[:6]:
+            theme = item.get("theme", "N/A")
+            summary = (item.get("synthesized_content") or "").strip()
+            if len(summary) > 180:
+                summary = summary[:180] + "..."
+            lines.append(f"### {theme}")
+            lines.append(summary or "要約なし")
+            lines.append("")
+
+    if lifelog_data:
+        active_seconds = sum(
+            int(e.get("duration_seconds", 0) or 0) for e in lifelog_data if not e.get("is_idle")
+        )
+        app_counter = Counter(e.get("process_name", "unknown") for e in lifelog_data)
+        lines.extend(
+            [
+                "## 活動サマリー",
+                f"- アクティブ時間（概算）: {_fmt_seconds(active_seconds)}",
+                "- 主なアプリ利用:",
+            ]
+        )
+        for app, count in app_counter.most_common(8):
+            lines.append(f"  - {app}: {count}件")
+        lines.append("")
+
+    if browser_history:
+        domain_counter = Counter()
+        for row in browser_history:
+            url = str(row.get("url", ""))
+            domain = url.split("/")[2] if "://" in url and len(url.split("/")) > 2 else url
+            if domain:
+                domain_counter[domain] += 1
+        lines.append("## ブラウザアクセス上位")
+        for domain, count in domain_counter.most_common(10):
+            lines.append(f"- {domain}: {count}回")
+        lines.append("")
+
+    if events:
+        lines.append("## 主要イベント")
+        top_events = sorted(events, key=lambda e: e.get("severity", 0), reverse=True)[:10]
+        for e in top_events:
+            lines.append(
+                f"- [{e.get('event_type', 'unknown')}] {e.get('message', '')} (severity={e.get('severity', 0)})"
+            )
+        lines.append("")
+
+    return "\n".join(lines).strip() + "\n"
+
+
+def _build_data_appendix(
+    report_date: str,
+    analyses: list[dict],
+    deep: list[dict],
+    lifelog_data: Optional[list[dict]],
+    browser_history: Optional[list[dict]],
+    events: Optional[list[dict]],
+) -> str:
+    """短文レポートに追記するための付録セクション."""
+    lines = [
+        "## 収集データ付録",
+        f"- 対象日: {report_date}",
+        f"- 分析記事: {len(analyses)}件 / 深掘り: {len(deep)}件",
+        f"- ライフログ: {len(lifelog_data or [])}件 / ブラウザ履歴: {len(browser_history or [])}件 / イベント: {len(events or [])}件",
+        "",
+    ]
+    if analyses:
+        lines.append("### 重要トピック")
+        for item in sorted(analyses, key=lambda a: a.get("importance_score", 0), reverse=True)[:6]:
+            title = item.get("title") or item.get("summary") or "N/A"
+            lines.append(f"- {title}")
+        lines.append("")
+    return "\n".join(lines).strip() + "\n"
+
+
+def _generate_report_text(ollama: OllamaClient, prompts: dict[str, str]) -> str:
+    """LLM出力を再試行付きで取得."""
+    content = ""
+    for attempt in range(1, 3):
+        try:
+            content = ollama.generate(
+                prompt=prompts["user"],
+                system=prompts["system"],
+                options={"temperature": 0.5},
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Report generation failed (attempt %d/2): %s", attempt, exc)
+            continue
+
+        if content and len(content.strip()) >= MIN_REPORT_CHARS:
+            return content
+
+        logger.warning(
+            "Report output too short on attempt %d/2 (chars=%d)", attempt, len(content or "")
+        )
+    return content
 
 
 def generate_daily_report(
@@ -140,11 +294,7 @@ def generate_daily_report(
     browser_history = None
     events = None
 
-    if include_lifelog and target_date_start is None:
-        logger.info(
-            "Skipping lifelog inclusion for rolling window; provide --date to include lifelog data."
-        )
-    if include_lifelog and target_date_start is not None:
+    if include_lifelog:
         try:
             if lifelog_db_path is None:
                 # デフォルトパスを試行（相対パス）
@@ -182,16 +332,30 @@ def generate_daily_report(
         events=events,
     )
 
-    content = ""
-    try:
-        content = ollama.generate(
-            prompt=prompts["user"], system=prompts["system"], options={"temperature": 0.5}
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.error("Report generation failed: %s", exc)
+    content = _generate_report_text(ollama, prompts)
 
     if not content:
-        content = "# レポート生成に失敗しました\n\nデータは保存されていますが、LLM出力を取得できませんでした。"
+        content = _build_fallback_report(
+            report_date=report_date,
+            analyses=analyses,
+            deep=deep,
+            lifelog_data=lifelog_data,
+            browser_history=browser_history,
+            events=events,
+        )
+    elif len(content.strip()) < MIN_REPORT_CHARS:
+        content = (
+            content.rstrip()
+            + "\n\n"
+            + _build_data_appendix(
+                report_date=report_date,
+                analyses=analyses,
+                deep=deep,
+                lifelog_data=lifelog_data,
+                browser_history=browser_history,
+                events=events,
+            )
+        )
 
     # DB保存
     repo.save_report(
@@ -207,8 +371,16 @@ def generate_daily_report(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Obsidianリンクセクションを追加
-    from src.info_collector.jobs.obsidian_links import build_obsidian_links_section
+    from src.info_collector.jobs.obsidian_links import (
+        build_obsidian_links_section,
+        ensure_diary_report_link,
+        resolve_vault_root,
+        update_raw_reports_moc,
+    )
 
+    vault_root = resolve_vault_root(output_dir)
+    ensure_diary_report_link(vault_root, report_date)
+    update_raw_reports_moc(output_dir)
     links_section = build_obsidian_links_section(output_dir, report_date)
     content += links_section
 

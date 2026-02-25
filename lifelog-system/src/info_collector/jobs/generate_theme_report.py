@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import logging
+import os
 import re
 from datetime import datetime
 from pathlib import Path
@@ -17,7 +18,65 @@ from src.info_collector.repository import InfoCollectorRepository
 logger = logging.getLogger(__name__)
 
 DEFAULT_DB = Path("data/ai_secretary.db")
-DEFAULT_REPORT_DIR = Path("/mnt/c/YellowMable/00_Raw")
+DEFAULT_YELLOWMABLE_DIR = Path(os.getenv("YELLOWMABLE_DIR", "/mnt/c/YellowMable"))
+DEFAULT_REPORT_DIR = DEFAULT_YELLOWMABLE_DIR / "00_Raw"
+MIN_THEME_REPORT_CHARS = 700
+
+
+def _build_theme_fallback(theme: str, articles: list[dict], report_date: str) -> str:
+    lines = [
+        f"# {theme} テーマレポート（フォールバック）",
+        "",
+        "LLM応答が不安定だったため、収集データから構造化したレポートを出力しています。",
+        "",
+        f"- 生成日: {report_date}",
+        f"- 対象記事数: {len(articles)}",
+        "",
+        "## 対象記事",
+    ]
+    for idx, article in enumerate(articles[:12], 1):
+        title = article.get("article_title", "N/A")
+        url = article.get("article_url", "N/A")
+        importance = article.get("importance_score", 0)
+        relevance = article.get("relevance_score", 0)
+        lines.append(f"{idx}. {title}")
+        lines.append(f"   - URL: {url}")
+        lines.append(f"   - 重要度/関連度: {importance:.2f}/{relevance:.2f}")
+    lines.append("")
+    lines.append("## 深掘り要約")
+    for article in articles[:8]:
+        summary = (article.get("synthesized_content") or "").strip()
+        if len(summary) > 220:
+            summary = summary[:220] + "..."
+        lines.append(f"### {article.get('article_title', 'N/A')}")
+        lines.append(summary or "要約なし")
+        lines.append("")
+    return "\n".join(lines).strip() + "\n"
+
+
+def _generate_theme_text(ollama: OllamaClient, prompts: dict[str, str], theme: str) -> str:
+    content = ""
+    for attempt in range(1, 3):
+        try:
+            content = ollama.generate(
+                prompt=prompts["user"],
+                system=prompts["system"],
+                options={"temperature": 0.5},
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "Theme report generation failed for '%s' (attempt %d/2): %s", theme, attempt, exc
+            )
+            continue
+        if content and len(content.strip()) >= MIN_THEME_REPORT_CHARS:
+            return content
+        logger.warning(
+            "Theme report output too short for '%s' on attempt %d/2 (chars=%d)",
+            theme,
+            attempt,
+            len(content or ""),
+        )
+    return content
 
 
 def _slugify(text: str) -> str:
@@ -158,21 +217,13 @@ def generate_theme_reports(
         prompts = theme_report.build_prompt(theme=theme, articles=articles, report_date=report_date)
 
         # LLMでレポート生成
-        content = ""
-        try:
-            content = ollama.generate(
-                prompt=prompts["user"],
-                system=prompts["system"],
-                options={"temperature": 0.5},
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.error("Theme report generation failed for '%s': %s", theme, exc)
-            content = (
-                f"# レポート生成に失敗しました\n\nテーマ: {theme}\n\nデータは保存されていますが、LLM出力を取得できませんでした。\n\nエラー: {exc}"
-            )
+        content = _generate_theme_text(ollama, prompts, theme)
+        if not content or len(content.strip()) < MIN_THEME_REPORT_CHARS:
+            content = _build_theme_fallback(theme, articles, report_date)
 
-        if not content:
-            content = f"# レポート生成に失敗しました\n\nテーマ: {theme}\n\nデータは保存されていますが、LLM出力を取得できませんでした。"
+        from src.info_collector.jobs.obsidian_links import build_article_navigation_section
+
+        content += build_article_navigation_section(news_date)
 
         # DB保存（ハッシュ値も保存）
         repo.save_report(
