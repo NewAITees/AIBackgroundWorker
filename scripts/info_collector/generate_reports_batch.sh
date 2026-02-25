@@ -20,7 +20,8 @@ DAYS=21  # 3週間
 START_DATE=""
 END_DATE=""
 DB_PATH="data/ai_secretary.db"
-OUTPUT_DIR="/mnt/c/YellowMable/00_Raw"
+YELLOWMABLE_DIR="${YELLOWMABLE_DIR:-/mnt/c/YellowMable}"
+OUTPUT_DIR="${YELLOWMABLE_DIR}/00_Raw"
 SKIP_EXISTING=false
 
 # 引数解析
