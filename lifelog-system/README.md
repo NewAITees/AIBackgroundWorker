@@ -9,6 +9,13 @@ PC活動を自動的に記録し、AIが理解可能な形式のライフログ�
 - **プライバシー・バイ・デザイン**（デフォルトで個人情報を保存しない）
 - **SLO監視**による運用品質の保証
 
+## 保存先（固定）
+
+- Windows保存先: `C:\YellowMable`
+- WSL保存先: `/mnt/c/YellowMable`
+- レポート既定出力先: `/mnt/c/YellowMable/00_Raw`
+- 環境変数: `YELLOWMABLE_DIR`（未指定時は `/mnt/c/YellowMable`）
+
 ## インストール
 
 ```bash

@@ -6,6 +6,15 @@ AIシステムを動かすための背景として動作する常駐システム
 
 詳細なプロジェクト概要については、[docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md) を参照してください。
 
+## 保存先（固定）
+
+- Windows保存先: `C:\YellowMable`
+- WSL保存先: `/mnt/c/YellowMable`
+- レポート既定出力先: `/mnt/c/YellowMable/00_Raw`
+- 環境変数: `YELLOWMABLE_DIR`（未指定時は `/mnt/c/YellowMable`）
+
+リポジトリ直下のシンボリックリンク `YellowMable` からもアクセスできます。
+
 ## 主要機能
 
 ### 内向きの機能（Internal Data Collection）

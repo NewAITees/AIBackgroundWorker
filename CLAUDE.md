@@ -191,6 +191,14 @@ Key files:
    - `WINDOWS_FOREGROUND_INTERVAL`: Polling interval in seconds (default: 5)
    - `WINDOWS_FOREGROUND_STOP_AFTER`: Auto-stop after N seconds (0 = unlimited)
 
+## Storage Paths
+
+- Windows root path: `C:\YellowMable`
+- WSL root path: `/mnt/c/YellowMable`
+- Default report output: `/mnt/c/YellowMable/00_Raw`
+- Override env var: `YELLOWMABLE_DIR` (default: `/mnt/c/YellowMable`)
+- Quick access symlink (repo root): `./YellowMable`
+
 ## Future Extensions
 
 - MCP Server implementation (Claude integration)
