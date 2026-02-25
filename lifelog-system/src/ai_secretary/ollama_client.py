@@ -31,9 +31,9 @@ class OllamaClient:
             "/"
         )
         # 環境変数からモデルを取得、なければデフォルト値を使用
-        self.model = model or os.getenv("OLLAMA_MODEL", "gpt-oss:20b")
-        # 環境変数からタイムアウトを取得、なければデフォルト90秒
-        self.timeout = timeout or int(os.getenv("OLLAMA_TIMEOUT", "90"))
+        self.model = model or os.getenv("OLLAMA_MODEL", "nemotron-jp")
+        # 環境変数からタイムアウトを取得、なければデフォルト180秒
+        self.timeout = timeout or int(os.getenv("OLLAMA_TIMEOUT", "180"))
 
     def generate(
         self, prompt: str, system: Optional[str] = None, options: Optional[Dict[str, Any]] = None
