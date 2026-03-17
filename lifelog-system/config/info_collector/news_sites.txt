@@ -1,5 +1,2 @@
 # ニュースサイトのトップページURLを1行ずつ記載してください（コメント行は無視されます）
-https://www3.nhk.or.jp/news/
-https://www.bbc.com/news
-https://www.reuters.com/world/
-https://news.ycombinator.com/
+# RSS側で代替できるため現在は無効化（負荷削減のため）
