@@ -156,6 +156,10 @@
 
 ### 5-3. Markdown 自動取り込み
 
+- [x] 既存 `lifelog-system` から yesterday 以前の履歴を `1時間単位 summary entry` として初期投入する
+      → `timeline-app/scripts/import_lifelog_history.py`
+- [x] 初期履歴インポートを `source別 entry + LLM要約` に変更する
+      → `activity / browser / reports / system_event` を別 entry のまま自然文要約
 - [ ] ワークスペース内の Markdown ファイル変更をファイル監視で検知する（要件書 §12.3）
 - [ ] 新規・更新 Markdown を `imported` 種別の entry としてタイムラインへ流入させる
 - [ ] 取り込み対象フォルダを設定可能にする
