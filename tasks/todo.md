@@ -181,15 +181,19 @@
   - 収集結果を `news` entry として timeline に保存
 - [x] `info_collector` の設定（フィードURL等）を `timeline-app/config.yaml` で管理できるようにする
 
-### 4.5-5. AI 日次レポート・日記自動生成ワーカー（日次）
+### 4.5-5. 1時間ごとの AI 要約エントリワーカー（毎時）
 
-> 参照: `lifelog-system/src/info_collector/jobs/`、`ai_secretary/`
+> 参照: [docs/新しい開発要件](../docs/新しい開発要件) §5.3「1時間単位の時間構造」
 
-- [ ] `timeline-app/src/workers/report_worker.py` を作成
-  - 前日分の activity + browser + news を集計
-  - Ollama に渡して日記 entry と日次レポート entry を自動生成
-  - 生成結果を `diary` entry として timeline に保存
-- [ ] 生成タイミング: 毎日 AM 6:00（設定可能）
+- [x] `timeline-app/src/workers/hourly_summary_worker.py` を作成
+  - 既存 `timeline-app/scripts/import_lifelog_history.py` の hourly entry 生成ロジックを `src/services/hourly_summary_importer.py` へ移して再利用する
+  - `daily` には summary を投影し、本文は `articles/` 側へ保存する
+- [x] 生成単位は `1時間ごと`
+  - 日次レポートは作らない
+  - source は初回から `activity / browser / reports / system_log` に分ける
+- [x] `直近1時間だけ` ではなく `まだ entry 化されていない時間帯` を埋める
+  - worker 実行ごとに lookback 範囲を走査し、欠けている hour / source だけを補完する
+  - sleep / 停止 / 再起動後でも欠損時間を埋められるようにする
 
 ### 4.5-6. 移行完了・旧デーモン廃止
 

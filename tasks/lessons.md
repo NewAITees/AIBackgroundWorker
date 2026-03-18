@@ -79,3 +79,9 @@
 
 - パターン: RSS / ニュース worker で `auto_runner.main()` をそのまま呼ぶと CLI 引数や標準出力に処理が引きずられ、worker から扱いにくい。
 - 対策: `collect_rss()` / `collect_news()` と repository を直接 import して呼び、収集実行と timeline 投影を分離する。
+
+- パターン: 日次レポートのような粗い集約単位を後付けすると、`1時間単位` を前提にしたタイムライン UI と噛み合わず、どこに何を差し込むかが曖昧になる。
+- 対策: 自動生成系 worker の単位は UI の時間軸に揃える。今回の timeline-app では `日次レポート` ではなく `1時間ごとの summary entry` を基本にし、`daily` は summary 投影、`articles` は本文保存に徹する。
+
+- パターン: hourly worker を `直近1時間だけ` で動かすと、sleep 復帰やアプリ停止中の空白時間を埋められない。
+- 対策: worker は lookback 範囲を走査し、`まだ生成されていない hour / source` だけを補完する。初回 import と定期 worker で同じ生成ロジックを共用し、欠損補完と通常運用を分けない。

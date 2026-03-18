@@ -27,3 +27,5 @@ lifelog:
   info_config_dir: "lifelog-system/config/info_collector"
   info_collect_seconds: 3600
   info_limit: 10
+  hourly_summary_seconds: 3600
+  hourly_summary_lookback_hours: 48

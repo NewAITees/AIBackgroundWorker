@@ -10,8 +10,8 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from ..config import config
 from .activity_worker import activity_worker
 from .browser_worker import browser_worker
+from .hourly_summary_worker import hourly_summary_worker
 from .info_worker import info_worker
-from .report_worker import report_worker
 
 _scheduler: AsyncIOScheduler | None = None
 
@@ -57,13 +57,12 @@ def start_scheduler() -> AsyncIOScheduler:
             coalesce=True,
             replace_existing=True,
         )
-    if scheduler.get_job("daily-report") is None:
+    if scheduler.get_job("hourly-summary-sync") is None:
         scheduler.add_job(
-            report_worker.sync_once,
-            "cron",
-            hour=config.lifelog.report_hour,
-            minute=0,
-            id="daily-report",
+            hourly_summary_worker.sync_once,
+            "interval",
+            seconds=config.lifelog.hourly_summary_seconds,
+            id="hourly-summary-sync",
             max_instances=1,
             coalesce=True,
             replace_existing=True,
