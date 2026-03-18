@@ -16,14 +16,14 @@ repos:
     hooks:
       - id: black
         language_version: python3.12
-        files: ^(lifelog-system/.*\.py|scripts/.*\.py)$
+        files: ^(lifelog-system/.*\.py|scripts/.*\.py|timeline-app/.*\.py)$
         args: ["--line-length=100"]
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.6.9
     hooks:
       - id: ruff
         args: ["--fix", "--line-length=100"]
-        files: ^(lifelog-system/.*\.py|scripts/.*\.py)$
+        files: ^(lifelog-system/.*\.py|scripts/.*\.py|timeline-app/.*\.py)$
         language_version: python3.12
       # ruff-formatはblackと競合するため無効化（blackを使用）
       # - id: ruff-format
