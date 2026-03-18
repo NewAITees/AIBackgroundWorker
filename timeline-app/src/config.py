@@ -21,6 +21,12 @@ class ServerConfig(BaseModel):
     port: int = 8100
 
 
+class AIConfig(BaseModel):
+    ollama_base_url: str = "http://127.0.0.1:11434"
+    ollama_model: str = "qwen2.5:7b"
+    timeout_seconds: int = 60
+
+
 class WorkspaceDirsConfig(BaseModel):
     daily: str = "daily"
     articles: str = "articles"
@@ -35,6 +41,7 @@ class WorkspaceConfig(BaseModel):
 class AppConfig(BaseModel):
     environment: str = "dev"
     server: ServerConfig = ServerConfig()
+    ai: AIConfig = AIConfig()
     workspace: WorkspaceConfig = WorkspaceConfig(dirs=WorkspaceDirsConfig())
 
 
@@ -50,6 +57,7 @@ def load_config(path: Optional[Path] = None) -> AppConfig:
     return AppConfig(
         environment=raw.get("environment", "dev"),
         server=ServerConfig(**raw.get("server", {})),
+        ai=AIConfig(**raw.get("ai", {})),
         workspace=WorkspaceConfig(
             **{
                 **raw.get("workspace", {}),

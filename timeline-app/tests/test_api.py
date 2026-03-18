@@ -1,6 +1,14 @@
 """API エンドポイントのテスト（FastAPI TestClient使用）"""
 
+from unittest.mock import patch
+
 from fastapi.testclient import TestClient
+
+from src.ai.ollama_client import OllamaChatResult
+
+
+def _mock_ollama(reply: str = "テスト応答です。", candidates=None) -> OllamaChatResult:
+    return OllamaChatResult(reply=reply, entry_candidates=candidates or [])
 
 
 class TestHealth:
@@ -99,13 +107,50 @@ class TestTimeline:
 
 class TestChat:
     def test_returns_reply(self, client: TestClient):
-        resp = client.post("/api/chat", json={"content": "今日やることを整理したい"})
+        with patch("src.ai.ollama_client.requests.post") as mock_post:
+            mock_post.return_value.raise_for_status.return_value = None
+            mock_post.return_value.json.return_value = {
+                "response": '{"reply":"了解です。","entry_candidates":[]}'
+            }
+            resp = client.post("/api/chat", json={"content": "今日やることを整理したい"})
         assert resp.status_code == 200
         data = resp.json()
-        assert "reply" in data
+        assert data["reply"] == "了解です。"
         assert "thread_id" in data
         assert "entry_candidates" in data
 
     def test_thread_id_preserved(self, client: TestClient):
-        resp = client.post("/api/chat", json={"content": "続き", "thread_id": "thread-test-001"})
+        with patch("src.ai.ollama_client.requests.post") as mock_post:
+            mock_post.return_value.raise_for_status.return_value = None
+            mock_post.return_value.json.return_value = {
+                "response": '{"reply":"続きです。","entry_candidates":[]}'
+            }
+            resp = client.post("/api/chat", json={"content": "続き", "thread_id": "thread-test-001"})
         assert resp.json()["thread_id"] == "thread-test-001"
+
+    def test_ollama_failure_returns_502(self, client: TestClient):
+        import requests as req
+
+        with patch("src.ai.ollama_client.requests.post", side_effect=req.RequestException("down")):
+            resp = client.post("/api/chat", json={"content": "テスト"})
+        assert resp.status_code == 502
+
+    def test_entry_candidates_returned(self, client: TestClient):
+        with patch("src.ai.ollama_client.requests.post") as mock_post:
+            mock_post.return_value.raise_for_status.return_value = None
+            mock_post.return_value.json.return_value = {
+                "response": '{"reply":"記録しますね。","entry_candidates":[{"type":"todo","title":"返信する","content":"A社へ返信"}]}'
+            }
+            resp = client.post("/api/chat", json={"content": "A社へ返信しないといけない"})
+        data = resp.json()
+        assert len(data["entry_candidates"]) == 1
+        assert data["entry_candidates"][0]["type"] == "todo"
+
+    def test_invalid_candidate_type_is_filtered(self, client: TestClient):
+        with patch("src.ai.ollama_client.requests.post") as mock_post:
+            mock_post.return_value.raise_for_status.return_value = None
+            mock_post.return_value.json.return_value = {
+                "response": '{"reply":"はい。","entry_candidates":[{"type":"invalid_type","content":"x"}]}'
+            }
+            resp = client.post("/api/chat", json={"content": "テスト"})
+        assert resp.json()["entry_candidates"] == []

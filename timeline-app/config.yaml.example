@@ -8,6 +8,13 @@ server:
   host: "127.0.0.1"
   port: 8100
 
+ai:
+  # Ollama のローカル HTTP API
+  ollama_base_url: "http://127.0.0.1:11434"
+  # M1 では会話と簡易分類を1モデルでまかなう
+  ollama_model: "qwen2.5:7b"
+  timeout_seconds: 60
+
 workspace:
   # 開発中は YellowMable を汚さないよう、dev 用パスを指定する
   # WSL 環境では /mnt/c/... 形式で記述する
