@@ -1,25 +1,25 @@
-"""
-entry CRUD API
-chat / event / diary / todo の作成・取得・更新
-"""
+"""entry CRUD API。Markdown ファイルを正本として扱う。"""
 
 import uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException
-from ..models.entry import Entry, EntryCreate, EntryUpdate, EntrySource
+
+from ..config import config
+from ..models.entry import Entry, EntryCreate, EntryUpdate
+from ..routers.workspace import get_open_workspace
+from ..storage.daily_writer import upsert_entry_in_daily
+from ..storage.entry_reader import read_entry
+from ..storage.entry_writer import write_entry
 
 router = APIRouter()
-
-# インメモリストア（M1 stub。後で Markdown / DB に置き換える）
-_entries: dict[str, Entry] = {}
-
-# ワークスペースパスは後で workspace モジュールから取得する
-_DEFAULT_WORKSPACE = ""
 
 
 @router.post("/entries", response_model=Entry, status_code=201)
 async def create_entry(req: EntryCreate):
     """entry を新規作成する"""
+    workspace = get_open_workspace()
+    workspace_path = workspace["path"]
+
     entry_id = f"{datetime.now(timezone.utc).isoformat()}-{req.type.value}-{uuid.uuid4().hex[:6]}"
     entry = Entry(
         id=entry_id,
@@ -28,32 +28,43 @@ async def create_entry(req: EntryCreate):
         content=req.content,
         timestamp=req.timestamp or datetime.now(timezone.utc),
         source=req.source,
-        workspace_path=_DEFAULT_WORKSPACE,
+        workspace_path=workspace_path,
         links=req.links,
         related_ids=req.related_ids,
         meta=req.meta,
     )
-    _entries[entry_id] = entry
+    write_entry(workspace_path, config.workspace.dirs.articles, entry)
+    upsert_entry_in_daily(workspace_path, config.workspace.dirs.daily, entry)
     return entry
 
 
 @router.get("/entries/{entry_id}", response_model=Entry)
 async def get_entry(entry_id: str):
     """右ペイン用の entry 詳細を返す"""
-    entry = _entries.get(entry_id)
-    if not entry:
+    workspace = get_open_workspace()
+    try:
+        return read_entry(workspace["path"], config.workspace.dirs.articles, entry_id)
+    except FileNotFoundError:
         raise HTTPException(status_code=404, detail="entry が見つかりません")
-    return entry
+    except ValueError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.patch("/entries/{entry_id}", response_model=Entry)
 async def update_entry(entry_id: str, req: EntryUpdate):
     """entry を更新する"""
-    entry = _entries.get(entry_id)
-    if not entry:
+    workspace = get_open_workspace()
+    workspace_path = workspace["path"]
+
+    try:
+        entry = read_entry(workspace_path, config.workspace.dirs.articles, entry_id)
+    except FileNotFoundError:
         raise HTTPException(status_code=404, detail="entry が見つかりません")
+    except ValueError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     update_data = req.model_dump(exclude_none=True)
     updated = entry.model_copy(update=update_data)
-    _entries[entry_id] = updated
+    write_entry(workspace_path, config.workspace.dirs.articles, updated)
+    upsert_entry_in_daily(workspace_path, config.workspace.dirs.daily, updated)
     return updated

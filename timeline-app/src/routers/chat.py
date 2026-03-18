@@ -6,6 +6,8 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
 
+from ..routers.workspace import get_open_workspace
+
 router = APIRouter()
 
 
@@ -25,6 +27,7 @@ async def chat(req: ChatRequest):
     """チャット入力に AI が応答し、記録候補も返す（M1 は stub）"""
     import uuid
 
+    get_open_workspace()
     thread_id = req.thread_id or f"thread-{uuid.uuid4().hex[:8]}"
 
     # TODO: AI 接続を実装する

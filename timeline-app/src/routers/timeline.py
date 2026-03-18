@@ -3,8 +3,12 @@
 指定日時周辺の entry 一覧を返す
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Query
+
+from ..config import config
+from ..routers.workspace import get_open_workspace
+from ..storage.daily_reader import read_timeline_entries
 
 router = APIRouter()
 
@@ -15,14 +19,23 @@ async def get_timeline(
     before: int = Query(default=24, description="基準から何時間前まで取得するか"),
     after: int = Query(default=24, description="基準から何時間後まで取得するか"),
 ):
-    """指定日時周辺の entry 一覧を返す（M1はstub）"""
+    """指定日時周辺の entry 一覧を返す。"""
+    workspace = get_open_workspace()
     if around is None:
         around = datetime.now(timezone.utc)
 
-    # TODO: 実際のデータ取得を実装する
+    start_at = around - timedelta(hours=before)
+    end_at = around + timedelta(hours=after)
+    entries = read_timeline_entries(
+        workspace["path"],
+        config.workspace.dirs.daily,
+        start_at=start_at,
+        end_at=end_at,
+    )
+
     return {
         "around": around.isoformat(),
         "before_hours": before,
         "after_hours": after,
-        "entries": [],
+        "entries": [entry.model_dump(mode="json") for entry in entries],
     }

@@ -33,37 +33,37 @@
 
 ### 1-1. entry の Markdown 保存
 
-- [ ] `articles/` への entry ファイル書き込み実装
+- [x] `articles/` への entry ファイル書き込み実装
   - ファイル名: `{entry.id}.md`
   - 内容: YAML frontmatter + content 本文
   - 実装場所: `timeline-app/src/storage/entry_writer.py`（新規）
-- [ ] `daily/{YYYY-MM-DD}.md` の該当時間帯セクションへ entry の YAML ブロックを追記する実装
+- [x] `daily/{YYYY-MM-DD}.md` の該当時間帯セクションへ entry の YAML ブロックを追記する実装
   - 対象セクション: entry の timestamp の時間を `## HH:00` で特定する
   - ファイルが存在しない場合は `create_daily.py` と同じフォーマットで自動生成する
   - 実装場所: `timeline-app/src/storage/daily_writer.py`（新規）
-- [ ] `POST /api/entries` エンドポイントを stub → 実保存に切り替える
+- [x] `POST /api/entries` エンドポイントを stub → 実保存に切り替える
       → `timeline-app/src/routers/entries.py`
 
 ### 1-2. タイムライン取得（Markdown 読み込み）
 
-- [ ] `daily/{YYYY-MM-DD}.md` を読み込み、時間帯セクションと YAML ブロックを解析する実装
+- [x] `daily/{YYYY-MM-DD}.md` を読み込み、時間帯セクションと YAML ブロックを解析する実装
   - 実装場所: `timeline-app/src/storage/daily_reader.py`（新規）
-- [ ] `GET /api/timeline` を stub → 実データ返却に切り替える
+- [x] `GET /api/timeline` を stub → 実データ返却に切り替える
   - `around` パラメータの前後 N 時間分の entry 一覧を返す
   - 日をまたぐ場合は複数の daily ファイルを読む
   - 実装場所: `timeline-app/src/routers/timeline.py`
 
 ### 1-3. entry 詳細取得・更新
 
-- [ ] `GET /api/entries/{entry_id}` を stub → `articles/` のファイルから読み込む実装に切り替える
-- [ ] `PATCH /api/entries/{entry_id}` を stub → `articles/` のファイルを上書き保存する実装に切り替える
+- [x] `GET /api/entries/{entry_id}` を stub → `articles/` のファイルから読み込む実装に切り替える
+- [x] `PATCH /api/entries/{entry_id}` を stub → `articles/` のファイルを上書き保存する実装に切り替える
   - daily ファイル内の該当 YAML ブロックも同期して更新する
 
 ### 1-4. ワークスペース管理
 
-- [ ] `GET /api/workspace` でワークスペースの状態（パス・モード・サブフォルダ有無）を返す
-- [ ] `POST /api/workspace/open` でワークスペースを開いたとき `daily/` と `articles/` を自動作成する
-- [ ] ワークスペース未設定の場合、全APIが適切なエラーを返すようにする
+- [x] `GET /api/workspace` でワークスペースの状態（パス・モード・サブフォルダ有無）を返す
+- [x] `POST /api/workspace/open` でワークスペースを開いたとき `daily/` と `articles/` を自動作成する
+- [x] ワークスペース未設定の場合、全APIが適切なエラーを返すようにする
 
 ---
 

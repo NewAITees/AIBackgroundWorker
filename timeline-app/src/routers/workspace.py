@@ -19,6 +19,27 @@ router = APIRouter()
 _workspace: dict = {}
 
 
+def _subdirs_state(base_path: Path) -> dict[str, bool]:
+    return {
+        "daily": (base_path / config.workspace.dirs.daily).exists(),
+        "articles": (base_path / config.workspace.dirs.articles).exists(),
+    }
+
+
+def _ensure_workspace_subdirs(base_path: Path) -> None:
+    (base_path / config.workspace.dirs.daily).mkdir(parents=True, exist_ok=True)
+    (base_path / config.workspace.dirs.articles).mkdir(parents=True, exist_ok=True)
+
+
+def _workspace_payload(base_path: Path, mode: str) -> dict:
+    return {
+        "opened": True,
+        "path": str(base_path.resolve()),
+        "mode": mode,
+        "subdirs": _subdirs_state(base_path),
+    }
+
+
 def _init_default_workspace() -> None:
     """config.yaml の default_path が設定されていれば初期値として使う"""
     raw = config.workspace.default_path
@@ -28,7 +49,8 @@ def _init_default_workspace() -> None:
     p = Path(local)
     if p.exists() and p.is_dir():
         mode = "obsidian" if (p / ".obsidian").exists() else "standalone"
-        _workspace.update({"path": str(p.resolve()), "mode": mode})
+        _ensure_workspace_subdirs(p)
+        _workspace.update(_workspace_payload(p, mode))
 
 
 _init_default_workspace()
@@ -38,12 +60,19 @@ class WorkspaceOpenRequest(BaseModel):
     path: str
 
 
+def get_open_workspace() -> dict:
+    """他APIから使うワークスペース情報。未設定時は 400 を返す。"""
+    if not _workspace:
+        raise HTTPException(status_code=400, detail="ワークスペースが未設定です")
+    return _workspace
+
+
 @router.get("/workspace")
 async def get_workspace():
     """現在開いているワークスペース情報を返す"""
     if not _workspace:
-        return {"opened": False, "path": None, "mode": None}
-    return {"opened": True, **_workspace}
+        return {"opened": False, "path": None, "mode": None, "subdirs": {}}
+    return _workspace
 
 
 @router.post("/workspace/open")
@@ -58,5 +87,7 @@ async def open_workspace(req: WorkspaceOpenRequest):
         raise HTTPException(status_code=400, detail="ディレクトリを指定してください")
 
     mode = "obsidian" if (p / ".obsidian").exists() else "standalone"
-    _workspace.update({"path": str(p.resolve()), "mode": mode})
-    return {"opened": True, "path": str(p.resolve()), "mode": mode}
+    _ensure_workspace_subdirs(p)
+    _workspace.clear()
+    _workspace.update(_workspace_payload(p, mode))
+    return _workspace
