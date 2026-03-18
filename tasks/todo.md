@@ -160,6 +160,8 @@
       → `timeline-app/scripts/import_lifelog_history.py`
 - [x] 初期履歴インポートを `source別 entry + LLM要約` に変更する
       → `activity / browser / reports / system_event` を別 entry のまま自然文要約
+- [x] `daily` を timeline summary 用、`articles` を実体本文用に分離する
+      → `daily` には summary を投影し、右ペインは `articles/{id}.md` を表示
 - [ ] ワークスペース内の Markdown ファイル変更をファイル監視で検知する（要件書 §12.3）
 - [ ] 新規・更新 Markdown を `imported` 種別の entry としてタイムラインへ流入させる
 - [ ] 取り込み対象フォルダを設定可能にする

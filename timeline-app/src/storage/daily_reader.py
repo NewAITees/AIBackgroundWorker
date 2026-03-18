@@ -6,7 +6,7 @@ import re
 from datetime import date, datetime, timezone
 
 from ..models.entry import Entry
-from .common import daily_path, iter_dates, parse_yaml_block
+from .common import daily_path, ensure_entry_summary, iter_dates, parse_yaml_block
 
 
 def _as_utc(dt: datetime) -> datetime:
@@ -49,5 +49,8 @@ def read_daily_entries(workspace_path: str, daily_dir: str, target_date: date) -
         body = section.group("body")
         for block_match in _BLOCK_RE.finditer(body):
             raw = parse_yaml_block(block_match.group(0))
-            entries.append(Entry.model_validate(raw))
+            if "content" not in raw:
+                raw["content"] = raw.get("summary") or ""
+            entry = Entry.model_validate(raw)
+            entries.append(ensure_entry_summary(entry))
     return entries

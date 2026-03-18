@@ -7,7 +7,13 @@ from datetime import date
 from pathlib import Path
 
 from ..models.entry import Entry
-from .common import backup_existing_file, daily_path, entry_to_daily_block
+from .common import (
+    backup_existing_file,
+    daily_path,
+    ensure_entry_summary,
+    entry_to_daily_block,
+    parse_yaml_block,
+)
 
 
 def build_daily_content(target_date: date) -> str:
@@ -61,6 +67,7 @@ def _remove_existing_block(section_body: str, entry_id: str) -> str:
 
 
 def upsert_entry_in_daily(workspace_path: str, daily_dir: str, entry: Entry) -> Path:
+    entry = ensure_entry_summary(entry)
     path = ensure_daily_file(workspace_path, daily_dir, entry.timestamp.date())
     content = path.read_text(encoding="utf-8")
     marker = _section_marker(entry)
@@ -93,4 +100,23 @@ def remove_entry_from_daily(workspace_path: str, daily_dir: str, entry: Entry) -
     updated = _replace_section(content, marker, new_section)
     backup_existing_file(path)
     path.write_text(updated, encoding="utf-8")
+    return path
+
+
+def normalize_daily_file(workspace_path: str, daily_dir: str, target_date: date) -> Path:
+    """既存 daily の YAML ブロックを summary 投影形式へ揃える。"""
+    path = ensure_daily_file(workspace_path, daily_dir, target_date)
+    content = path.read_text(encoding="utf-8")
+
+    def replace_block(match: re.Match[str]) -> str:
+        raw = parse_yaml_block(match.group(0))
+        if "content" not in raw:
+            raw["content"] = raw.get("summary") or ""
+        entry = ensure_entry_summary(Entry.model_validate(raw))
+        return entry_to_daily_block(entry)
+
+    normalized = re.sub(r"(?ms)^```yaml\n.*?^```", replace_block, content)
+    if normalized != content:
+        backup_existing_file(path)
+        path.write_text(normalized, encoding="utf-8")
     return path

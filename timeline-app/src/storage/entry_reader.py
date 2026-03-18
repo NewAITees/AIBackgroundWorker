@@ -7,7 +7,7 @@ import re
 import yaml
 
 from ..models.entry import Entry
-from .common import article_path
+from .common import article_path, ensure_entry_summary
 
 _FRONTMATTER_RE = re.compile(r"(?ms)^---\n(?P<meta>.*?)\n---\n?(?P<body>.*)\Z")
 
@@ -22,4 +22,4 @@ def read_entry(workspace_path: str, articles_dir: str, entry_id: str) -> Entry:
     metadata = yaml.safe_load(match.group("meta")) or {}
     metadata["content"] = match.group("body").rstrip("\n")
     metadata["id"] = entry_id
-    return Entry.model_validate(metadata)
+    return ensure_entry_summary(Entry.model_validate(metadata))

@@ -7,10 +7,11 @@ from pathlib import Path
 import yaml
 
 from ..models.entry import Entry
-from .common import article_path, backup_existing_file, entry_to_record
+from .common import article_path, backup_existing_file, ensure_entry_summary, entry_to_record
 
 
 def write_entry(workspace_path: str, articles_dir: str, entry: Entry) -> Path:
+    entry = ensure_entry_summary(entry)
     path = article_path(workspace_path, articles_dir, entry.id)
     path.parent.mkdir(parents=True, exist_ok=True)
     backup_existing_file(path)

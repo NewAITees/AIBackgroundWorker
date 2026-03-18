@@ -21,9 +21,32 @@ def entry_to_record(entry: Entry) -> dict:
     return entry.model_dump(mode="json")
 
 
+def summarize_text(content: str, limit: int = 120) -> str:
+    """タイムライン表示用の短い summary を作る。"""
+    normalized = " ".join(content.split())
+    if len(normalized) <= limit:
+        return normalized
+    return normalized[: limit - 1].rstrip() + "…"
+
+
+def ensure_entry_summary(entry: Entry) -> Entry:
+    """summary が空なら content から補完した Entry を返す。"""
+    if entry.summary:
+        return entry
+    return entry.model_copy(update={"summary": summarize_text(entry.content)})
+
+
+def entry_to_daily_record(entry: Entry) -> dict:
+    """daily へ投影する最小レコードを返す。"""
+    normalized = ensure_entry_summary(entry)
+    record = normalized.model_dump(mode="json")
+    record.pop("content", None)
+    return record
+
+
 def entry_to_daily_block(entry: Entry) -> str:
     """daily ファイルへ埋め込む fenced yaml ブロックを生成する。"""
-    body = dump_yaml(entry_to_record(entry))
+    body = dump_yaml(entry_to_daily_record(entry))
     return f"```yaml\n{body}\n```"
 
 

@@ -44,6 +44,7 @@ class Entry(BaseModel):
     id: str
     type: EntryType
     title: Optional[str] = None
+    summary: Optional[str] = None
     content: str
     timestamp: datetime
     status: EntryStatus = EntryStatus.active
@@ -57,6 +58,7 @@ class Entry(BaseModel):
 class EntryCreate(BaseModel):
     type: EntryType
     title: Optional[str] = None
+    summary: Optional[str] = None
     content: str
     timestamp: Optional[datetime] = None
     source: EntrySource = EntrySource.user
@@ -67,6 +69,7 @@ class EntryCreate(BaseModel):
 
 class EntryUpdate(BaseModel):
     title: Optional[str] = None
+    summary: Optional[str] = None
     content: Optional[str] = None
     status: Optional[EntryStatus] = None
     links: Optional[list[str]] = None

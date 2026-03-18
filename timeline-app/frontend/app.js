@@ -180,7 +180,7 @@ function buildEntryCard(entry) {
   typeEl.dataset.type = entry.type;
   timeEl.textContent = formatDateTime(entry.timestamp);
   titleEl.textContent = entry.title || fallbackTitle(entry);
-  contentEl.textContent = entry.content;
+  contentEl.textContent = entry.summary || entry.content;
 
   button.addEventListener("click", () => selectEntry(entry.id));
   return node;
