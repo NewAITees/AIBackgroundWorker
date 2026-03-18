@@ -1,13 +1,50 @@
-"""Ollama HTTP API 用の最小クライアント。"""
+"""Ollama HTTP API 用の最小クライアント。
+
+/api/chat + tools（function calling）を使って構造化出力を得る。
+qwen3 / qwen2.5 等の tool use 対応モデルが前提。
+"""
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 
 import requests
 
 from ..config import AIConfig
+
+_TOOL_DEF = {
+    "type": "function",
+    "function": {
+        "name": "save_entry_candidates",
+        "description": (
+            "ユーザーの発言に対して返答テキストを返し、"
+            "diary / event / todo / memo の記録候補を最大3件まで提示する。"
+            "候補が不要な場合は entry_candidates を空配列にする。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "reply": {"type": "string", "description": "AIの返答（日本語で簡潔に）"},
+                "entry_candidates": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "enum": ["diary", "event", "todo", "memo"],
+                            },
+                            "title": {"type": "string"},
+                            "content": {"type": "string"},
+                        },
+                        "required": ["type", "content"],
+                    },
+                },
+            },
+            "required": ["reply", "entry_candidates"],
+        },
+    },
+}
 
 
 class OllamaClientError(RuntimeError):
@@ -25,17 +62,16 @@ class OllamaClient:
         self._settings = settings
 
     def generate_chat_reply(self, messages: list[dict[str, str]]) -> OllamaChatResult:
-        prompt = self._build_prompt(messages)
         payload = {
             "model": self._settings.ollama_model,
-            "prompt": prompt,
             "stream": False,
-            "format": "json",
+            "messages": messages[-12:],
+            "tools": [_TOOL_DEF],
         }
 
         try:
             response = requests.post(
-                f"{self._settings.ollama_base_url.rstrip('/')}/api/generate",
+                f"{self._settings.ollama_base_url.rstrip('/')}/api/chat",
                 json=payload,
                 timeout=self._settings.timeout_seconds,
             )
@@ -43,19 +79,26 @@ class OllamaClient:
         except requests.RequestException as exc:
             raise OllamaClientError(f"Ollama への接続に失敗しました: {exc}") from exc
 
-        raw = response.json().get("response", "").strip()
-        try:
-            parsed = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            raise OllamaClientError("Ollama 応答の JSON 解析に失敗しました") from exc
+        message = response.json().get("message", {})
+        tool_calls = message.get("tool_calls") or []
 
-        reply = str(parsed.get("reply", "")).strip()
-        candidates = parsed.get("entry_candidates", [])
-        if not isinstance(candidates, list):
-            candidates = []
+        if tool_calls:
+            args = tool_calls[0].get("function", {}).get("arguments", {})
+            reply = str(args.get("reply", "")).strip()
+            candidates_raw = args.get("entry_candidates", [])
+        else:
+            # tool_calls が空の場合は content をそのまま reply にする
+            reply = str(message.get("content", "")).strip()
+            candidates_raw = []
+
+        if not reply:
+            raise OllamaClientError("Ollama 応答に reply がありません")
+
+        if not isinstance(candidates_raw, list):
+            candidates_raw = []
 
         normalized: list[dict] = []
-        for item in candidates:
+        for item in candidates_raw:
             if not isinstance(item, dict):
                 continue
             normalized.append(
@@ -65,9 +108,6 @@ class OllamaClient:
                     "content": str(item.get("content", "")).strip(),
                 }
             )
-
-        if not reply:
-            raise OllamaClientError("Ollama 応答に reply がありません")
 
         return OllamaChatResult(reply=reply, entry_candidates=normalized)
 
@@ -97,22 +137,3 @@ class OllamaClient:
             "model": self._settings.ollama_model,
             "model_available": self._settings.ollama_model in available,
         }
-
-    def _build_prompt(self, messages: list[dict[str, str]]) -> str:
-        transcript = []
-        for message in messages[-12:]:
-            role = message.get("role", "user")
-            content = message.get("content", "")
-            transcript.append(f"{role}: {content}")
-
-        transcript_text = "\n".join(transcript)
-        return (
-            "あなたはライフログ支援AIです。日本語で短く自然に返答してください。\n"
-            "会話内容から、必要なら diary / event / todo / memo の候補を最大3件まで推定してください。\n"
-            "推定は確信が低ければ0件でよいです。\n"
-            "必ず JSON のみを返してください。説明文や markdown は不要です。\n"
-            '形式: {"reply":"...","entry_candidates":[{"type":"todo","title":"...","content":"..."}]}\n'
-            "type は diary / event / todo / memo のいずれかのみを使ってください。\n"
-            "会話履歴:\n"
-            f"{transcript_text}\n"
-        )

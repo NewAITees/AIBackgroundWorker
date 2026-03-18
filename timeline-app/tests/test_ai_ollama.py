@@ -1,6 +1,5 @@
 """OllamaClient のユニットテスト（requests をモック）"""
 
-import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -19,10 +18,39 @@ def make_client(**kwargs) -> OllamaClient:
     return OllamaClient(settings)
 
 
-def mock_response(body: dict) -> MagicMock:
+def mock_tool_response(reply: str, candidates: list[dict] | None = None) -> MagicMock:
+    """tool_calls 形式のモックレスポンスを返す。"""
     resp = MagicMock()
     resp.raise_for_status.return_value = None
-    resp.json.return_value = {"response": json.dumps(body)}
+    resp.json.return_value = {
+        "message": {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {
+                    "function": {
+                        "name": "save_entry_candidates",
+                        "arguments": {
+                            "reply": reply,
+                            "entry_candidates": candidates or [],
+                        },
+                    }
+                }
+            ],
+        },
+        "done": True,
+    }
+    return resp
+
+
+def mock_plain_response(content: str) -> MagicMock:
+    """tool_calls なしの通常テキスト応答モック（フォールバック用）。"""
+    resp = MagicMock()
+    resp.raise_for_status.return_value = None
+    resp.json.return_value = {
+        "message": {"role": "assistant", "content": content, "tool_calls": []},
+        "done": True,
+    }
     return resp
 
 
@@ -30,11 +58,13 @@ class TestGenerateChatReply:
     def test_returns_reply_and_candidates(self):
         client = make_client()
         messages = [{"role": "user", "content": "今日は病院に行った"}]
-        body = {
-            "reply": "お疲れ様でした。",
-            "entry_candidates": [{"type": "event", "title": "病院受診", "content": "病院に行った"}],
-        }
-        with patch("requests.post", return_value=mock_response(body)):
+        with patch(
+            "requests.post",
+            return_value=mock_tool_response(
+                "お疲れ様でした。",
+                [{"type": "event", "title": "病院受診", "content": "病院に行った"}],
+            ),
+        ):
             result = client.generate_chat_reply(messages)
 
         assert result.reply == "お疲れ様でした。"
@@ -43,23 +73,39 @@ class TestGenerateChatReply:
 
     def test_empty_candidates_ok(self):
         client = make_client()
-        body = {"reply": "了解です。", "entry_candidates": []}
-        with patch("requests.post", return_value=mock_response(body)):
+        with patch("requests.post", return_value=mock_tool_response("了解です。", [])):
             result = client.generate_chat_reply([{"role": "user", "content": "こんにちは"}])
         assert result.reply == "了解です。"
         assert result.entry_candidates == []
 
-    def test_missing_candidates_key_defaults_to_empty(self):
+    def test_fallback_to_content_when_no_tool_calls(self):
         client = make_client()
-        body = {"reply": "はい。"}
-        with patch("requests.post", return_value=mock_response(body)):
+        with patch("requests.post", return_value=mock_plain_response("テキスト応答です。")):
             result = client.generate_chat_reply([{"role": "user", "content": "x"}])
+        assert result.reply == "テキスト応答です。"
         assert result.entry_candidates == []
 
     def test_non_dict_candidate_is_ignored(self):
         client = make_client()
-        body = {"reply": "はい。", "entry_candidates": ["invalid", None, 42]}
-        with patch("requests.post", return_value=mock_response(body)):
+        resp = MagicMock()
+        resp.raise_for_status.return_value = None
+        resp.json.return_value = {
+            "message": {
+                "content": "",
+                "tool_calls": [
+                    {
+                        "function": {
+                            "name": "save_entry_candidates",
+                            "arguments": {
+                                "reply": "はい。",
+                                "entry_candidates": ["invalid", None, 42],
+                            },
+                        }
+                    }
+                ],
+            }
+        }
+        with patch("requests.post", return_value=resp):
             result = client.generate_chat_reply([{"role": "user", "content": "x"}])
         assert result.entry_candidates == []
 
@@ -71,55 +117,42 @@ class TestGenerateChatReply:
             with pytest.raises(OllamaClientError, match="Ollama への接続に失敗"):
                 client.generate_chat_reply([{"role": "user", "content": "x"}])
 
-    def test_invalid_json_response_raises_client_error(self):
-        client = make_client()
-        resp = MagicMock()
-        resp.raise_for_status.return_value = None
-        resp.json.return_value = {"response": "これはJSONではない"}
-        with patch("requests.post", return_value=resp):
-            with pytest.raises(OllamaClientError, match="JSON 解析に失敗"):
-                client.generate_chat_reply([{"role": "user", "content": "x"}])
-
     def test_empty_reply_raises_client_error(self):
         client = make_client()
-        body = {"reply": "", "entry_candidates": []}
-        with patch("requests.post", return_value=mock_response(body)):
+        with patch("requests.post", return_value=mock_tool_response("", [])):
             with pytest.raises(OllamaClientError, match="reply がありません"):
                 client.generate_chat_reply([{"role": "user", "content": "x"}])
 
     def test_history_is_truncated_to_12_messages(self):
         client = make_client()
         messages = [{"role": "user", "content": str(i)} for i in range(20)]
-        body = {"reply": "ok", "entry_candidates": []}
         captured = {}
 
         def capture(url, json, timeout):  # noqa: A002
             captured["payload"] = json
-            return mock_response(body)
+            return mock_tool_response("ok")
 
         with patch("requests.post", side_effect=capture):
             client.generate_chat_reply(messages)
 
-        # プロンプト内に最大12件分のメッセージが含まれる
-        prompt = captured["payload"]["prompt"]
-        # 最後の12件のみ使われるので、先頭のメッセージは含まれない
-        assert "user: 0" not in prompt
-        assert "user: 19" in prompt
+        sent_messages = captured["payload"]["messages"]
+        assert len(sent_messages) == 12
+        assert sent_messages[0]["content"] == "8"
+        assert sent_messages[-1]["content"] == "19"
 
-    def test_prompt_contains_json_format_instruction(self):
+    def test_tools_parameter_is_sent(self):
         client = make_client()
-        body = {"reply": "ok", "entry_candidates": []}
         captured = {}
 
         def capture(url, json, timeout):  # noqa: A002
             captured["payload"] = json
-            return mock_response(body)
+            return mock_tool_response("ok")
 
         with patch("requests.post", side_effect=capture):
             client.generate_chat_reply([{"role": "user", "content": "test"}])
 
-        assert "JSON" in captured["payload"]["prompt"]
-        assert captured["payload"]["format"] == "json"
+        assert "tools" in captured["payload"]
+        assert captured["payload"]["tools"][0]["function"]["name"] == "save_entry_candidates"
 
 
 class TestCheckHealth:

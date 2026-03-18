@@ -123,13 +123,36 @@ class TestTimeline:
         assert len(resp.json()["entries"]) >= 1
 
 
+def _chat_mock(reply: str, candidates: list | None = None):
+    """Ollama /api/chat tool_calls 形式のモックを返す。"""
+    from unittest.mock import MagicMock
+
+    m = MagicMock()
+    m.raise_for_status.return_value = None
+    m.json.return_value = {
+        "message": {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {
+                    "function": {
+                        "name": "save_entry_candidates",
+                        "arguments": {
+                            "reply": reply,
+                            "entry_candidates": candidates or [],
+                        },
+                    }
+                }
+            ],
+        },
+        "done": True,
+    }
+    return m
+
+
 class TestChat:
     def test_returns_reply(self, client: TestClient):
-        with patch("src.ai.ollama_client.requests.post") as mock_post:
-            mock_post.return_value.raise_for_status.return_value = None
-            mock_post.return_value.json.return_value = {
-                "response": '{"reply":"了解です。","entry_candidates":[]}'
-            }
+        with patch("src.ai.ollama_client.requests.post", return_value=_chat_mock("了解です。")):
             resp = client.post("/api/chat", json={"content": "今日やることを整理したい"})
         assert resp.status_code == 200
         data = resp.json()
@@ -138,11 +161,7 @@ class TestChat:
         assert "entry_candidates" in data
 
     def test_thread_id_preserved(self, client: TestClient):
-        with patch("src.ai.ollama_client.requests.post") as mock_post:
-            mock_post.return_value.raise_for_status.return_value = None
-            mock_post.return_value.json.return_value = {
-                "response": '{"reply":"続きです。","entry_candidates":[]}'
-            }
+        with patch("src.ai.ollama_client.requests.post", return_value=_chat_mock("続きです。")):
             resp = client.post("/api/chat", json={"content": "続き", "thread_id": "thread-test-001"})
         assert resp.json()["thread_id"] == "thread-test-001"
 
@@ -154,21 +173,21 @@ class TestChat:
         assert resp.status_code == 502
 
     def test_entry_candidates_returned(self, client: TestClient):
-        with patch("src.ai.ollama_client.requests.post") as mock_post:
-            mock_post.return_value.raise_for_status.return_value = None
-            mock_post.return_value.json.return_value = {
-                "response": '{"reply":"記録しますね。","entry_candidates":[{"type":"todo","title":"返信する","content":"A社へ返信"}]}'
-            }
+        candidates = [{"type": "todo", "title": "返信する", "content": "A社へ返信"}]
+        with patch(
+            "src.ai.ollama_client.requests.post",
+            return_value=_chat_mock("記録しますね。", candidates),
+        ):
             resp = client.post("/api/chat", json={"content": "A社へ返信しないといけない"})
         data = resp.json()
         assert len(data["entry_candidates"]) == 1
         assert data["entry_candidates"][0]["type"] == "todo"
 
     def test_invalid_candidate_type_is_filtered(self, client: TestClient):
-        with patch("src.ai.ollama_client.requests.post") as mock_post:
-            mock_post.return_value.raise_for_status.return_value = None
-            mock_post.return_value.json.return_value = {
-                "response": '{"reply":"はい。","entry_candidates":[{"type":"invalid_type","content":"x"}]}'
-            }
+        candidates = [{"type": "invalid_type", "content": "x"}]
+        with patch(
+            "src.ai.ollama_client.requests.post",
+            return_value=_chat_mock("はい。", candidates),
+        ):
             resp = client.post("/api/chat", json={"content": "テスト"})
         assert resp.json()["entry_candidates"] == []
