@@ -223,3 +223,10 @@ lifelog-system/windows_logger.pid
 
 # Serena
 .serena/
+
+# timeline-app ローカル設定（YellowMable パスなどを含むため git 管理外）
+timeline-app/config.yaml
+
+# timeline-app 生成データ（git管理外）
+timeline-app/daily/
+timeline-app/articles/
