@@ -53,6 +53,33 @@ systemctl daemon-reload
 systemctl enable brave-history-poller.timer
 echo "  ✓ brave-history-poller.service and timer installed and enabled"
 
+# Install info collector service and timer
+echo ""
+echo "Installing info-collector service and timer..."
+cp "$SCRIPT_DIR/info-collector.service" "$SYSTEMD_DIR/"
+cp "$SCRIPT_DIR/info-collector.timer" "$SYSTEMD_DIR/"
+systemctl daemon-reload
+systemctl enable info-collector.timer
+echo "  ✓ info-collector.service and timer installed and enabled"
+
+# Install integrated pipeline service and timer
+echo ""
+echo "Installing info-integrated service and timer..."
+cp "$SCRIPT_DIR/info-integrated.service" "$SYSTEMD_DIR/"
+cp "$SCRIPT_DIR/info-integrated.timer" "$SYSTEMD_DIR/"
+systemctl daemon-reload
+systemctl enable info-integrated.timer
+echo "  ✓ info-integrated.service and timer installed and enabled"
+
+# Install report generator service and timer
+echo ""
+echo "Installing info-report service and timer..."
+cp "$SCRIPT_DIR/info-report.service" "$SYSTEMD_DIR/"
+cp "$SCRIPT_DIR/info-report.timer" "$SYSTEMD_DIR/"
+systemctl daemon-reload
+systemctl enable info-report.timer
+echo "  ✓ info-report.service and timer installed and enabled"
+
 echo ""
 echo "All services and timers installed successfully!"
 echo ""
@@ -60,14 +87,23 @@ echo "To start services:"
 echo "  sudo systemctl start lifelog-daemon.service"
 echo "  sudo systemctl start merge-windows-logs.timer"
 echo "  sudo systemctl start brave-history-poller.timer"
+echo "  sudo systemctl start info-collector.timer"
+echo "  sudo systemctl start info-integrated.timer"
+echo "  sudo systemctl start info-report.timer"
 echo ""
 echo "To check status:"
 echo "  sudo systemctl status lifelog-daemon.service"
 echo "  sudo systemctl status merge-windows-logs.timer"
 echo "  sudo systemctl status brave-history-poller.timer"
+echo "  sudo systemctl status info-collector.timer"
+echo "  sudo systemctl status info-integrated.timer"
+echo "  sudo systemctl status info-report.timer"
 echo ""
 echo "To view logs:"
 echo "  sudo journalctl -u lifelog-daemon.service -f"
 echo "  sudo journalctl -u merge-windows-logs.service -f"
 echo "  sudo journalctl -u brave-history-poller.service -f"
+echo "  sudo journalctl -u info-collector.service -f"
+echo "  sudo journalctl -u info-integrated.service -f"
+echo "  sudo journalctl -u info-report.service -f"
 echo "  tail -f /home/perso/analysis/AIBackgroundWorker/logs/brave_poll.log"

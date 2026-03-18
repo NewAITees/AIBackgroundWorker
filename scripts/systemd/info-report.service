@@ -6,7 +6,7 @@ After=network-online.target
 Type=oneshot
 WorkingDirectory=/home/perso/analysis/AIBackgroundWorker
 Environment="PATH=/home/perso/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-ExecStart=/home/perso/analysis/AIBackgroundWorker/scripts/info_collector/generate_report.sh --hours 24
+ExecStart=/usr/bin/bash -c '/home/perso/analysis/AIBackgroundWorker/scripts/info_collector/generate_report.sh --date "$(date -d yesterday +%%Y-%%m-%%d)"'
 
 [Install]
 WantedBy=multi-user.target

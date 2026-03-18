@@ -1,8 +1,8 @@
 [Unit]
-Description=Run AIBackgroundWorker Daily Report Generator at 6:00 AM
+Description=Run AIBackgroundWorker Daily Report Generator at 00:40 (previous day)
 
 [Timer]
-OnCalendar=*-*-* 06:00:00
+OnCalendar=*-*-* 00:40:00
 Persistent=true
 Unit=info-report.service
 
