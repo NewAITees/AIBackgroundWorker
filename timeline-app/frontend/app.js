@@ -6,6 +6,9 @@ const state = {
   chatThreadId: null,
   editMode: false,
   initialScrollDone: false,
+  oldestTimestamp: null,
+  newestTimestamp: null,
+  loadingMore: false,
 };
 
 const refs = {};
@@ -57,6 +60,7 @@ function bindEvents() {
   refs.jumpNow.addEventListener("click", () => {
     refs.nowAnchor.scrollIntoView({ behavior: "smooth", block: "center" });
   });
+  setupInfiniteScroll();
 }
 
 async function api(path, options = {}) {
@@ -153,6 +157,12 @@ function renderTimeline() {
   }
   for (const entry of future.sort(sortByTimeAsc)) {
     refs.futureList.appendChild(buildEntryCard(entry));
+  }
+
+  if (state.entries.length > 0) {
+    const sorted = [...state.entries].sort(sortByTimeAsc);
+    state.oldestTimestamp = sorted[0].timestamp;
+    state.newestTimestamp = sorted[sorted.length - 1].timestamp;
   }
 }
 
@@ -299,22 +309,87 @@ function renderCandidates(candidates) {
 async function createCandidateEntry(candidate) {
   refs.chatStatus.textContent = `${candidate.type} を保存中...`;
   try {
-    await api("/api/entries", {
-      method: "POST",
-      body: JSON.stringify({
-        type: candidate.type,
-        title: candidate.title,
-        content: candidate.content,
-        source: "ai",
-        meta: {
-          thread_id: state.chatThreadId,
-        },
-      }),
-    });
+    const body = {
+      type: candidate.type,
+      title: candidate.title,
+      content: candidate.content,
+      source: "ai",
+      meta: { thread_id: state.chatThreadId },
+    };
+    if (candidate.timestamp) {
+      body.timestamp = candidate.timestamp;
+    }
+    await api("/api/entries", { method: "POST", body: JSON.stringify(body) });
     refs.chatStatus.textContent = `${candidate.type} を保存しました`;
     await loadTimeline();
   } catch (error) {
     refs.chatStatus.textContent = error.message;
+  }
+}
+
+function setupInfiniteScroll() {
+  // past-list の先頭に sentinel を置いて「過去をもっと読む」
+  const topSentinel = document.createElement("div");
+  topSentinel.id = "sentinel-top";
+  refs.pastList.prepend(topSentinel);
+
+  // future-list の末尾に sentinel を置いて「未来をもっと読む」
+  const bottomSentinel = document.createElement("div");
+  bottomSentinel.id = "sentinel-bottom";
+  refs.futureList.append(bottomSentinel);
+
+  const observer = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting || state.loadingMore) continue;
+        if (entry.target.id === "sentinel-top") loadMorePast();
+        if (entry.target.id === "sentinel-bottom") loadMoreFuture();
+      }
+    },
+    { rootMargin: "200px" }
+  );
+
+  observer.observe(topSentinel);
+  observer.observe(bottomSentinel);
+}
+
+async function loadMorePast() {
+  if (!state.oldestTimestamp || !state.workspace?.opened) return;
+  state.loadingMore = true;
+  try {
+    const around = new Date(state.oldestTimestamp).toISOString();
+    const res = await api(`/api/timeline?around=${encodeURIComponent(around)}&before=24&after=0`);
+    const incoming = (res.entries || []).filter(
+      (e) => !state.entries.some((ex) => ex.id === e.id)
+    );
+    if (incoming.length > 0) {
+      state.entries = [...incoming, ...state.entries];
+      renderTimeline();
+    }
+  } catch (_) {
+    // サイレント失敗
+  } finally {
+    state.loadingMore = false;
+  }
+}
+
+async function loadMoreFuture() {
+  if (!state.newestTimestamp || !state.workspace?.opened) return;
+  state.loadingMore = true;
+  try {
+    const around = new Date(state.newestTimestamp).toISOString();
+    const res = await api(`/api/timeline?around=${encodeURIComponent(around)}&before=0&after=24`);
+    const incoming = (res.entries || []).filter(
+      (e) => !state.entries.some((ex) => ex.id === e.id)
+    );
+    if (incoming.length > 0) {
+      state.entries = [...state.entries, ...incoming];
+      renderTimeline();
+    }
+  } catch (_) {
+    // サイレント失敗
+  } finally {
+    state.loadingMore = false;
   }
 }
 

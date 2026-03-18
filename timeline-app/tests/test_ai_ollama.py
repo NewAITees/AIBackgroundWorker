@@ -136,8 +136,10 @@ class TestGenerateChatReply:
             client.generate_chat_reply(messages)
 
         sent_messages = captured["payload"]["messages"]
-        assert len(sent_messages) == 12
-        assert sent_messages[0]["content"] == "8"
+        # system メッセージ 1 件 + 会話 12 件 = 13 件
+        assert len(sent_messages) == 13
+        assert sent_messages[0]["role"] == "system"
+        assert sent_messages[1]["content"] == "8"
         assert sent_messages[-1]["content"] == "19"
 
     def test_tools_parameter_is_sent(self):

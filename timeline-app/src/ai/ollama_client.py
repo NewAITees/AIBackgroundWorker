@@ -6,6 +6,8 @@ qwen3 / qwen2.5 等の tool use 対応モデルが前提。
 
 from __future__ import annotations
 
+import json
+import re
 from dataclasses import dataclass
 
 import requests
@@ -36,6 +38,14 @@ _TOOL_DEF = {
                             },
                             "title": {"type": "string"},
                             "content": {"type": "string"},
+                            "timestamp": {
+                                "type": "string",
+                                "description": (
+                                    "ISO 8601 形式の日時。未来の予定・TODO の場合は必ず設定する。"
+                                    "例: 明日15時 → 翌日の 15:00:00+09:00。"
+                                    "過去の出来事や時刻不明な場合は省略可。"
+                                ),
+                            },
                         },
                         "required": ["type", "content"],
                     },
@@ -69,7 +79,19 @@ class OllamaClient:
         self._settings = settings
 
     def generate_chat_reply(self, messages: list[dict[str, str]]) -> OllamaChatResult:
-        args, fallback_content = self._chat_with_tools(messages[-12:], [_TOOL_DEF])
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc).astimezone()
+        system_msg = {
+            "role": "system",
+            "content": (
+                "あなたはライフログ支援AIです。日本語で短く自然に返答してください。\n"
+                f"現在日時: {now.strftime('%Y-%m-%d %H:%M %Z')}（この日時を基準に「明日」「来週」等を解釈すること）\n"
+                "timestamp を設定する場合は ISO 8601 形式で、タイムゾーンオフセットを必ず付けること。"
+            ),
+        }
+        payload_messages = [system_msg, *messages[-12:]]
+        args, fallback_content = self._chat_with_tools(payload_messages, [_TOOL_DEF])
         reply = str(args.get("reply", "")).strip() or fallback_content
         candidates_raw = args.get("entry_candidates", [])
 
@@ -83,11 +105,13 @@ class OllamaClient:
         for item in candidates_raw:
             if not isinstance(item, dict):
                 continue
+            ts = item.get("timestamp")
             normalized.append(
                 {
                     "type": str(item.get("type", "")).strip(),
                     "title": str(item.get("title", "")).strip() or None,
                     "content": str(item.get("content", "")).strip(),
+                    "timestamp": str(ts).strip() if ts else None,
                 }
             )
 
@@ -204,4 +228,26 @@ class OllamaClient:
             args = tool_calls[0].get("function", {}).get("arguments", {})
             if isinstance(args, dict):
                 return args, str(message.get("content", "")).strip()
-        return {}, str(message.get("content", "")).strip()
+        fallback_content = str(message.get("content", "")).strip()
+        parsed = self._parse_tool_markup(fallback_content)
+        return parsed, fallback_content
+
+    def _parse_tool_markup(self, content: str) -> dict:
+        """
+        qwen 系が tool_calls をネイティブで返さず、
+        content に {"name": ..., "arguments": {...}} を埋める場合を救済する。
+        """
+        if not content:
+            return {}
+
+        candidates = re.findall(r"\{.*\}", content, flags=re.DOTALL)
+        for candidate in reversed(candidates):
+            try:
+                payload = json.loads(candidate)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(payload, dict):
+                arguments = payload.get("arguments")
+                if isinstance(arguments, dict):
+                    return arguments
+        return {}
