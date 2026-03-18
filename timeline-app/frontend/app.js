@@ -5,6 +5,7 @@ const state = {
   selectedEntry: null,
   chatThreadId: null,
   editMode: false,
+  initialScrollDone: false,
 };
 
 const refs = {};
@@ -128,6 +129,10 @@ async function loadTimeline() {
     state.entries = response.entries || [];
     renderTimeline();
     refs.timelineStatus.textContent = `${state.entries.length} 件を表示`;
+    if (!state.initialScrollDone) {
+      state.initialScrollDone = true;
+      refs.nowAnchor.scrollIntoView({ behavior: "instant", block: "center" });
+    }
   } catch (error) {
     state.entries = [];
     renderTimeline();
@@ -160,6 +165,7 @@ function buildEntryCard(entry) {
   const titleEl = node.querySelector(".entry-title");
   const contentEl = node.querySelector(".entry-content");
 
+  node.dataset.type = entry.type;
   typeEl.textContent = entry.type;
   typeEl.dataset.type = entry.type;
   timeEl.textContent = formatDateTime(entry.timestamp);

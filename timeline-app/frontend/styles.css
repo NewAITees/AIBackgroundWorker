@@ -179,11 +179,21 @@ button {
 
 .entry-card-button {
   padding: 18px;
+  border-left: 4px solid var(--line);
+  border-radius: 22px;
 }
 
 .entry-card-button:hover {
   transform: translateY(-1px);
 }
+
+.entry-card[data-type="event"] .entry-card-button  { border-left-color: var(--event); }
+.entry-card[data-type="diary"] .entry-card-button  { border-left-color: var(--diary); }
+.entry-card[data-type="todo"] .entry-card-button   { border-left-color: var(--todo); }
+.entry-card[data-type="news"] .entry-card-button   { border-left-color: var(--news); }
+.entry-card[data-type="memo"] .entry-card-button   { border-left-color: var(--chat); }
+.entry-card[data-type="chat_ai"] .entry-card-button,
+.entry-card[data-type="chat_user"] .entry-card-button { border-left-color: var(--chat); }
 
 .entry-card-top {
   display: flex;

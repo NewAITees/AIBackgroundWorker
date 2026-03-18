@@ -1,7 +1,7 @@
 """entry CRUD API。Markdown ファイルを正本として扱う。"""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, time, timezone
 from fastapi import APIRouter, HTTPException
 
 from ..config import config
@@ -21,12 +21,20 @@ async def create_entry(req: EntryCreate):
     workspace_path = workspace["path"]
 
     entry_id = f"{datetime.now(timezone.utc).isoformat()}-{req.type.value}-{uuid.uuid4().hex[:6]}"
+    now = datetime.now(timezone.utc)
+    if req.timestamp:
+        timestamp = req.timestamp
+    elif req.type.value == "todo":
+        timestamp = datetime.combine(now.date(), time(23, 59), tzinfo=timezone.utc)
+    else:
+        timestamp = now
+
     entry = Entry(
         id=entry_id,
         type=req.type,
         title=req.title,
         content=req.content,
-        timestamp=req.timestamp or datetime.now(timezone.utc),
+        timestamp=timestamp,
         source=req.source,
         workspace_path=workspace_path,
         links=req.links,
