@@ -9,9 +9,12 @@ from src.models.entry import Entry, EntryMeta, EntrySource, EntryStatus, EntryTy
 from src.storage.common import (
     backup_existing_file,
     entry_to_daily_block,
+    entry_to_daily_record,
+    ensure_entry_summary,
     entry_to_record,
     iter_dates,
     parse_yaml_block,
+    summarize_text,
 )
 
 
@@ -31,6 +34,61 @@ def make_entry(**kwargs) -> Entry:
     )
     defaults.update(kwargs)
     return Entry(**defaults)
+
+
+class TestSummarizeText:
+    def test_short_text_unchanged(self):
+        assert summarize_text("短いテキスト") == "短いテキスト"
+
+    def test_long_text_truncated(self):
+        long = "あ" * 200
+        result = summarize_text(long)
+        assert len(result) <= 120
+        assert result.endswith("…")
+
+    def test_exactly_at_limit_not_truncated(self):
+        text = "あ" * 120
+        assert summarize_text(text) == text
+
+    def test_whitespace_normalized(self):
+        result = summarize_text("行1\n\n行2\n行3")
+        assert "\n" not in result
+        assert result == "行1 行2 行3"
+
+
+class TestEnsureEntrySummary:
+    def test_fills_summary_from_content(self):
+        entry = make_entry(summary=None, content="サマリーのない本文")
+        result = ensure_entry_summary(entry)
+        assert result.summary == "サマリーのない本文"
+
+    def test_preserves_existing_summary(self):
+        entry = make_entry(summary="既存サマリー")
+        result = ensure_entry_summary(entry)
+        assert result.summary == "既存サマリー"
+
+    def test_does_not_mutate_original(self):
+        entry = make_entry(summary=None, content="本文")
+        ensure_entry_summary(entry)
+        assert entry.summary is None
+
+
+class TestEntryToDailyRecord:
+    def test_content_not_in_record(self):
+        entry = make_entry(content="長い本文がここに入る")
+        record = entry_to_daily_record(entry)
+        assert "content" not in record
+
+    def test_summary_generated_from_content_when_missing(self):
+        entry = make_entry(summary=None, content="本文からサマリーを生成する")
+        record = entry_to_daily_record(entry)
+        assert record["summary"] == "本文からサマリーを生成する"
+
+    def test_id_and_type_preserved(self):
+        entry = make_entry()
+        record = entry_to_daily_record(entry)
+        assert record["id"] == entry.id
+        assert record["type"] == "diary"
 
 
 class TestEntryToRecord:

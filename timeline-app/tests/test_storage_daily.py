@@ -7,6 +7,7 @@ from src.storage.daily_reader import read_daily_entries, read_timeline_entries
 from src.storage.daily_writer import (
     build_daily_content,
     ensure_daily_file,
+    normalize_daily_file,
     remove_entry_from_daily,
     upsert_entry_in_daily,
 )
@@ -173,8 +174,42 @@ class TestReadTimelineEntries:
         assert entry_day1.id in ids
         assert entry_day2.id in ids
 
+    def test_content_filled_from_summary_when_missing(self, tmp_path):
+        """daily YAML に content がない場合、summary から補完されること（critical bug fix）"""
+        from datetime import date
+
+        from src.storage.common import daily_path
+
+        ensure_daily_file(str(tmp_path), "daily", date(2026, 3, 18))
+        path = daily_path(str(tmp_path), "daily", date(2026, 3, 18))
+        # content なし・summary あり の YAML ブロックを手書きで挿入
+        yaml_block = (
+            "```yaml\n"
+            "id: test-no-content\n"
+            "type: diary\n"
+            "title: テスト\n"
+            "summary: サマリーのみ\n"
+            "timestamp: '2026-03-18T10:00:00+00:00'\n"
+            "status: active\n"
+            "source: user\n"
+            "workspace_path: /ws\n"
+            "links: []\n"
+            "related_ids: []\n"
+            "meta: {}\n"
+            "```\n"
+        )
+        raw = path.read_text(encoding="utf-8")
+        raw = raw.replace("## 10:00\n\n", f"## 10:00\n\n{yaml_block}\n")
+        path.write_text(raw, encoding="utf-8")
+
+        entries = read_daily_entries(str(tmp_path), "daily", date(2026, 3, 18))
+        found = next((e for e in entries if e.id == "test-no-content"), None)
+        assert found is not None
+        assert found.content == "サマリーのみ"
+
     def test_results_sorted_by_timestamp(self, tmp_path):
         entries_to_write = [make_entry(hour=h, workspace_path=str(tmp_path)) for h in [14, 10, 12]]
+
         for e in entries_to_write:
             upsert_entry_in_daily(str(tmp_path), "daily", e)
 
@@ -183,3 +218,55 @@ class TestReadTimelineEntries:
         results = read_timeline_entries(str(tmp_path), "daily", start, end)
         timestamps = [e.timestamp for e in results]
         assert timestamps == sorted(timestamps)
+
+
+class TestNormalizeDailyFile:
+    def test_removes_content_from_old_format_blocks(self, tmp_path):
+        """content を含む旧フォーマットのブロックが summary 投影形式へ変換されること"""
+        from datetime import date
+
+        from src.storage.common import daily_path
+
+        ensure_daily_file(str(tmp_path), "daily", date(2026, 3, 18))
+        path = daily_path(str(tmp_path), "daily", date(2026, 3, 18))
+        # content あり の古いフォーマットを手書きで挿入
+        old_block = (
+            "```yaml\n"
+            "id: old-format-id\n"
+            "type: diary\n"
+            "summary: 短いサマリー\n"
+            "content: 長い本文がここに入る\n"
+            "timestamp: '2026-03-18T10:00:00+00:00'\n"
+            "status: active\n"
+            "source: user\n"
+            "workspace_path: /ws\n"
+            "links: []\n"
+            "related_ids: []\n"
+            "meta: {}\n"
+            "```\n"
+        )
+        raw = path.read_text(encoding="utf-8")
+        raw = raw.replace("## 10:00\n\n", f"## 10:00\n\n{old_block}\n")
+        path.write_text(raw, encoding="utf-8")
+
+        normalize_daily_file(str(tmp_path), "daily", date(2026, 3, 18))
+
+        normalized = path.read_text(encoding="utf-8")
+        assert "長い本文がここに入る" not in normalized
+        assert "old-format-id" in normalized
+
+    def test_idempotent(self, tmp_path):
+        """normalize を2回かけても結果が変わらないこと"""
+        from datetime import date
+
+        entry = make_entry(hour=10, workspace_path=str(tmp_path))
+        upsert_entry_in_daily(str(tmp_path), "daily", entry)
+
+        normalize_daily_file(str(tmp_path), "daily", date(2026, 3, 18))
+        path = tmp_path / "daily" / "2026-03-18.md"
+        text_first = path.read_text(encoding="utf-8")
+
+        normalize_daily_file(str(tmp_path), "daily", date(2026, 3, 18))
+        text_second = path.read_text(encoding="utf-8")
+
+        assert text_first == text_second

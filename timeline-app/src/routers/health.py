@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from ..ai.ollama_client import OllamaClient
 from ..config import config
 from ..routers.workspace import peek_workspace
+from ..workers.scheduler import get_scheduler_status
 
 router = APIRouter()
 
@@ -20,4 +21,7 @@ async def health():
             "subdirs": workspace.get("subdirs", {}) if workspace else {},
         },
         "ollama": ollama,
+        "workers": {
+            "scheduler": get_scheduler_status(),
+        },
     }

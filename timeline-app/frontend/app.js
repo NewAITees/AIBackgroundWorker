@@ -9,6 +9,8 @@ const state = {
   oldestTimestamp: null,
   newestTimestamp: null,
   loadingMore: false,
+  noMorePast: false,
+  noMoreFuture: false,
 };
 
 const refs = {};
@@ -95,7 +97,7 @@ async function refreshWorkspace() {
 
 function renderWorkspace() {
   if (!state.workspace?.opened) {
-    refs.workspaceSummary.textContent = "ワークスペース未設定";
+    refs.workspaceSummary.textContent = "未設定";
     refs.workspaceEmpty.classList.remove("hidden");
     refs.timelineRoot.classList.add("hidden");
     return;
@@ -103,7 +105,7 @@ function renderWorkspace() {
 
   refs.workspaceEmpty.classList.add("hidden");
   refs.timelineRoot.classList.remove("hidden");
-  refs.workspaceSummary.textContent = `${state.workspace.mode} | ${state.workspace.path}`;
+  refs.workspaceSummary.textContent = `${state.workspace.mode}\n${state.workspace.path}`;
 }
 
 async function openWorkspace() {
@@ -128,6 +130,8 @@ async function openWorkspace() {
 
 async function loadTimeline() {
   refs.timelineStatus.textContent = "タイムライン読込中...";
+  state.noMorePast = false;
+  state.noMoreFuture = false;
   try {
     const response = await api("/api/timeline");
     state.entries = response.entries || [];
@@ -145,6 +149,10 @@ async function loadTimeline() {
 }
 
 function renderTimeline() {
+  // sentinel を退避（innerHTML クリアで消えるのを防ぐ）
+  const topSentinel = document.getElementById("sentinel-top");
+  const bottomSentinel = document.getElementById("sentinel-bottom");
+
   refs.pastList.innerHTML = "";
   refs.futureList.innerHTML = "";
 
@@ -158,6 +166,10 @@ function renderTimeline() {
   for (const entry of future.sort(sortByTimeAsc)) {
     refs.futureList.appendChild(buildEntryCard(entry));
   }
+
+  // sentinel を再挿入（observer は同じ要素を observe し続けるので再登録不要）
+  if (topSentinel) refs.pastList.prepend(topSentinel);
+  if (bottomSentinel) refs.futureList.append(bottomSentinel);
 
   if (state.entries.length > 0) {
     const sorted = [...state.entries].sort(sortByTimeAsc);
@@ -354,7 +366,7 @@ function setupInfiniteScroll() {
 }
 
 async function loadMorePast() {
-  if (!state.oldestTimestamp || !state.workspace?.opened) return;
+  if (!state.oldestTimestamp || !state.workspace?.opened || state.loadingMore || state.noMorePast) return;
   state.loadingMore = true;
   try {
     const around = new Date(state.oldestTimestamp).toISOString();
@@ -365,6 +377,8 @@ async function loadMorePast() {
     if (incoming.length > 0) {
       state.entries = [...incoming, ...state.entries];
       renderTimeline();
+    } else {
+      state.noMorePast = true;
     }
   } catch (_) {
     // サイレント失敗
@@ -374,7 +388,7 @@ async function loadMorePast() {
 }
 
 async function loadMoreFuture() {
-  if (!state.newestTimestamp || !state.workspace?.opened) return;
+  if (!state.newestTimestamp || !state.workspace?.opened || state.loadingMore || state.noMoreFuture) return;
   state.loadingMore = true;
   try {
     const around = new Date(state.newestTimestamp).toISOString();
@@ -385,6 +399,8 @@ async function loadMoreFuture() {
     if (incoming.length > 0) {
       state.entries = [...state.entries, ...incoming];
       renderTimeline();
+    } else {
+      state.noMoreFuture = true;
     }
   } catch (_) {
     // サイレント失敗

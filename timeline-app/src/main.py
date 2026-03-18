@@ -3,6 +3,7 @@ timeline-app FastAPI エントリポイント
 要件書 21.1.2 の M1 最小 API セット
 """
 
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -11,8 +12,20 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .routers import health, workspace, timeline, entries, chat
+from .workers.scheduler import shutdown_scheduler, start_scheduler
 
-app = FastAPI(title="Timeline App", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    """FastAPI 起動時に scheduler を開始し、終了時に停止する。"""
+    start_scheduler()
+    try:
+        yield
+    finally:
+        shutdown_scheduler()
+
+
+app = FastAPI(title="Timeline App", version="0.1.0", lifespan=lifespan)
 _FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
 app.add_middleware(

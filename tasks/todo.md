@@ -79,6 +79,11 @@
   - AI 応答を `chat_ai` entry として自動保存する
 - [x] AI が入力内容の種別（diary / event / todo / memo）を推定し `entry_candidates` に返す
   - 推定は Ollama へのプロンプトで行う（ルールベース不要）
+- [x] Ollama を `/api/generate` + JSON から `/api/chat` + tool use（function calling）に切り替え
+  - レスポンスが `tool_calls[0].function.arguments` に構造化されるため JSON 解析不要になり安定
+- [x] AI system メッセージに現在日時を注入し「明日」「来週」等の相対表現を正しく解釈させる
+- [x] `entry_candidates` に `timestamp` フィールドを追加し、AI が未来日時を指定できるようにする
+  - 候補確定時にフロントがそのまま `POST /api/entries` に timestamp を渡す
 
 ---
 
@@ -99,8 +104,10 @@
 - [x] `GET /api/timeline` を叩いてカード一覧を縦に表示する
 - [x] 上が過去・下が未来の順で表示する（要件書 §4.2）
 - [x] 現在位置に「Now」ラベルを表示する
+- [x] 初回ロード時に「Now」位置へ自動スクロールする（IntersectionObserver + `initialScrollDone` フラグ）
 - [x] 種別ごとに色・バッジで判別できるようにする（要件書 §5.7）
   - chat: 中立色 / diary: 暖色 / event: 青 / todo: 橙 / news: 寒色
+- [x] カード種別ごとに左ボーダー色 + 背景色ティント（7%不透明度）を付与して視認性向上
 
 ### 3-3. 右ペイン
 
@@ -113,6 +120,8 @@
 - [x] 現在地点の `Now` スロットにチャット入力欄を表示する（要件調整）
 - [x] 送信すると `POST /api/chat` を叩き、AI 応答をタイムラインに追加する
 - [x] AI が返す `entry_candidates` をボタンで確定できるようにする（「TODOにする」「日記にする」等）
+- [x] TODO type は デフォルト timestamp を当日 23:59 UTC に設定し、常に未来セクションに表示する
+      → `routers/entries.py` で `req.type == "todo"` のとき `datetime.combine(now.date(), time(23, 59))`
 
 ### 3-5. 補助操作
 
@@ -131,6 +140,65 @@
 
 ---
 
+## フェーズ4.5: lifelog-system → timeline-app バックグラウンドワーカー移行（次に着手）
+
+> 方針: 既存の `lifelog-system/` は壊さない。`timeline-app/` 側に APScheduler を導入し、
+> lifelog-system のコードを **インポートして呼び出す** 形で統合する。
+> 移行完了後に `scripts/daemon.sh` を廃止し、`start.sh` 1本で全体が起動する状態にする。
+
+### 4.5-1. 基盤整備
+
+- [x] `apscheduler` を `pyproject.toml` に追加し `uv sync`
+- [x] `timeline-app/src/workers/` ディレクトリを作成
+- [x] `timeline-app/src/workers/scheduler.py` — APScheduler (AsyncIOScheduler) の初期化と起動
+- [x] `main.py` の lifespan に scheduler の start/stop を組み込む
+- [x] `GET /api/health` にワーカー稼働状態を追加
+
+### 4.5-2. PC活動監視ワーカー（常駐）
+
+> 参照: `lifelog-system/src/lifelog/main_collector.py`、`activity_collector.py`
+
+- [ ] `timeline-app/src/workers/activity_worker.py` を作成
+  - lifelog-system の `ActivityCollector` を `asyncio.to_thread()` でスレッド実行
+  - 収集した activity_intervals を `system_log` entry として timeline に保存
+- [ ] 既存 `lifelog-system` の SQLite DB はそのまま維持（書き込み先は変えない）
+- [ ] `scripts/daemon.sh` の lifelog 起動部分を `start.sh` に統合
+
+### 4.5-3. ブラウザ履歴インポートワーカー（毎時）
+
+> 参照: `lifelog-system/src/browser_history/`
+
+- [ ] `timeline-app/src/workers/browser_worker.py` を作成
+  - Brave/Chrome 履歴を毎時インポート
+  - 新規エントリのみ `imported` 種別 entry として timeline に追加
+
+### 4.5-4. RSS・ニュース収集ワーカー（毎時）
+
+> 参照: `lifelog-system/src/info_collector/auto_runner.py`
+
+- [ ] `timeline-app/src/workers/info_worker.py` を作成
+  - RSS / ニュース収集を毎時実行
+  - 収集結果を `news` entry として timeline に保存
+- [ ] `info_collector` の設定（フィードURL等）を `timeline-app/config.yaml` で管理できるようにする
+
+### 4.5-5. AI 日次レポート・日記自動生成ワーカー（日次）
+
+> 参照: `lifelog-system/src/info_collector/jobs/`、`ai_secretary/`
+
+- [ ] `timeline-app/src/workers/report_worker.py` を作成
+  - 前日分の activity + browser + news を集計
+  - Ollama に渡して日記 entry と日次レポート entry を自動生成
+  - 生成結果を `diary` entry として timeline に保存
+- [ ] 生成タイミング: 毎日 AM 6:00（設定可能）
+
+### 4.5-6. 移行完了・旧デーモン廃止
+
+- [ ] `scripts/start.sh` で timeline-app を起動すれば全ワーカーも起動することを確認
+- [ ] `scripts/daemon.sh` の README に「timeline-app に統合済み」と記載
+- [ ] `tasks/lessons.md` に移行の設計判断を記録
+
+---
+
 ## フェーズ5: M2 実用化（着手はM1完了後）
 
 > 参照: 要件書 §21.2
@@ -142,7 +210,8 @@
       → 別ページではなくタイムライン上部のトグルで絞り込む（要件書 §18.1）
 - [ ] 未完了TODOのみ表示フィルタ（未来側の todo を絞り込む）（要件書 §18.1）
 - [ ] AI自動記録の表示 ON/OFF（要件書 §18.1）
-- [ ] 無限スクロール: 上端・下端スクロール時にページング追加読み込み（要件書 §5.4）
+- [x] 無限スクロール: 上端・下端スクロール時にページング追加読み込み（要件書 §5.4）
+      → IntersectionObserver + sentinel 要素、`loadMorePast()` / `loadMoreFuture()` で重複除去しながら追記
 
 ### 5-2. AI記録UIの安全装置
 

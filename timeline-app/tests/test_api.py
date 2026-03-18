@@ -95,6 +95,21 @@ class TestEntries:
         resp = client.patch("/api/entries/nonexistent-id", json={"content": "x"})
         assert resp.status_code == 404
 
+    def test_todo_default_timestamp_is_today_2359(self, client: TestClient):
+        """type=todo で timestamp 未指定のとき当日 23:59 UTC が設定されること"""
+        from datetime import datetime, timezone
+
+        resp = client.post(
+            "/api/entries", json={"type": "todo", "content": "やること", "source": "user"}
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        ts = datetime.fromisoformat(data["timestamp"])
+        now = datetime.now(timezone.utc)
+        assert ts.hour == 23
+        assert ts.minute == 59
+        assert ts.date() == now.date()
+
     def test_create_without_workspace_returns_400(self, client: TestClient):
         from src.routers import workspace as workspace_module
 
