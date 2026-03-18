@@ -57,39 +57,21 @@ class OllamaChatResult:
     entry_candidates: list[dict]
 
 
+@dataclass
+class OllamaSummaryResult:
+    title: str
+    content: str
+    should_create: bool
+
+
 class OllamaClient:
     def __init__(self, settings: AIConfig):
         self._settings = settings
 
     def generate_chat_reply(self, messages: list[dict[str, str]]) -> OllamaChatResult:
-        payload = {
-            "model": self._settings.ollama_model,
-            "stream": False,
-            "messages": messages[-12:],
-            "tools": [_TOOL_DEF],
-        }
-
-        try:
-            response = requests.post(
-                f"{self._settings.ollama_base_url.rstrip('/')}/api/chat",
-                json=payload,
-                timeout=self._settings.timeout_seconds,
-            )
-            response.raise_for_status()
-        except requests.RequestException as exc:
-            raise OllamaClientError(f"Ollama への接続に失敗しました: {exc}") from exc
-
-        message = response.json().get("message", {})
-        tool_calls = message.get("tool_calls") or []
-
-        if tool_calls:
-            args = tool_calls[0].get("function", {}).get("arguments", {})
-            reply = str(args.get("reply", "")).strip()
-            candidates_raw = args.get("entry_candidates", [])
-        else:
-            # tool_calls が空の場合は content をそのまま reply にする
-            reply = str(message.get("content", "")).strip()
-            candidates_raw = []
+        args, fallback_content = self._chat_with_tools(messages[-12:], [_TOOL_DEF])
+        reply = str(args.get("reply", "")).strip() or fallback_content
+        candidates_raw = args.get("entry_candidates", [])
 
         if not reply:
             raise OllamaClientError("Ollama 応答に reply がありません")
@@ -110,6 +92,62 @@ class OllamaClient:
             )
 
         return OllamaChatResult(reply=reply, entry_candidates=normalized)
+
+    def summarize_import_source(
+        self,
+        *,
+        source_type: str,
+        target_label: str,
+        raw_summary: str,
+    ) -> OllamaSummaryResult:
+        tool = {
+            "type": "function",
+            "function": {
+                "name": "summarize_hour_source",
+                "description": "1時間単位のログ素材を要約し、タイトルと本文を返す。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "title": {"type": "string"},
+                        "content": {"type": "string"},
+                        "should_create": {"type": "boolean"},
+                    },
+                    "required": ["title", "content", "should_create"],
+                },
+            },
+        }
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "あなたはライフログ要約アシスタントです。"
+                    "入力された1時間分の素材を日本語で簡潔に要約してください。"
+                    "source ごとの性質を保ち、activity は実際の作業内容、browser は見ていた内容、"
+                    "reports は生成物の要点、system_event は重要な運用イベントだけを抽出してください。"
+                    "system_event がノイズだけなら should_create=false を返してください。"
+                    "本文は箇条書きではなく、2〜5文の自然な要約を基本にしてください。"
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"source: {source_type}\n"
+                    f"target: {target_label}\n"
+                    "以下の素材を要約してください。\n"
+                    f"{raw_summary}"
+                ),
+            },
+        ]
+        args, fallback_content = self._chat_with_tools(messages, [tool])
+        title = str(args.get("title", "")).strip()
+        content = str(args.get("content", "")).strip() or fallback_content
+        should_create = bool(args.get("should_create", True))
+
+        if not content:
+            raise OllamaClientError("要約結果の content が空です")
+        if not title:
+            title = target_label
+        return OllamaSummaryResult(title=title, content=content, should_create=should_create)
 
     def check_health(self) -> dict:
         """Ollama の到達性と利用モデル設定を返す。"""
@@ -137,3 +175,33 @@ class OllamaClient:
             "model": self._settings.ollama_model,
             "model_available": self._settings.ollama_model in available,
         }
+
+    def _chat_with_tools(
+        self,
+        messages: list[dict[str, str]],
+        tools: list[dict],
+    ) -> tuple[dict, str]:
+        payload = {
+            "model": self._settings.ollama_model,
+            "stream": False,
+            "messages": messages,
+            "tools": tools,
+        }
+
+        try:
+            response = requests.post(
+                f"{self._settings.ollama_base_url.rstrip('/')}/api/chat",
+                json=payload,
+                timeout=self._settings.timeout_seconds,
+            )
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            raise OllamaClientError(f"Ollama への接続に失敗しました: {exc}") from exc
+
+        message = response.json().get("message", {})
+        tool_calls = message.get("tool_calls") or []
+        if tool_calls:
+            args = tool_calls[0].get("function", {}).get("arguments", {})
+            if isinstance(args, dict):
+                return args, str(message.get("content", "")).strip()
+        return {}, str(message.get("content", "")).strip()
