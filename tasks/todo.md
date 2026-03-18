@@ -197,9 +197,9 @@
 
 ### 4.5-6. 移行完了・旧デーモン廃止
 
-- [ ] `scripts/start.sh` で timeline-app を起動すれば全ワーカーも起動することを確認
-- [ ] `scripts/daemon.sh` の README に「timeline-app に統合済み」と記載
-- [ ] `tasks/lessons.md` に移行の設計判断を記録
+- [x] `scripts/start.sh` で timeline-app を起動すれば全ワーカーも起動することを確認
+- [x] `scripts/daemon.sh` の `start()` に「timeline-app に統合済み」と記載
+- [x] `tasks/lessons.md` に移行の設計判断を記録
 
 ---
 
