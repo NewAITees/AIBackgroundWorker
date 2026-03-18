@@ -200,6 +200,39 @@
 - [x] `scripts/start.sh` で timeline-app を起動すれば全ワーカーも起動することを確認
 - [x] `scripts/daemon.sh` の `start()` に「timeline-app に統合済み」と記載
 - [x] `tasks/lessons.md` に移行の設計判断を記録
+- [ ] `lifelog-daemon.service` を停止・無効化する（`sudo systemctl stop/disable lifelog-daemon.service`）
+
+### 4.5-7. systemd 移行残作業（整理）
+
+> 現時点での systemd ↔ timeline-app の役割分担
+
+```
+【自動収集層】systemd 側（まだ残す）
+  info-integrated.timer（30分ごと）
+    → RSS/ニュース収集 → 分析 → テーマレポート生成
+    → ai_secretary.db の reports テーブルへ書き込む
+
+【timeline entry 化層】timeline-app workers（実装済み）
+  hourly_summary_worker（毎時）
+    → activity / browser / reports / system を 1h 単位 entry に変換
+    → articles/ + daily/ に保存
+    ※ reports suffix は info-integrated が書いた reports テーブルを読んでいる
+
+【旧日次レポート】systemd 側（新設計では不要寄り）
+  info-report.timer（毎日 00:40）
+    → /00_Raw/report_*.md を生成（旧来の日次レポート）
+    → timeline-app の hourly 設計には不要
+
+【diary AI コメント】未実装
+  daily_digest_worker（1日1回）
+    → diary type entry を読んでAIがまとめ・振り返りを生成
+    → §9.1 §15.1 の「日記の要約 / AI コメント」に対応
+```
+
+- [ ] `info-report.timer` を停止・無効化する（旧日次レポートは新設計不要）
+- [ ] `info-integrated.timer` の代替を timeline-app に実装する
+      → analyze → deep → theme report → reports テーブル投入 のパイプラインを
+        `timeline-app/src/workers/` に移植する（フェーズ5.6 として別途計画）
 
 ---
 
@@ -218,6 +251,27 @@
 
 > 参照: 要件書 §21.2
 > **方針**: UIの主役は単一タイムライン。別ページを増やさずフィルタ・ビュー切り替えで対応する。
+
+### 5-0. diary AI コメント worker（日次）
+
+> 要件書 §9.1「1日単位でまとまった日記を別途生成できる」§15.1「日記の要約 / AI コメント」
+> hourly_summary_worker とは別レイヤー。1日1回、その日の diary entry を振り返る。
+
+- [ ] `timeline-app/src/workers/daily_digest_worker.py` を作成
+  - 1日1回（例: 翌朝 7:00）、前日の `diary` type entry を読み込む
+  - Ollama に渡して「その日の振り返りコメント」entry を生成
+  - `type: memo`（または `diary`）として `articles/` + `daily/` に保存
+- [ ] `scheduler.py` に `daily-digest` ジョブを追加（cron: 毎朝 7:00）
+
+### 5-0b. info-integrated 代替 worker（RSS分析パイプライン）
+
+> 現在 `info-integrated.timer` が担っている analyze → deep → theme report → reports テーブル投入 を
+> timeline-app に移植することで systemd 依存を完全に断つ
+
+- [ ] `timeline-app/src/workers/analysis_pipeline_worker.py` を作成
+  - `integrate_pipeline.sh` が行う3段階（analyze / deep / theme_report）を Python で再実装
+  - 30分ごと実行、results を `ai_secretary.db::reports` テーブルに書き込む
+  - 完了後は `info-integrated.timer` を停止・無効化できる
 
 ### 5-1. タイムライン実用強化
 
