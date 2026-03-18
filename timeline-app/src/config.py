@@ -49,6 +49,7 @@ class LifelogConfig(BaseModel):
     info_config_dir: str = "lifelog-system/config/info_collector"
     info_collect_seconds: int = 3600
     info_limit: int = 10
+    report_hour: int = 6
 
 
 class AppConfig(BaseModel):

@@ -11,6 +11,7 @@ from ..config import config
 from .activity_worker import activity_worker
 from .browser_worker import browser_worker
 from .info_worker import info_worker
+from .report_worker import report_worker
 
 _scheduler: AsyncIOScheduler | None = None
 
@@ -52,6 +53,17 @@ def start_scheduler() -> AsyncIOScheduler:
             "interval",
             seconds=config.lifelog.info_collect_seconds,
             id="info-sync",
+            max_instances=1,
+            coalesce=True,
+            replace_existing=True,
+        )
+    if scheduler.get_job("daily-report") is None:
+        scheduler.add_job(
+            report_worker.sync_once,
+            "cron",
+            hour=config.lifelog.report_hour,
+            minute=0,
+            id="daily-report",
             max_instances=1,
             coalesce=True,
             replace_existing=True,

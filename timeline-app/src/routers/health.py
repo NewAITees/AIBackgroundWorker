@@ -6,6 +6,7 @@ from ..routers.workspace import peek_workspace
 from ..workers.activity_worker import activity_worker
 from ..workers.browser_worker import browser_worker
 from ..workers.info_worker import info_worker
+from ..workers.report_worker import report_worker
 from ..workers.scheduler import get_scheduler_status
 
 router = APIRouter()
@@ -31,5 +32,6 @@ async def health():
             "activity": activity_worker.get_status(),
             "browser": browser_worker.get_status(),
             "info": info_worker.get_status(),
+            "report": report_worker.get_status(),
         },
     }
