@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .routers import health, workspace, timeline, entries, chat
+from .workers.activity_worker import activity_worker
 from .workers.scheduler import shutdown_scheduler, start_scheduler
 
 
@@ -19,9 +20,11 @@ from .workers.scheduler import shutdown_scheduler, start_scheduler
 async def lifespan(_: FastAPI):
     """FastAPI 起動時に scheduler を開始し、終了時に停止する。"""
     start_scheduler()
+    await activity_worker.start()
     try:
         yield
     finally:
+        await activity_worker.stop()
         shutdown_scheduler()
 
 

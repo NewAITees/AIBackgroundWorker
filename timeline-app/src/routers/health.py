@@ -3,6 +3,9 @@ from fastapi import APIRouter
 from ..ai.ollama_client import OllamaClient
 from ..config import config
 from ..routers.workspace import peek_workspace
+from ..workers.activity_worker import activity_worker
+from ..workers.browser_worker import browser_worker
+from ..workers.info_worker import info_worker
 from ..workers.scheduler import get_scheduler_status
 
 router = APIRouter()
@@ -10,8 +13,10 @@ router = APIRouter()
 
 @router.get("/health")
 async def health():
+    import asyncio
+
     workspace = peek_workspace()
-    ollama = OllamaClient(config.ai).check_health()
+    ollama = await asyncio.to_thread(OllamaClient(config.ai).check_health)
     return {
         "status": "ok",
         "workspace": {
@@ -23,5 +28,8 @@ async def health():
         "ollama": ollama,
         "workers": {
             "scheduler": get_scheduler_status(),
+            "activity": activity_worker.get_status(),
+            "browser": browser_worker.get_status(),
+            "info": info_worker.get_status(),
         },
     }

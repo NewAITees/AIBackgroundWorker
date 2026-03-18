@@ -380,8 +380,8 @@ async function loadMorePast() {
     } else {
       state.noMorePast = true;
     }
-  } catch (_) {
-    // サイレント失敗
+  } catch (err) {
+    console.warn("loadMorePast failed:", err);
   } finally {
     state.loadingMore = false;
   }
@@ -402,8 +402,8 @@ async function loadMoreFuture() {
     } else {
       state.noMoreFuture = true;
     }
-  } catch (_) {
-    // サイレント失敗
+  } catch (err) {
+    console.warn("loadMoreFuture failed:", err);
   } finally {
     state.loadingMore = false;
   }
