@@ -31,7 +31,7 @@ class OllamaClient:
             "/"
         )
         # 環境変数からモデルを取得、なければデフォルト値を使用
-        self.model = model or os.getenv("OLLAMA_MODEL", "nemotron-jp")
+        self.model = model or os.getenv("OLLAMA_MODEL", "qwen3.5:9b")
         # 環境変数からタイムアウトを取得、なければデフォルト180秒
         self.timeout = timeout or int(os.getenv("OLLAMA_TIMEOUT", "180"))
 

@@ -169,12 +169,11 @@ class ActivityCollector:
             "start_ts": self.current_interval["start_ts"],
             "end_ts": end_ts,
             "is_idle": self.current_interval["is_idle"],
+            "_queued_at": datetime.now(),
         }
 
         try:
             self.queue.put_nowait(interval)
-            delay = (end_ts - self.current_interval["start_ts"]).total_seconds()
-            self.health_monitor.record_collection_delay(delay)
         except queue.Full:
             logger.warning("Queue full, dropping interval")
             self.health_monitor.record_drop()
@@ -199,10 +198,19 @@ class ActivityCollector:
                 )
 
                 if should_write:
-                    start_time = time.time()
+                    write_start = time.time()
                     self.db.bulk_insert_intervals(batch)
-                    write_time_ms = (time.time() - start_time) * 1000
+                    write_time_ms = (time.time() - write_start) * 1000
                     self.health_monitor.record_write_time(write_time_ms)
+
+                    # キュー投入→DB書込完了の遅延を記録
+                    now = datetime.now()
+                    for item in batch:
+                        queued_at = item.get("_queued_at")
+                        if queued_at:
+                            self.health_monitor.record_collection_delay(
+                                (now - queued_at).total_seconds()
+                            )
 
                     batch.clear()
                     last_write = datetime.now()
@@ -210,10 +218,18 @@ class ActivityCollector:
             except queue.Empty:
                 # キューが空でもバッチがあれば書き込み
                 if batch:
-                    start_time = time.time()
+                    write_start = time.time()
                     self.db.bulk_insert_intervals(batch)
-                    write_time_ms = (time.time() - start_time) * 1000
+                    write_time_ms = (time.time() - write_start) * 1000
                     self.health_monitor.record_write_time(write_time_ms)
+
+                    now = datetime.now()
+                    for item in batch:
+                        queued_at = item.get("_queued_at")
+                        if queued_at:
+                            self.health_monitor.record_collection_delay(
+                                (now - queued_at).total_seconds()
+                            )
 
                     batch.clear()
                     last_write = datetime.now()
