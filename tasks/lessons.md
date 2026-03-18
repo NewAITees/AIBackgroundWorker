@@ -67,3 +67,15 @@
 
 - パターン: worker 移行を job 実装と scheduler 基盤の同時変更で始めると、起動不良の切り分けが難しくなる。
 - 対策: まず `APScheduler` のシングルトン、FastAPI lifespan 統合、`/api/health` への状態露出だけを先に入れ、job はその上に段階追加する。
+
+- パターン: `lifelog-system` を `timeline-app` から取り込むとき、両方のパッケージ名に `src` を使う import は衝突しやすい。
+- 対策: `lifelog-system/src` を `sys.path` に追加して `lifelog.*` パッケージだけを読む。`src.lifelog.*` ではなく `lifelog.*` を使って衝突を避ける。
+
+- パターン: worker 移行後も DB パスを `lifelog-system/config/config.yaml` の相対指定だけに頼ると、起動場所や将来の分離で保存先がぶれやすい。
+- 対策: `timeline-app/config.yaml` に `lifelog.root_dir / config_path / privacy_config_path / db_path` を明示し、既存 SQLite をそのまま使う方針を app 側設定で固定する。
+
+- パターン: ブラウザ履歴 worker で最初の同期時に既存 `browser_history` 全件を timeline へ流すと、初回だけでタイムラインが埋まりやすい。
+- 対策: `last_history_id` の初期値は DB の最新 id に合わせ、以後に増えた履歴だけを `browser-history-*` entry として投影する。
+
+- パターン: RSS / ニュース worker で `auto_runner.main()` をそのまま呼ぶと CLI 引数や標準出力に処理が引きずられ、worker から扱いにくい。
+- 対策: `collect_rss()` / `collect_news()` と repository を直接 import して呼び、収集実行と timeline 投影を分離する。

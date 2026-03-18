@@ -38,11 +38,25 @@ class WorkspaceConfig(BaseModel):
     dirs: WorkspaceDirsConfig = WorkspaceDirsConfig()
 
 
+class LifelogConfig(BaseModel):
+    root_dir: str = "lifelog-system"
+    config_path: str = "lifelog-system/config/config.yaml"
+    privacy_config_path: str = "lifelog-system/config/privacy.yaml"
+    db_path: str = "lifelog-system/data/lifelog.db"
+    activity_sync_seconds: int = 15
+    info_db_path: str = "lifelog-system/data/ai_secretary.db"
+    browser_import_seconds: int = 3600
+    info_config_dir: str = "lifelog-system/config/info_collector"
+    info_collect_seconds: int = 3600
+    info_limit: int = 10
+
+
 class AppConfig(BaseModel):
     environment: str = "dev"
     server: ServerConfig = ServerConfig()
     ai: AIConfig = AIConfig()
     workspace: WorkspaceConfig = WorkspaceConfig(dirs=WorkspaceDirsConfig())
+    lifelog: LifelogConfig = LifelogConfig()
 
 
 def load_config(path: Optional[Path] = None) -> AppConfig:
@@ -64,6 +78,7 @@ def load_config(path: Optional[Path] = None) -> AppConfig:
                 "dirs": WorkspaceDirsConfig(**raw.get("workspace", {}).get("dirs", {})),
             }
         ),
+        lifelog=LifelogConfig(**raw.get("lifelog", {})),
     )
 
 

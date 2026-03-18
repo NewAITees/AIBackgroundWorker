@@ -158,17 +158,17 @@
 
 > 参照: `lifelog-system/src/lifelog/main_collector.py`、`activity_collector.py`
 
-- [ ] `timeline-app/src/workers/activity_worker.py` を作成
+- [x] `timeline-app/src/workers/activity_worker.py` を作成
   - lifelog-system の `ActivityCollector` を `asyncio.to_thread()` でスレッド実行
   - 収集した activity_intervals を `system_log` entry として timeline に保存
-- [ ] 既存 `lifelog-system` の SQLite DB はそのまま維持（書き込み先は変えない）
-- [ ] `scripts/daemon.sh` の lifelog 起動部分を `start.sh` に統合
+- [x] 既存 `lifelog-system` の SQLite DB はそのまま維持（書き込み先は変えない）
+- [x] `scripts/daemon.sh` の lifelog 起動部分を `start.sh` に統合
 
 ### 4.5-3. ブラウザ履歴インポートワーカー（毎時）
 
 > 参照: `lifelog-system/src/browser_history/`
 
-- [ ] `timeline-app/src/workers/browser_worker.py` を作成
+- [x] `timeline-app/src/workers/browser_worker.py` を作成
   - Brave/Chrome 履歴を毎時インポート
   - 新規エントリのみ `imported` 種別 entry として timeline に追加
 
@@ -176,10 +176,10 @@
 
 > 参照: `lifelog-system/src/info_collector/auto_runner.py`
 
-- [ ] `timeline-app/src/workers/info_worker.py` を作成
+- [x] `timeline-app/src/workers/info_worker.py` を作成
   - RSS / ニュース収集を毎時実行
   - 収集結果を `news` entry として timeline に保存
-- [ ] `info_collector` の設定（フィードURL等）を `timeline-app/config.yaml` で管理できるようにする
+- [x] `info_collector` の設定（フィードURL等）を `timeline-app/config.yaml` で管理できるようにする
 
 ### 4.5-5. AI 日次レポート・日記自動生成ワーカー（日次）
 

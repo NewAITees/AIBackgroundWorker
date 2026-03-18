@@ -1,40 +1,29 @@
-# timeline-app 設定ファイル
-# このファイルをコピーして config.yaml を作成すること
-# config.yaml は .gitignore に含まれており、リポジトリには含まれない
-
-environment: dev  # dev | prod
+environment: dev
 
 server:
   host: "127.0.0.1"
   port: 8100
 
 ai:
-  # Ollama のローカル HTTP API
   ollama_base_url: "http://127.0.0.1:11434"
-  # M1 では会話と簡易分類を1モデルでまかなう
   ollama_model: "qwen2.5:7b"
   timeout_seconds: 60
 
 workspace:
-  # 開発中は YellowMable を汚さないよう、dev 用パスを指定する
-  # WSL 環境では /mnt/c/... 形式で記述する
-  # Windows 環境では C:\... 形式で記述する
-  #
-  # 例（WSL dev）: /home/yourname/timeline-dev
-  # 例（Windows dev）: C:\Users\yourname\timeline-dev
-  # 例（prod / WSL）: /mnt/c/YellowMable
-  # 例（prod / Windows）: C:\YellowMable
   default_path: ""
-
-  # WSL 上で動作している場合は true にする
-  # パス変換（/mnt/c/... <-> C:\...）に使用する
-  wsl_mode: false
-
+  wsl_mode: true
   dirs:
-    # daily: YYYY-MM-DD.md を格納する。1時間単位のセクションを持ち、
-    #        entry の YAML ブロックが時間帯ごとに埋め込まれる
     daily: "daily"
-    # articles: チャット履歴・ニュース・TODO・diary・event など
-    #           アプリが生成するすべての entry を個別ファイルとして格納する
-    #           ファイル名は entry の id をそのまま使う
     articles: "articles"
+
+lifelog:
+  root_dir: "lifelog-system"
+  config_path: "lifelog-system/config/config.yaml"
+  privacy_config_path: "lifelog-system/config/privacy.yaml"
+  db_path: "lifelog-system/data/lifelog.db"
+  info_db_path: "lifelog-system/data/ai_secretary.db"
+  activity_sync_seconds: 15
+  browser_import_seconds: 3600
+  info_config_dir: "lifelog-system/config/info_collector"
+  info_collect_seconds: 3600
+  info_limit: 10
