@@ -1,11 +1,13 @@
 """storage/common.py のユニットテスト"""
 
 from datetime import date, datetime, timezone
+from pathlib import Path
 
 import pytest
 
 from src.models.entry import Entry, EntryMeta, EntrySource, EntryStatus, EntryType
 from src.storage.common import (
+    backup_existing_file,
     entry_to_daily_block,
     entry_to_record,
     iter_dates,
@@ -82,3 +84,30 @@ class TestIterDates:
 
     def test_end_before_start_returns_empty(self):
         assert iter_dates(date(2026, 3, 20), date(2026, 3, 18)) == []
+
+
+class TestBackupExistingFile:
+    def test_returns_none_when_file_does_not_exist(self, tmp_path: Path):
+        result = backup_existing_file(tmp_path / "nonexistent.md")
+        assert result is None
+
+    def test_creates_backup_copy(self, tmp_path: Path):
+        original = tmp_path / "2026-03-18.md"
+        original.write_text("original content", encoding="utf-8")
+        backup = backup_existing_file(original)
+        assert backup is not None
+        assert backup.exists()
+        assert backup.read_text(encoding="utf-8") == "original content"
+
+    def test_backup_is_in_hidden_subdir(self, tmp_path: Path):
+        original = tmp_path / "test.md"
+        original.write_text("x", encoding="utf-8")
+        backup = backup_existing_file(original)
+        assert backup is not None
+        assert backup.parent.name == ".timeline-backups"
+
+    def test_original_is_not_deleted(self, tmp_path: Path):
+        original = tmp_path / "test.md"
+        original.write_text("content", encoding="utf-8")
+        backup_existing_file(original)
+        assert original.exists()

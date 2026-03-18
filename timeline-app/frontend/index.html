@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Timeline App</title>
+  <link rel="stylesheet" href="/assets/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Timeline App</p>
+        <h1>現在中心タイムライン</h1>
+      </div>
+      <div class="workspace-bar">
+        <button id="jump-now" class="ghost-button">今日へ戻る</button>
+        <input id="workspace-path" type="text" placeholder="ワークスペースのパス" />
+        <button id="workspace-open">開く</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="timeline-pane">
+        <div class="timeline-header">
+          <div id="workspace-summary" class="workspace-summary">ワークスペース確認中...</div>
+          <div id="timeline-status" class="timeline-status">読み込み中...</div>
+        </div>
+
+        <div id="workspace-empty" class="empty-state hidden">
+          <h2>ワークスペースを開いてください</h2>
+          <p>Obsidian Vault でも通常フォルダでも開けます。開いたら `daily/` と `articles/` を自動作成します。</p>
+        </div>
+
+        <div id="timeline-root" class="timeline-root hidden">
+          <div id="past-list" class="timeline-list"></div>
+
+          <section id="now-anchor" class="now-card">
+            <div class="now-badge">Now</div>
+            <div class="now-copy">
+              <h2>現在地点</h2>
+              <p>ここから AI と会話し、そのまま記録候補へ変えます。</p>
+            </div>
+            <form id="chat-form" class="chat-form">
+              <textarea id="chat-input" rows="4" placeholder="いま考えていること、やること、出来事を書く"></textarea>
+              <div class="chat-actions">
+                <span id="chat-status" class="chat-status"></span>
+                <button type="submit">AIに送る</button>
+              </div>
+            </form>
+            <div id="chat-response" class="chat-response hidden">
+              <h3>AI 応答</h3>
+              <p id="chat-reply-text"></p>
+              <div>
+                <h4>記録候補</h4>
+                <div id="candidate-list" class="candidate-list"></div>
+              </div>
+            </div>
+          </section>
+
+          <div id="future-list" class="timeline-list"></div>
+        </div>
+      </section>
+
+      <aside class="detail-pane">
+        <div id="detail-empty" class="detail-empty">
+          <h2>詳細</h2>
+          <p>タイムラインのカードを開くと、ここで内容を確認・編集できます。</p>
+        </div>
+
+        <div id="detail-view" class="detail-view hidden">
+          <div class="detail-head">
+            <div>
+              <p id="detail-type" class="detail-type"></p>
+              <h2 id="detail-title"></h2>
+            </div>
+            <button id="detail-edit-toggle" class="ghost-button">編集</button>
+          </div>
+
+          <div id="detail-meta" class="detail-meta"></div>
+
+          <div id="detail-readonly" class="detail-readonly">
+            <p id="detail-content"></p>
+          </div>
+
+          <form id="detail-form" class="detail-form hidden">
+            <input id="detail-title-input" type="text" placeholder="タイトル" />
+            <textarea id="detail-content-input" rows="14"></textarea>
+            <select id="detail-status-input">
+              <option value="active">active</option>
+              <option value="done">done</option>
+              <option value="archived">archived</option>
+            </select>
+            <div class="detail-actions">
+              <span id="detail-status-message"></span>
+              <button type="submit">保存</button>
+            </div>
+          </form>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <template id="entry-card-template">
+    <article class="entry-card">
+      <button class="entry-card-button" type="button">
+        <div class="entry-card-top">
+          <span class="entry-type"></span>
+          <time class="entry-time"></time>
+        </div>
+        <h3 class="entry-title"></h3>
+        <p class="entry-content"></p>
+      </button>
+    </article>
+  </template>
+
+  <template id="candidate-template">
+    <button type="button" class="candidate-button"></button>
+  </template>
+
+  <script src="/assets/app.js" defer></script>
+</body>
+</html>

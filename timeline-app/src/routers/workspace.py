@@ -67,6 +67,11 @@ def get_open_workspace() -> dict:
     return _workspace
 
 
+def peek_workspace() -> dict | None:
+    """health などから使う現在のワークスペース状態。未設定時は None。"""
+    return _workspace or None
+
+
 @router.get("/workspace")
 async def get_workspace():
     """現在開いているワークスペース情報を返す"""

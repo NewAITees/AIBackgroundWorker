@@ -71,6 +71,33 @@ class OllamaClient:
 
         return OllamaChatResult(reply=reply, entry_candidates=normalized)
 
+    def check_health(self) -> dict:
+        """Ollama の到達性と利用モデル設定を返す。"""
+        try:
+            response = requests.get(
+                f"{self._settings.ollama_base_url.rstrip('/')}/api/tags",
+                timeout=min(self._settings.timeout_seconds, 5),
+            )
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            return {
+                "reachable": False,
+                "base_url": self._settings.ollama_base_url,
+                "model": self._settings.ollama_model,
+                "detail": str(exc),
+            }
+
+        models = response.json().get("models", [])
+        available = {
+            item.get("name") for item in models if isinstance(item, dict) and item.get("name")
+        }
+        return {
+            "reachable": True,
+            "base_url": self._settings.ollama_base_url,
+            "model": self._settings.ollama_model,
+            "model_available": self._settings.ollama_model in available,
+        }
+
     def _build_prompt(self, messages: list[dict[str, str]]) -> str:
         transcript = []
         for message in messages[-12:]:

@@ -120,3 +120,35 @@ class TestGenerateChatReply:
 
         assert "JSON" in captured["payload"]["prompt"]
         assert captured["payload"]["format"] == "json"
+
+
+class TestCheckHealth:
+    def _tags_response(self, model_names: list[str]) -> MagicMock:
+        resp = MagicMock()
+        resp.raise_for_status.return_value = None
+        resp.json.return_value = {"models": [{"name": n} for n in model_names]}
+        return resp
+
+    def test_reachable_model_available(self):
+        client = make_client()
+        with patch("requests.get", return_value=self._tags_response(["test-model", "other"])):
+            result = client.check_health()
+        assert result["reachable"] is True
+        assert result["model_available"] is True
+        assert result["model"] == "test-model"
+
+    def test_reachable_model_not_available(self):
+        client = make_client()
+        with patch("requests.get", return_value=self._tags_response(["other-model"])):
+            result = client.check_health()
+        assert result["reachable"] is True
+        assert result["model_available"] is False
+
+    def test_unreachable_returns_reachable_false(self):
+        import requests as req
+
+        client = make_client()
+        with patch("requests.get", side_effect=req.RequestException("connection refused")):
+            result = client.check_health()
+        assert result["reachable"] is False
+        assert "detail" in result

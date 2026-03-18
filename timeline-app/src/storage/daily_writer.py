@@ -7,7 +7,7 @@ from datetime import date
 from pathlib import Path
 
 from ..models.entry import Entry
-from .common import daily_path, entry_to_daily_block
+from .common import backup_existing_file, daily_path, entry_to_daily_block
 
 
 def build_daily_content(target_date: date) -> str:
@@ -74,6 +74,7 @@ def upsert_entry_in_daily(workspace_path: str, daily_dir: str, entry: Entry) -> 
     block = entry_to_daily_block(entry)
     new_section = f"\n{section_body}\n\n{block}\n\n" if section_body else f"\n{block}\n\n"
     updated = _replace_section(content, marker, new_section)
+    backup_existing_file(path)
     path.write_text(updated, encoding="utf-8")
     return path
 
@@ -90,5 +91,6 @@ def remove_entry_from_daily(workspace_path: str, daily_dir: str, entry: Entry) -
     cleaned = _remove_existing_block(match.group(1), entry.id)
     new_section = f"\n{cleaned}\n\n" if cleaned else "\n"
     updated = _replace_section(content, marker, new_section)
+    backup_existing_file(path)
     path.write_text(updated, encoding="utf-8")
     return path

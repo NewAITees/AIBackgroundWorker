@@ -13,9 +13,27 @@ def _mock_ollama(reply: str = "テスト応答です。", candidates=None) -> Ol
 
 class TestHealth:
     def test_returns_ok(self, client: TestClient):
-        resp = client.get("/api/health")
+        with patch("src.routers.health.OllamaClient") as mock_cls:
+            mock_cls.return_value.check_health.return_value = {"reachable": False}
+            resp = client.get("/api/health")
         assert resp.status_code == 200
         assert resp.json()["status"] == "ok"
+
+    def test_includes_workspace_status(self, client: TestClient, tmp_workspace):
+        with patch("src.routers.health.OllamaClient") as mock_cls:
+            mock_cls.return_value.check_health.return_value = {"reachable": False}
+            resp = client.get("/api/health")
+        data = resp.json()
+        assert "workspace" in data
+        assert data["workspace"]["opened"] is True
+        assert data["workspace"]["path"] == str(tmp_workspace)
+
+    def test_includes_ollama_status(self, client: TestClient):
+        ollama_status = {"reachable": True, "model": "qwen2.5:7b", "model_available": True}
+        with patch("src.routers.health.OllamaClient") as mock_cls:
+            mock_cls.return_value.check_health.return_value = ollama_status
+            resp = client.get("/api/health")
+        assert resp.json()["ollama"] == ollama_status
 
 
 class TestWorkspace:

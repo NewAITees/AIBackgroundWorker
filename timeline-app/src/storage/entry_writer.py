@@ -7,12 +7,13 @@ from pathlib import Path
 import yaml
 
 from ..models.entry import Entry
-from .common import article_path, entry_to_record
+from .common import article_path, backup_existing_file, entry_to_record
 
 
 def write_entry(workspace_path: str, articles_dir: str, entry: Entry) -> Path:
     path = article_path(workspace_path, articles_dir, entry.id)
     path.parent.mkdir(parents=True, exist_ok=True)
+    backup_existing_file(path)
 
     metadata = entry_to_record(entry)
     content = metadata.pop("content")

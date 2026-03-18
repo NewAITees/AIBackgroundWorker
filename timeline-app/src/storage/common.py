@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+import shutil
 
 import yaml
 
@@ -50,3 +51,16 @@ def iter_dates(start: date, end: date) -> list[date]:
         dates.append(current)
         current += timedelta(days=1)
     return dates
+
+
+def backup_existing_file(path: Path) -> Path | None:
+    """既存 Markdown の退避コピーを .timeline-backups 配下へ作る。"""
+    if not path.exists():
+        return None
+
+    backup_root = path.parent / ".timeline-backups"
+    backup_root.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    backup_path = backup_root / f"{path.name}.{timestamp}.bak"
+    shutil.copy2(path, backup_path)
+    return backup_path
