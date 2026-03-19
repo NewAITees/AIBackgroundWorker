@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from datetime import date
 from pathlib import Path
@@ -13,7 +14,10 @@ from .common import (
     ensure_entry_summary,
     entry_to_daily_block,
     parse_yaml_block,
+    restore_from_backup,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def build_daily_content(target_date: date) -> str:
@@ -83,6 +87,13 @@ def upsert_entry_in_daily(workspace_path: str, daily_dir: str, entry: Entry) -> 
     updated = _replace_section(content, marker, new_section)
     backup_existing_file(path)
     path.write_text(updated, encoding="utf-8")
+
+    # 書き込み後の検証
+    if not path.read_text(encoding="utf-8").strip():
+        if restore_from_backup(path):
+            logger.error("upsert_entry_in_daily: 書き込み検証失敗、バックアップから復元しました: %s", path)
+        raise RuntimeError(f"daily ファイルの書き込み後の検証に失敗しました: {path}")
+
     return path
 
 
@@ -100,6 +111,12 @@ def remove_entry_from_daily(workspace_path: str, daily_dir: str, entry: Entry) -
     updated = _replace_section(content, marker, new_section)
     backup_existing_file(path)
     path.write_text(updated, encoding="utf-8")
+
+    if not path.read_text(encoding="utf-8").strip():
+        if restore_from_backup(path):
+            logger.error("remove_entry_from_daily: 書き込み検証失敗、バックアップから復元しました: %s", path)
+        raise RuntimeError(f"daily ファイルの書き込み後の検証に失敗しました: {path}")
+
     return path
 
 
@@ -119,4 +136,10 @@ def normalize_daily_file(workspace_path: str, daily_dir: str, target_date: date)
     if normalized != content:
         backup_existing_file(path)
         path.write_text(normalized, encoding="utf-8")
+
+        if not path.read_text(encoding="utf-8").strip():
+            if restore_from_backup(path):
+                logger.error("normalize_daily_file: 書き込み検証失敗、バックアップから復元しました: %s", path)
+            raise RuntimeError(f"daily ファイルの書き込み後の検証に失敗しました: {path}")
+
     return path

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta
 from pathlib import Path
 import shutil
 
@@ -76,14 +76,25 @@ def iter_dates(start: date, end: date) -> list[date]:
     return dates
 
 
+def _backup_path(path: Path) -> Path:
+    return path.parent / ".timeline-backups" / f"{path.name}.bak"
+
+
 def backup_existing_file(path: Path) -> Path | None:
-    """既存 Markdown の退避コピーを .timeline-backups 配下へ作る。"""
+    """既存 Markdown の退避コピーを .timeline-backups 配下へ作る（最新1件のみ保持）。"""
     if not path.exists():
         return None
 
-    backup_root = path.parent / ".timeline-backups"
-    backup_root.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-    backup_path = backup_root / f"{path.name}.{timestamp}.bak"
-    shutil.copy2(path, backup_path)
-    return backup_path
+    backup = _backup_path(path)
+    backup.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(path, backup)
+    return backup
+
+
+def restore_from_backup(path: Path) -> bool:
+    """バックアップから復元を試みる。成功したら True を返す。"""
+    backup = _backup_path(path)
+    if not backup.exists():
+        return False
+    shutil.copy2(backup, path)
+    return True
