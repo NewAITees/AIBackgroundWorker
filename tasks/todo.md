@@ -16,7 +16,7 @@
       → 二重稼働していた info-integrated.timer / info-collector.timer を停止
       → health.py に windows_foreground_worker を追加
       → 残骸: lifelog-daemon.service / daemon.sh（削除候補として後続タスクへ）
-- [ ] `lifelog-system/` を「`timeline-app` から呼ばれるライブラリ層」として整理し、単独起動前提の導線を棚卸しする
+- [x] `lifelog-system/` を「`timeline-app` から呼ばれるライブラリ層」として整理し、単独起動前提の導線を棚卸しする
       → **最終ゴール: `lifelog-system/` を `timeline-app/lifelog-system/` 配下に移動する**
       → 移動前に単独起動導線・systemd unit・独自 pyproject.toml エントリポイントを除去しておく
       → 移動後は `timeline-app/pyproject.toml` に統合する
@@ -67,19 +67,10 @@
 
 ### 移動前に優先して畳む旧導線
 
-- [ ] `systemd` 残骸を削除候補として切り出す
-      → `scripts/systemd/*.service`, `scripts/systemd/*.timer`, `scripts/systemd/install_service.sh`
-      → まず docs / README の参照を整理し、運用不要を確認してから削除する
-      → 現状の参照先: `README.md`, `docs/TASK_SCHEDULER_SETUP.md`, `docs/TROUBLESHOOTING_SYSTEMD.md`, `docs/INFO_COLLECTOR_DEEPDIVE_PLAN.md`
-      → `info-collector.timer` / `info-integrated.timer` / `merge-windows-logs.timer` は timeline-app 側で代替済み。`lifelog-daemon.service` は `daemon.sh` 案内の残骸
-- [ ] `daemon.sh` 残骸を削除候補として切り出す
-      → `scripts/daemon.sh`, `lifelog-system/scripts/daemon.sh`, `scripts/systemd/lifelog-daemon.service`
-      → 現状は案内・互換導線なので、参照元ドキュメント整理後に削除判断する
-      → 現状の参照先: `README.md`, `CLAUDE.md`, `lifelog-system/README.md`, `lifelog-system/docs/QUICKSTART.md`, `docs/PROJECT_OVERVIEW.md`, `docs/TASK_SCHEDULER_SETUP.md`, `docs/TROUBLESHOOTING_SYSTEMD.md`
-- [ ] viewer / CLI 導線の存廃を決める
-      → `scripts/viewer_service.sh`, `lifelog-system/src/viewer_service/`, `lifelog-system/src/lifelog/cli_viewer.py`, `scripts/view.sh`, `scripts/lifelog/get_*.sh`
-      → `timeline-app` へ未統合の用途が残るため、即削除せず役割を確認する
-      → `cli_viewer.py` は `src.viewer_service.*` を import しているため、viewer と CLI はセットで扱う
+- [x] `systemd` 残骸を削除候補として切り出す → 削除完了（2026-03-19）
+- [x] `daemon.sh` 残骸を削除候補として切り出す → 削除完了（2026-03-19）
+- [x] viewer / CLI 導線の存廃を決める
+      → `viewer_service/` 削除、`cli_viewer.py` は手動確認用として保持（viewer_service 依存を除去済み）
 
 ---
 
