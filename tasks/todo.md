@@ -12,7 +12,10 @@
 > **このセクションが完了するまで、それ以降の機能追加・派生実装・新規拡張は進めない。**
 > **ただし直近の実作業は、棚卸し済みの削除を先に進める。Windowsログ統合は重要タスクとして残すが、削除整理の後に着手する。**
 
-- [ ] `timeline-app/` を唯一の運用入口として固定し、起動経路・設定経路・health 確認経路の二重化を洗い出す
+- [x] `timeline-app/` を唯一の運用入口として固定し、起動経路・設定経路・health 確認経路の二重化を洗い出す
+      → 二重稼働していた info-integrated.timer / info-collector.timer を停止
+      → health.py に windows_foreground_worker を追加
+      → 残骸: lifelog-daemon.service / daemon.sh（削除候補として後続タスクへ）
 - [ ] `lifelog-system/` を「`timeline-app` から呼ばれるライブラリ層」として整理し、単独起動前提の導線を棚卸しする
 - [ ] 正本データを明文化する
       → `articles/*.md` / `daily/*.md` / SQLite / 生成レポートのうち、更新元と投影先を整理する
