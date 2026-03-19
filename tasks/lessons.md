@@ -26,6 +26,8 @@
 - 対策: WSL では `python` / `python3` / `command -v` をセットで確認し、必要なら Windows PATH 混入を抑制する。
 
 ## 2026-03-19
+- パターン: worker ごとに LLM 呼び出しが分散していると、サーバーログ上で「どの処理がどのモデルを使ったか」を追えず、運用時の原因切り分けが遅れる。
+- 対策: LLM 呼び出しログは各 worker に個別実装せず、共通クライアントで `caller / purpose / model / base_url` を `INFO` 出力する。旧 `lifelog-system` 側を in-process で呼ぶ worker は環境変数で caller を引き継ぐ。
 - 設計判断: `lifelog-system/` は最終的に `timeline-app/lifelog-system/` 配下へ移動する。
   - `timeline-app/` が唯一の運用入口であり、`lifelog-system/` はそのライブラリ層として扱う。
   - 移動前に単独起動前提の導線（daemon.sh / systemd unit / lifelog 独自の pyproject.toml エントリポイント）を先に除去する。
@@ -147,3 +149,12 @@
 
 - パターン: `duckduckgo_search` の rename warning や、テスト中の `sqlite3.Connection` close 漏れが積み上がると、運用ログと CI 出力のノイズが増えて本来の異常を見落としやすい。
 - 対策: `DDGS` は `ddgs` を優先 import し、旧 `duckduckgo_search` へ落ちる場合だけ rename warning を局所的に抑制する。SQLite を使うテストは `with sqlite3.connect(...)` または `try/finally` で必ず close する。
+
+- パターン: `viewer_service` のような独立サービス層を削除するとき、それを import していた CLI ツール（`cli_viewer.py`）が連鎖的に壊れる。
+- 対策: 大きなモジュールを削除する前に `grep -r "viewer_service"` で参照元を全洗いし、影響範囲を確認してから削除する。今回は `cli_viewer.py` の `news / dashboard / view / recent` コマンドを合わせて除去した。
+
+- パターン: Windows タスクスケジューラが指しているスクリプトパスを確認せずにラッパーを削除すると、Windows 側の自動起動が壊れる。
+- 対策: Windows 側スクリプトを削除する前に `Get-ScheduledTask` で実際の引数パスを確認する。本体と wrapper が混在している場合は必ずどちらが登録済みかを確認してから判断する。
+
+- パターン: `main_collector.py` のような旧スタンドアロン起動エントリが残っていると、「今でも直接起動できる」という誤解を招く。
+- 対策: worker 移行完了後は旧エントリポイントを削除し、起動経路を `timeline-app/scripts/start.sh` に一本化する。ドキュメントも同時に更新する。

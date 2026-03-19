@@ -29,7 +29,7 @@
       → 保留: obsidian 関連・info_collector 手動ツール群は引き続き置いておく
 - [x] 「削除してよいもの」と「まだ参照されているもの」を分類した一覧を作る
       → viewer_service: 削除済み / cli_viewer: 保持 / Windows scripts: 本体のみ保持 / obsidian: 保留
-- [ ] `tasks/lessons.md` に、削除判断で見つかった依存関係と再発防止ルールを記録する
+- [x] `tasks/lessons.md` に、削除判断で見つかった依存関係と再発防止ルールを記録する
 
 ### 後続の重要タスク（削除整理の後に着手）
 
