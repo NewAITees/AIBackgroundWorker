@@ -79,7 +79,7 @@ class DailyDigestWorker:
         return total_saved
 
     def _target_dates(self) -> list[date]:
-        yesterday = date.today() - timedelta(days=1)
+        yesterday = datetime.now(UTC).date() - timedelta(days=1)
         lookback = max(config.lifelog.daily_digest_lookback_days, 1)
         start = yesterday - timedelta(days=lookback - 1)
         days: list[date] = []

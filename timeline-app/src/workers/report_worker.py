@@ -86,7 +86,7 @@ class ReportWorker:
 
     def _generate_blocking(self) -> int:
         self._status.last_error = None
-        target_date = date.today() - timedelta(days=1)
+        target_date = datetime.now(UTC).date() - timedelta(days=1)
         self._status.last_target_date = target_date.isoformat()
 
         workspace_path = resolve_workspace_path()
