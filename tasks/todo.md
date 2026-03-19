@@ -17,6 +17,9 @@
       → health.py に windows_foreground_worker を追加
       → 残骸: lifelog-daemon.service / daemon.sh（削除候補として後続タスクへ）
 - [ ] `lifelog-system/` を「`timeline-app` から呼ばれるライブラリ層」として整理し、単独起動前提の導線を棚卸しする
+      → **最終ゴール: `lifelog-system/` を `timeline-app/lifelog-system/` 配下に移動する**
+      → 移動前に単独起動導線・systemd unit・独自 pyproject.toml エントリポイントを除去しておく
+      → 移動後は `timeline-app/pyproject.toml` に統合する
 - [ ] 正本データを明文化する
       → `articles/*.md` / `daily/*.md` / SQLite / 生成レポートのうち、更新元と投影先を整理する
 - [ ] 不要物の削除を優先順で進める

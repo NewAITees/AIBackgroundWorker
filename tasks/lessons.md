@@ -25,6 +25,13 @@
 - パターン: WSL の `PATH` に Windows 側 `pyenv-win` shim が混入すると、`python` が壊れていても `uv` や `python3` だけ見て気づきにくい。
 - 対策: WSL では `python` / `python3` / `command -v` をセットで確認し、必要なら Windows PATH 混入を抑制する。
 
+## 2026-03-19
+- 設計判断: `lifelog-system/` は最終的に `timeline-app/lifelog-system/` 配下へ移動する。
+  - `timeline-app/` が唯一の運用入口であり、`lifelog-system/` はそのライブラリ層として扱う。
+  - 移動前に単独起動前提の導線（daemon.sh / systemd unit / lifelog 独自の pyproject.toml エントリポイント）を先に除去する。
+  - 移動後は `timeline-app/pyproject.toml` に統合し、リポジトリ直下の `lifelog-system/` は廃止する。
+  - この方針に反する「lifelog-system 単独起動」の実装・ドキュメントは作成しない。
+
 ## 2026-03-18
 - パターン: timeline の daily ファイルを正本と更新先の両方にすると、PATCH 時に同一 entry ブロックが重複しやすい。
 - 対策: `articles/*.md` を正本、`daily/YYYY-MM-DD.md` を時間軸表示用の投影とみなし、更新時は daily 側で同一 `id` ブロックを必ず除去してから再挿入する。
@@ -127,3 +134,7 @@
 
 - パターン: `timeline-app/src` と `lifelog-system/src` の両方で `src` パッケージ名を使うと、`sys.path` を足しただけでは `src.info_collector.*` が解決されず、worker の実運用時だけ `ModuleNotFoundError` になる。
 - 対策: 既存の `src` パッケージを使い回す場合は `sys.path` 追加に加えて `src.__path__` も拡張し、統合テストで実 import まで確認する。
+
+## 2026-03-19
+- パターン: 削除候補を棚卸しするときに、生成物・保持対象・追跡済み資産を同じ粒度で並べると、安全に消せる範囲が曖昧になる。
+- 対策: 削除対象は `確実に削除可` / `削除しない` / `保留` に分けて記録する。今回の整理では、`gitignore` されたキャッシュ類だけを削除確定とし、Windowsログ・外部モデル・現行DBは保持、追跡済みかつ参照が残る資産は保留にした。
