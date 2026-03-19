@@ -89,6 +89,9 @@
 - パターン: `activity_worker` が `activity_intervals` をそのまま timeline へ投影すると、12秒や数十秒単位の `lifelog-activity-*` が大量に並び、1時間単位 UI の前提を壊す。
 - 対策: `activity_worker` は収集だけに徹し、timeline へは書かない。画面に出す `activity` は hourly summary worker だけに限定し、既存 `lifelog-activity-*` は daily 読込時に非表示扱いにする。
 
+- パターン: `collected_info` の生ニュースを1件ずつ timeline に出すと、素材と生成物が同じ粒度で混ざり、`reports` の意味が薄れる。
+- 対策: 生ニュースは時間帯ごとに1件へ束ねて `content` にリンク付き一覧を持たせる。`reports` は生成物ごとに個別 entry として投影し、素材の束ね entry と成果物 entry を分けて扱う。
+
 - パターン: APScheduler の `misfire_grace_time` をデフォルト（1秒）のままにすると、ジョブ実行が1秒を少し超えるたびに "missed" 警告が大量に出る。再起動後も停止中の全スケジュール分が missed と判定される。
 - 対策: `misfire_grace_time` を各ジョブの `interval` 秒数と同じ値に設定する。`coalesce=True` と組み合わせると「間隔以内の遅れは無視、かつ溜まっても1回だけ実行」になる。
 

@@ -12,10 +12,6 @@ import threading
 from typing import Any
 
 from ..config import config, to_local_path
-from ..models.entry import Entry, EntryMeta, EntrySource, EntryStatus, EntryType
-from ..routers.workspace import peek_workspace
-from ..storage.daily_writer import upsert_entry_in_daily
-from ..storage.entry_writer import write_entry
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +53,7 @@ class ActivityWorkerStatus:
 
 
 class ActivityWorker:
-    """既存 lifelog 収集と timeline 投影を束ねる最小 worker。"""
+    """既存 lifelog 収集だけを担う worker。"""
 
     def __init__(self) -> None:
         self._task: asyncio.Task[None] | None = None
@@ -165,26 +161,11 @@ class ActivityWorker:
         if not rows:
             return 0
 
-        workspace = peek_workspace()
-        workspace_path = None
-        if workspace:
-            workspace_path = workspace["path"]
-        elif config.workspace.default_path:
-            workspace_path = str(Path(to_local_path(config.workspace.default_path)).resolve())
-
-        synced = 0
         for row in rows:
             self._status.last_interval_id = int(row["id"])
-            if not workspace_path:
-                continue
-
-            entry = self._row_to_entry(workspace_path, row, db_path)
-            write_entry(workspace_path, config.workspace.dirs.articles, entry)
-            upsert_entry_in_daily(workspace_path, config.workspace.dirs.daily, entry)
-            synced += 1
 
         self._status.last_sync_at = datetime.now(UTC).isoformat()
-        return synced
+        return len(rows)
 
     def _get_latest_interval_id(self, db_path: str) -> int:
         conn = sqlite3.connect(db_path)
@@ -210,37 +191,6 @@ class ActivityWorker:
         if legacy_path.is_absolute():
             return legacy_path.resolve()
         return (_lifelog_root() / legacy_path).resolve()
-
-    def _row_to_entry(self, workspace_path: str, row: sqlite3.Row, db_path: str) -> Entry:
-        process_name = row["process_name"] or "unknown"
-        domain = row["domain"]
-        duration_seconds = max(int(row["duration_seconds"] or 0), 0)
-        is_idle = bool(row["is_idle"])
-        started = datetime.fromisoformat(str(row["start_ts"])).astimezone(UTC)
-        ended = datetime.fromisoformat(str(row["end_ts"])).astimezone(UTC)
-
-        status_text = "idle" if is_idle else "active"
-        title = f"{process_name} の活動"
-        if domain:
-            title = f"{process_name} / {domain}"
-        content = (
-            f"{started.isoformat()} から {ended.isoformat()} まで {process_name} を使用。"
-            f" 状態は {status_text}、継続時間は {duration_seconds} 秒。"
-        )
-        if domain:
-            content += f" ドメイン: {domain}。"
-
-        return Entry(
-            id=f"lifelog-activity-{row['id']}",
-            type=EntryType.system_log,
-            title=title,
-            content=content,
-            timestamp=started,
-            status=EntryStatus.active,
-            source=EntrySource.system,
-            workspace_path=workspace_path,
-            meta=EntryMeta(source_path=db_path),
-        )
 
 
 activity_worker = ActivityWorker()

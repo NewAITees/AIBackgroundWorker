@@ -18,6 +18,8 @@ def _as_utc(dt: datetime) -> datetime:
 
 _SECTION_RE = re.compile(r"(?ms)^## (?P<hour>\d{2}:\d{2})\n(?P<body>.*?)(?=^## \d{2}:\d{2}\n|\Z)")
 _BLOCK_RE = re.compile(r"(?ms)^```yaml\n.*?^```\n?")
+_HIDDEN_ID_PREFIXES = ("lifelog-activity-", "collected-info-")
+_HIDDEN_ID_SUFFIXES = ("-reports",)
 
 
 def read_timeline_entries(
@@ -51,6 +53,9 @@ def read_daily_entries(workspace_path: str, daily_dir: str, target_date: date) -
             raw = parse_yaml_block(block_match.group(0))
             if "content" not in raw:
                 raw["content"] = raw.get("summary") or ""
+            entry_id = str(raw.get("id", ""))
+            if entry_id.startswith(_HIDDEN_ID_PREFIXES) or entry_id.endswith(_HIDDEN_ID_SUFFIXES):
+                continue
             entry = Entry.model_validate(raw)
             entries.append(ensure_entry_summary(entry))
     return entries

@@ -12,10 +12,6 @@ import json
 from typing import Any
 
 from ..config import config, to_local_path
-from ..models.entry import Entry, EntryMeta, EntrySource, EntryStatus, EntryType
-from ..routers.workspace import peek_workspace
-from ..storage.daily_writer import upsert_entry_in_daily
-from ..storage.entry_writer import write_entry
 
 
 def _repo_root() -> Path:
@@ -91,19 +87,11 @@ class InfoWorker:
             self._status.last_sync_at = datetime.now(UTC).isoformat()
             return 0
 
-        workspace_path = self._resolve_workspace_path()
-        synced = 0
         for row in rows:
             self._status.last_info_id = int(row["id"])
-            if not workspace_path:
-                continue
-            entry = self._row_to_entry(workspace_path, row, str(db_path))
-            write_entry(workspace_path, config.workspace.dirs.articles, entry)
-            upsert_entry_in_daily(workspace_path, config.workspace.dirs.daily, entry)
-            synced += 1
 
         self._status.last_sync_at = datetime.now(UTC).isoformat()
-        return synced
+        return len(rows)
 
     def _run_info_collection(self) -> dict[str, Any]:
         lifelog_root = _resolve_path(config.lifelog.root_dir)
@@ -135,14 +123,6 @@ class InfoWorker:
             return {}
         return json.loads(stdout)
 
-    def _resolve_workspace_path(self) -> str | None:
-        workspace = peek_workspace()
-        if workspace:
-            return workspace["path"]
-        if config.workspace.default_path:
-            return str(Path(to_local_path(config.workspace.default_path)).resolve())
-        return None
-
     def _get_latest_info_id(self, db_path: Path) -> int:
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
@@ -168,26 +148,6 @@ class InfoWorker:
         rows = cursor.fetchall()
         conn.close()
         return rows
-
-    def _row_to_entry(self, workspace_path: str, row: sqlite3.Row, db_path: str) -> Entry:
-        fetched_at = datetime.fromisoformat(str(row["fetched_at"])).astimezone(UTC)
-        title = row["title"] or row["url"]
-        snippet = row["snippet"] or row["content"] or row["url"]
-        source_type = row["source_type"] or "info"
-        source_name = row["source_name"] or source_type
-        content = f"{title}\n{row['url']}\nsource_type: {source_type}\nsource_name: {source_name}\n\n{snippet}"
-
-        return Entry(
-            id=f"collected-info-{row['id']}",
-            type=EntryType.news,
-            title=title[:120],
-            content=content,
-            timestamp=fetched_at,
-            status=EntryStatus.active,
-            source=EntrySource.imported,
-            workspace_path=workspace_path,
-            meta=EntryMeta(source_path=db_path),
-        )
 
 
 info_worker = InfoWorker()

@@ -160,7 +160,7 @@
 
 - [x] `timeline-app/src/workers/activity_worker.py` を作成
   - lifelog-system の `ActivityCollector` を `asyncio.to_thread()` でスレッド実行
-  - 収集した activity_intervals を `system_log` entry として timeline に保存
+  - 収集した activity_intervals は DB に保持し、timeline への直接投影はしない
 - [x] 既存 `lifelog-system` の SQLite DB はそのまま維持（書き込み先は変えない）
 - [x] `scripts/daemon.sh` の lifelog 起動部分を `start.sh` に統合
 
@@ -178,7 +178,7 @@
 
 - [x] `timeline-app/src/workers/info_worker.py` を作成
   - RSS / ニュース収集を毎時実行
-  - 収集結果を `news` entry として timeline に保存
+  - 収集結果は `collected_info` に保存し、timeline へは直接出さない
 - [x] `info_collector` の設定（フィードURL等）を `timeline-app/config.yaml` で管理できるようにする
 
 ### 4.5-5. 1時間ごとの AI 要約エントリワーカー（毎時）
@@ -190,10 +190,13 @@
   - `daily` には summary を投影し、本文は `articles/` 側へ保存する
 - [x] 生成単位は `1時間ごと`
   - 日次レポートは作らない
-  - source は初回から `activity / browser / reports / system_log` に分ける
+  - source は `activity / browser / news / system_log` と `report 個別 entry` に分ける
 - [x] `直近1時間だけ` ではなく `まだ entry 化されていない時間帯` を埋める
   - worker 実行ごとに lookback 範囲を走査し、欠けている hour / source だけを補完する
   - sleep / 停止 / 再起動後でも欠損時間を埋められるようにする
+- [x] ニュース系の表示方針を整理する
+  - 生ニュースは時間帯ごとに `1 entry` へ束ね、`content` にリンク付き一覧を入れる
+  - `reports` は生成物ごとの個別 entry として投影し、`content` に report 本文を入れる
 
 ### 4.5-6. 移行完了・旧デーモン廃止
 
