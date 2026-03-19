@@ -14,7 +14,7 @@ from ..storage.daily_reader import read_daily_entries
 from ..storage.daily_writer import upsert_entry_in_daily
 from ..storage.entry_writer import write_entry
 
-HOURLY_SUFFIXES = ("activity", "browser", "reports", "system")
+HOURLY_SUFFIXES = ("activity", "browser", "news", "system")
 
 
 @dataclass
@@ -84,6 +84,7 @@ def import_missing_hours(ctx: ImportContext, start_hour: datetime, end_hour: dat
                     hour,
                     client,
                     allowed_suffixes=set(missing_suffixes),
+                    existing_ids=existing_ids,
                 ):
                     _persist_entry(ctx.workspace_path, entry)
                     existing_ids.add(entry.id)
@@ -100,6 +101,7 @@ def build_entries_for_hour(
     client: OllamaClient,
     *,
     allowed_suffixes: set[str] | None = None,
+    existing_ids: set[str] | None = None,
 ) -> list[Entry]:
     entries: list[Entry] = []
     if _allow("activity", allowed_suffixes):
@@ -114,10 +116,11 @@ def build_entries_for_hour(
         browser = summarize_browser(info_conn, target_date, hour, client)
         if browser:
             entries.append(browser)
-    if _allow("reports", allowed_suffixes):
-        reports = summarize_reports(info_conn, target_date, hour, client)
-        if reports:
-            entries.append(reports)
+    if _allow("news", allowed_suffixes):
+        news = summarize_news(info_conn, target_date, hour)
+        if news:
+            entries.append(news)
+    entries.extend(summarize_reports(info_conn, target_date, hour, existing_ids=existing_ids))
     return entries
 
 
@@ -300,11 +303,12 @@ def summarize_reports(
     conn: sqlite3.Connection,
     target_date: date,
     hour: int,
-    client: OllamaClient,
-) -> Entry | None:
+    *,
+    existing_ids: set[str] | None = None,
+) -> list[Entry]:
     rows = conn.execute(
         """
-        SELECT title, content
+        SELECT id, title, content, category, created_at
         FROM reports
         WHERE date(created_at) = ?
           AND strftime('%H', created_at) = ?
@@ -314,41 +318,74 @@ def summarize_reports(
         (target_date.isoformat(), f"{hour:02d}"),
     ).fetchall()
     if not rows:
+        return []
+
+    entries: list[Entry] = []
+    for report_id, title, content, category, created_at in rows:
+        entry_id = f"report-{report_id}"
+        if existing_ids and entry_id in existing_ids:
+            continue
+        created_at_dt = datetime.fromisoformat(str(created_at)).astimezone(UTC)
+        category_label = str(category or "report").strip()
+        body = (content or "").strip()
+        if not body:
+            continue
+        entries.append(
+            Entry(
+                id=entry_id,
+                type=EntryType.news,
+                title=(str(title or "レポート")[:120]),
+                summary=f"{category_label} レポート",
+                content=body,
+                timestamp=created_at_dt,
+                source=EntrySource.imported,
+                workspace_path=str(Path(to_local_path(config.workspace.default_path)).resolve()),
+                meta=EntryMeta(source_path="lifelog-system/data/ai_secretary.db"),
+            )
+        )
+    return entries
+
+
+def summarize_news(
+    conn: sqlite3.Connection,
+    target_date: date,
+    hour: int,
+) -> Entry | None:
+    rows = conn.execute(
+        """
+        SELECT id, COALESCE(title, ''), url, COALESCE(source_name, ''), COALESCE(snippet, '')
+        FROM collected_info
+        WHERE date(fetched_at) = ?
+          AND strftime('%H', fetched_at) = ?
+        ORDER BY fetched_at DESC
+        LIMIT 20
+        """,
+        (target_date.isoformat(), f"{hour:02d}"),
+    ).fetchall()
+    if not rows:
         return None
 
-    lines = [f"{hour:02d}時台に生成されたレポート {len(rows)} 件。", ""]
-    for title, _ in rows:
-        lines.append(f"- {title}")
+    lines = [f"{hour:02d}時台に取得したニュース一覧 ({len(rows)}件)", ""]
+    related_ids: list[str] = []
+    for row_id, title, url, source_name, snippet in rows:
+        label = str(title).strip() or str(url)
+        source = f" ({source_name})" if source_name else ""
+        lines.append(f"- [{label}]({url}){source}")
+        if snippet:
+            lines.append(f"  - {' '.join(str(snippet).split())[:180]}")
+        related_ids.append(f"collected-info-{row_id}")
 
-    first_title, first_content = rows[0]
-    preview = " ".join((first_content or "").split())[:400]
-    if preview:
-        lines.extend(["", "先頭レポート抜粋:", preview])
-    raw_summary = "\n".join(lines)
-    fallback_content = "\n".join(
-        [
-            f"{hour:02d}時台にレポート {len(rows)} 件が生成された。",
-            "主なタイトル: " + " / ".join(title for title, _ in rows[:3]),
-        ]
-    )
-    title, content, should_create = summarize_with_llm(
-        client,
-        source_type="reports",
-        target_label=f"{target_date.isoformat()} {hour:02d}時のレポート",
-        raw_summary=raw_summary,
-        fallback_title=f"{target_date.isoformat()} {hour:02d}時のレポート: {first_title}",
-        fallback_content=fallback_content,
-    )
-    if not should_create:
-        return None
-    return build_entry(
-        target_date=target_date,
-        hour=hour,
-        suffix="reports",
-        entry_type=EntryType.news,
-        title=title,
-        content=content,
-        source_path="lifelog-system/data/ai_secretary.db",
+    return Entry(
+        id=make_entry_id(target_date, hour, "news"),
+        type=EntryType.news,
+        title=f"{target_date.isoformat()} {hour:02d}時のニュース",
+        summary=f"{hour:02d}時台に取得したニュース {len(rows)} 件",
+        content="\n".join(lines),
+        timestamp=make_timestamp(target_date, hour),
+        source=EntrySource.imported,
+        workspace_path=str(Path(to_local_path(config.workspace.default_path)).resolve()),
+        related_ids=related_ids,
+        meta=EntryMeta(source_path="lifelog-system/data/ai_secretary.db"),
     )
 
 
