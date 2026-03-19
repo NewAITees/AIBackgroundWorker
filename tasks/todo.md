@@ -20,12 +20,16 @@
       → **最終ゴール: `lifelog-system/` を `timeline-app/lifelog-system/` 配下に移動する**
       → 移動前に単独起動導線・systemd unit・独自 pyproject.toml エントリポイントを除去しておく
       → 移動後は `timeline-app/pyproject.toml` に統合する
+      → 現状、`activity_worker` / `browser_worker` / `analysis_pipeline_worker` / `info_worker` / `windows_foreground_worker` が直接依存しているため即移動不可
+      → 追記: `lifelog-system/pyproject.toml` には console entry point 自体は無く、先に消す対象は `systemd` / `daemon.sh` / viewer / CLI / shell 導線
 - [ ] 正本データを明文化する
       → `articles/*.md` / `daily/*.md` / SQLite / 生成レポートのうち、更新元と投影先を整理する
+      → 現状の整理: `articles/*.md` が entry 正本、`daily/*.md` が timeline 投影、`lifelog.db` と `ai_secretary.db` が収集・分析の正本、レポートMarkdownは生成物
 - [ ] 不要物の削除を優先順で進める
       → まず未使用ファイル、次に旧導線スクリプト、次に今は不要な DB・生成物、最後に重複テスト資産を対象にする
 - [ ] 「削除してよいもの」と「まだ参照されているもの」を分類した一覧を作る
       → 削除は毎回小さく行い、都度テストまたは起動確認を挟む
+      → 分類の基準は `正本データかどうか` と `timeline-app からの実行依存が残っているかどうか`
 - [ ] `tasks/lessons.md` に、削除判断で見つかった依存関係と再発防止ルールを記録する
 
 ### 後続の重要タスク（削除整理の後に着手）
@@ -52,11 +56,30 @@
       → `scripts/logs/windows_foreground.jsonl`, `scripts/logs/windows_foreground.jsonl.processed`
       → `models/176039414170160856.vrm`, `models/176039414170160856.vrm:Zone.Identifier`
       → `lifelog-system/data/ai_secretary.db`, `lifelog-system/data/info.db`, `lifelog-system/data/lifelog.db*`
+      → `articles/*.md`, `daily/*.md`, `/mnt/c/YellowMable/00_Raw` 配下の必要レポートも正本または生成成果物として保持する
 - [ ] 保留: 追跡済みかつ参照が残るため、今は削除しない
       → `scripts/systemd/` 一式, `docs/TASK_SCHEDULER_SETUP.md`, `docs/TROUBLESHOOTING_SYSTEMD.md`
       → `README.md`, `CLAUDE.md`, `lifelog-system/README.md`, `lifelog-system/docs/QUICKSTART.md`, `docs/PROJECT_OVERVIEW.md`
       → `scripts/info_collector/integrated_pipeline.sh`, `scripts/viewer_service.sh`, `lifelog-system/src/viewer_service/`, `lifelog-system/src/lifelog/cli_viewer.py`
       → `lifelog-system/tests/test_integration.py`, `lifelog-system/tests/test_integration_reasons.py`, `lifelog-system/tests/test_jobs_integration.py`, `timeline-app/tests/test_analysis_pipeline_integration.py`
+      → 即削除不可の主因: `src/lifelog/*`, `src/browser_history/*`, `src/info_collector/jobs/*`, `auto_runner.py`, `scripts/lifelog/merge_windows_logs.py` は `timeline-app` 側 worker がまだ使用中
+      → 追加整理: `scripts/systemd/` と `daemon.sh` は主に残骸・旧運用導線、`viewer_service` / `cli_viewer` / `integrated_pipeline.sh` はまだドキュメント・補助スクリプト・実行経路から参照あり
+
+### 移動前に優先して畳む旧導線
+
+- [ ] `systemd` 残骸を削除候補として切り出す
+      → `scripts/systemd/*.service`, `scripts/systemd/*.timer`, `scripts/systemd/install_service.sh`
+      → まず docs / README の参照を整理し、運用不要を確認してから削除する
+      → 現状の参照先: `README.md`, `docs/TASK_SCHEDULER_SETUP.md`, `docs/TROUBLESHOOTING_SYSTEMD.md`, `docs/INFO_COLLECTOR_DEEPDIVE_PLAN.md`
+      → `info-collector.timer` / `info-integrated.timer` / `merge-windows-logs.timer` は timeline-app 側で代替済み。`lifelog-daemon.service` は `daemon.sh` 案内の残骸
+- [ ] `daemon.sh` 残骸を削除候補として切り出す
+      → `scripts/daemon.sh`, `lifelog-system/scripts/daemon.sh`, `scripts/systemd/lifelog-daemon.service`
+      → 現状は案内・互換導線なので、参照元ドキュメント整理後に削除判断する
+      → 現状の参照先: `README.md`, `CLAUDE.md`, `lifelog-system/README.md`, `lifelog-system/docs/QUICKSTART.md`, `docs/PROJECT_OVERVIEW.md`, `docs/TASK_SCHEDULER_SETUP.md`, `docs/TROUBLESHOOTING_SYSTEMD.md`
+- [ ] viewer / CLI 導線の存廃を決める
+      → `scripts/viewer_service.sh`, `lifelog-system/src/viewer_service/`, `lifelog-system/src/lifelog/cli_viewer.py`, `scripts/view.sh`, `scripts/lifelog/get_*.sh`
+      → `timeline-app` へ未統合の用途が残るため、即削除せず役割を確認する
+      → `cli_viewer.py` は `src.viewer_service.*` を import しているため、viewer と CLI はセットで扱う
 
 ---
 

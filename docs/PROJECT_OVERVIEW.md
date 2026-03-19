@@ -116,7 +116,7 @@ AIBackgroundWorker/
 │   │   └── get_timeline.sh
 │   ├── windows/          # Windows関連スクリプト
 │   │   └── foreground_logger.ps1
-│   └── daemon.sh         # デーモン制御スクリプト
+│   └── start.sh          # アプリ起動スクリプト（timeline-app/scripts/）
 ├── docs/                 # ドキュメント
 │   └── PROJECT_OVERVIEW.md
 ├── pyproject.toml        # ルートプロジェクト設定
@@ -167,14 +167,8 @@ uv sync
 ### バックグラウンド実行（推奨）
 
 ```bash
-# ルートディレクトリから実行
-ENABLE_WINDOWS_FOREGROUND_LOGGER=1 ./scripts/daemon.sh start
-
-# 状態確認
-./scripts/daemon.sh status
-
-# 停止
-./scripts/daemon.sh stop
+cd timeline-app
+./scripts/start.sh
 ```
 
 ### データ閲覧

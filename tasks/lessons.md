@@ -138,3 +138,9 @@
 ## 2026-03-19
 - パターン: 削除候補を棚卸しするときに、生成物・保持対象・追跡済み資産を同じ粒度で並べると、安全に消せる範囲が曖昧になる。
 - 対策: 削除対象は `確実に削除可` / `削除しない` / `保留` に分けて記録する。今回の整理では、`gitignore` されたキャッシュ類だけを削除確定とし、Windowsログ・外部モデル・現行DBは保持、追跡済みかつ参照が残る資産は保留にした。
+
+- パターン: `lifelog-system/pyproject.toml` に独自 entry point がある前提で整理を進めると、実際には存在しない削除対象を追いかけてしまう。
+- 対策: `pyproject.toml` は「独立パッケージ設定そのものが不要になる」という粒度で扱い、先に消す対象は `systemd` / `daemon.sh` / viewer / CLI / shell 導線として分けて棚卸しする。
+
+- パターン: `scripts/systemd/` を先に消そうとしても、README や設定ガイド、トラブルシュート文書に古い運用導線が大量に残っていると、削除後の利用者が誤誘導される。
+- 対策: `systemd` 系は unit ファイル削除より先に参照ドキュメントを整理する。特に `README.md`, `docs/TASK_SCHEDULER_SETUP.md`, `docs/TROUBLESHOOTING_SYSTEMD.md`, `docs/INFO_COLLECTOR_DEEPDIVE_PLAN.md` を先に更新してから、`scripts/systemd/` を消す。

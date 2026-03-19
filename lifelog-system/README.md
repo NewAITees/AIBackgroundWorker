@@ -28,22 +28,8 @@ uv sync
 ### バックグラウンド実行（推奨）
 
 ```bash
-cd lifelog-system
-
-# デーモン起動（Windows前面ロガーも起動したい場合はENVを付与）
-ENABLE_WINDOWS_FOREGROUND_LOGGER=1 ./scripts/daemon.sh start
-
-# 状態確認
-./scripts/daemon.sh status
-
-# ログ確認
-./scripts/daemon.sh logs
-
-# デーモン停止
-./scripts/daemon.sh stop
-
-# 再起動
-./scripts/daemon.sh restart
+cd timeline-app
+./scripts/start.sh
 ```
 
 ### フォアグラウンド実行（テスト用）
@@ -125,23 +111,9 @@ powershell -ExecutionPolicy Bypass -File .\foreground_logger.ps1 -IntervalSecond
   - `-StopAfterSeconds <int>`: この秒数で停止（0以下なら無制限）
   - `-OutputPath <path>`: 出力先ファイルを変更
 
-#### lifelogデーモンからWindowsロガーも同時起動する
-- WSL上で lifelog デーモンを起動する際に環境変数を付与すると、WSLから `powershell.exe` を呼び出してWindows側ロガーも起動します。
-```bash
-cd lifelog-system
-ENABLE_WINDOWS_FOREGROUND_LOGGER=1 ./scripts/daemon.sh start
-```
-- 追加の環境変数（任意）  
-  - `WINDOWS_FOREGROUND_INTERVAL`: 取得間隔（秒、デフォルト 5）  
-  - `WINDOWS_FOREGROUND_STOP_AFTER`: 自動停止までの秒数（0以下で無制限）
-- lifelog停止時にWindowsロガーは自動停止しません。止めたい場合は:
-```bash
-./scripts/daemon.sh winlogger-stop
-```
-状態確認:
-```bash
-./scripts/daemon.sh winlogger-status
-```
+#### Windowsロガーのマージ
+- `timeline-app` の `WindowsForegroundWorker` が15分ごとに `windows_foreground.jsonl` を `lifelog.db` へマージします。
+- timeline-app 起動中は自動処理されます。
 
 ### Windowsタスクスケジューラで常駐させる例
 1. 「タスク スケジューラ」を開く

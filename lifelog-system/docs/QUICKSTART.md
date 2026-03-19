@@ -24,27 +24,18 @@ uv sync
 
 ## 基本的な使い方
 
-### 1. デーモンを起動（バックグラウンド実行）
+### 1. システムを起動（バックグラウンド実行）
 
 ```bash
-./scripts/daemon.sh start
+cd timeline-app
+./scripts/start.sh
 ```
 
 これでバックグラウンドでデータ収集が開始されます。
 
 ### 2. 状態確認
 
-```bash
-./scripts/daemon.sh status
-```
-
-**出力例:**
-```
-Lifelog is running (PID: 12345)
-Memory usage: 30.5 MB
-Last log entry:
-2025-11-11 00:00:00,000 - __main__ - INFO - Running indefinitely...
-```
+ブラウザで `http://localhost:8100/api/health` にアクセスするか、ログを確認してください。
 
 ### 3. データを確認
 
@@ -85,29 +76,13 @@ uv run python -m src.cli_viewer hourly
 uv run python -m src.cli_viewer health
 ```
 
-### 4. デーモン停止
+### 4. 停止
 
-```bash
-./scripts/daemon.sh stop
-```
+timeline-app のプロセスを終了してください（Ctrl+C またはシグナル）。
 
 ---
 
 ## よくある操作
-
-### ログをリアルタイムで確認
-
-```bash
-./scripts/daemon.sh logs
-```
-
-（Ctrl+C で終了）
-
-### デーモン再起動
-
-```bash
-./scripts/daemon.sh restart
-```
 
 ### 特定日のデータを確認
 
@@ -169,8 +144,8 @@ tail -n 50 logs/lifelog_daemon.log
 
 ```bash
 # データベースを削除して再作成
-rm lifelog.db
-./scripts/daemon.sh start
+rm lifelog-system/data/lifelog.db
+cd timeline-app && ./scripts/start.sh
 ```
 
 ### メモリ使用量が多い場合

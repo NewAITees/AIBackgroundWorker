@@ -217,44 +217,6 @@ uv run python -m src.info_collector.jobs.generate_report --hours 24
 - **ログ記録**: すべてのエラーをログファイルに記録（`logs/info_collector/`）
 - **ロールバック**: 各ジョブは独立しており、失敗しても他のジョブに影響しない
 
-## systemdユニット（実装済み）
-
-### データ収集
-- **info-collector.service** / **info-collector.timer**
-  - データ収集（ニュース・RSS・検索）を実行
-
-### 分析・深掘り・レポート（個別実行）
-- **info-analyze.service** / **info-analyze.timer**
-  - 未分析記事の分析を実行
-
-- **info-deep.service** / **info-deep.timer**
-  - 重要記事の深掘り調査を実行
-
-- **info-report.service** / **info-report.timer**
-  - レポート生成を実行
-
-### 統合パイプライン（推奨）
-- **info-integrated.service** / **info-integrated.timer**
-  - 分析→深掘り→レポート を連続実行
-  - 実行頻度: **30分ごと** (`OnCalendar=*:0/30`)
-  - 統合的な処理により、一貫性のある情報処理を実現
-
-### systemdユニットの操作
-```bash
-# タイマー有効化
-sudo systemctl enable --now info-integrated.timer
-
-# 状態確認
-sudo systemctl status info-integrated.timer
-sudo systemctl status info-integrated.service
-
-# 手動実行
-sudo systemctl start info-integrated.service
-
-# ログ確認
-sudo journalctl -u info-integrated.service -f
-```
-
 ## テスト方針
 
 ### ユニットテスト

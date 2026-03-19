@@ -23,7 +23,6 @@ The system prioritizes privacy-by-design, storing only hashed titles and domain 
   - `logs/`: Log files and Windows foreground logger output
 
 - **scripts/**: Shell scripts for various subsystems
-  - `daemon.sh`: Main daemon control (start/stop/status)
   - `lifelog/`: Data viewing scripts (summaries, timelines)
   - `browser/`: Browser history collection scripts
   - `windows/`: Windows-side foreground window logger (PowerShell)
@@ -68,31 +67,12 @@ uv sync --all-extras
 ### Running the System
 
 ```bash
-# Start lifelog daemon (from project root)
-ENABLE_WINDOWS_FOREGROUND_LOGGER=1 ./scripts/daemon.sh start
-
-# Check status
-./scripts/daemon.sh status
-
-# View logs
-./scripts/daemon.sh logs
-
-# Stop daemon
-./scripts/daemon.sh stop
-
-# Restart
-./scripts/daemon.sh restart
+# Start from timeline-app directory
+cd timeline-app
+./scripts/start.sh
 ```
 
-### Windows Foreground Logger Control
-
-```bash
-# Stop Windows logger separately
-./scripts/daemon.sh winlogger-stop
-
-# Check Windows logger status
-./scripts/daemon.sh winlogger-status
-```
+Health check: `GET http://localhost:8100/api/health`
 
 ### Data Viewing (CLI Tools)
 
