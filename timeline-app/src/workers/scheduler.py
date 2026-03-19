@@ -36,6 +36,7 @@ def start_scheduler() -> AsyncIOScheduler:
             max_instances=1,
             coalesce=True,
             replace_existing=True,
+            misfire_grace_time=config.lifelog.activity_sync_seconds,
         )
     if scheduler.get_job("browser-sync") is None:
         scheduler.add_job(
@@ -46,6 +47,7 @@ def start_scheduler() -> AsyncIOScheduler:
             max_instances=1,
             coalesce=True,
             replace_existing=True,
+            misfire_grace_time=config.lifelog.browser_import_seconds,
         )
     if scheduler.get_job("info-sync") is None:
         scheduler.add_job(
@@ -56,6 +58,7 @@ def start_scheduler() -> AsyncIOScheduler:
             max_instances=1,
             coalesce=True,
             replace_existing=True,
+            misfire_grace_time=config.lifelog.info_collect_seconds,
         )
     if scheduler.get_job("hourly-summary-sync") is None:
         scheduler.add_job(
@@ -66,6 +69,7 @@ def start_scheduler() -> AsyncIOScheduler:
             max_instances=1,
             coalesce=True,
             replace_existing=True,
+            misfire_grace_time=config.lifelog.hourly_summary_seconds,
         )
     if not scheduler.running:
         scheduler.start()
