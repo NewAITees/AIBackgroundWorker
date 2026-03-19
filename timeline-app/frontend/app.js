@@ -11,6 +11,7 @@ const state = {
   loadingMore: false,
   noMorePast: false,
   noMoreFuture: false,
+  aiPaused: false,
 };
 
 const refs = {};
@@ -19,10 +20,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   cacheRefs();
   bindEvents();
   await refreshWorkspace();
+  await refreshAIStatus();
 });
 
 function cacheRefs() {
   refs.workspacePath = document.getElementById("workspace-path");
+  refs.aiToggle = document.getElementById("ai-toggle");
   refs.workspaceOpen = document.getElementById("workspace-open");
   refs.workspaceSummary = document.getElementById("workspace-summary");
   refs.timelineStatus = document.getElementById("timeline-status");
@@ -56,6 +59,7 @@ function cacheRefs() {
 
 function bindEvents() {
   refs.workspaceOpen.addEventListener("click", openWorkspace);
+  refs.aiToggle.addEventListener("click", toggleAI);
   refs.chatForm.addEventListener("submit", submitChat);
   refs.detailEditToggle.addEventListener("click", toggleDetailEdit);
   refs.detailForm.addEventListener("submit", saveDetail);
@@ -92,6 +96,35 @@ async function refreshWorkspace() {
     }
   } catch (error) {
     refs.workspaceSummary.textContent = error.message;
+  }
+}
+
+async function refreshAIStatus() {
+  try {
+    const status = await api("/api/ai/status");
+    state.aiPaused = !!status.paused;
+    renderAIStatus();
+  } catch (error) {
+    refs.aiToggle.textContent = "AI: 状態不明";
+  }
+}
+
+function renderAIStatus() {
+  refs.aiToggle.dataset.paused = String(state.aiPaused);
+  refs.aiToggle.textContent = state.aiPaused ? "AI: 停止中" : "AI: 稼働中";
+}
+
+async function toggleAI() {
+  refs.aiToggle.disabled = true;
+  try {
+    const path = state.aiPaused ? "/api/ai/resume" : "/api/ai/pause";
+    const status = await api(path, { method: "POST" });
+    state.aiPaused = !!status.paused;
+    renderAIStatus();
+  } catch (error) {
+    refs.chatStatus.textContent = error.message;
+  } finally {
+    refs.aiToggle.disabled = false;
   }
 }
 
@@ -307,6 +340,10 @@ async function saveDetail(event) {
 
 async function submitChat(event) {
   event.preventDefault();
+  if (state.aiPaused) {
+    refs.chatStatus.textContent = "AI処理は一時停止中です";
+    return;
+  }
   const content = refs.chatInput.value.trim();
   if (!content) return;
 

@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from .routers import health, workspace, timeline, entries, chat
+from .routers import ai_control, health, workspace, timeline, entries, chat
 from .workers.activity_worker import activity_worker
 from .workers.scheduler import shutdown_scheduler, start_scheduler
 
@@ -39,6 +39,7 @@ app.add_middleware(
 )
 
 app.include_router(health.router, prefix="/api")
+app.include_router(ai_control.router, prefix="/api")
 app.include_router(workspace.router, prefix="/api")
 app.include_router(timeline.router, prefix="/api")
 app.include_router(entries.router, prefix="/api")

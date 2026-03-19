@@ -11,18 +11,12 @@ Ollama が実際に起動している環境でのみ実行する。
 import pytest
 
 from src.ai.ollama_client import OllamaClient
-from src.config import AIConfig
+from src.config import config
 
 
 @pytest.fixture()
 def client() -> OllamaClient:
-    return OllamaClient(
-        AIConfig(
-            ollama_base_url="http://127.0.0.1:11434",
-            ollama_model="qwen2.5:7b",
-            timeout_seconds=60,
-        )
-    )
+    return OllamaClient(config.ai)
 
 
 @pytest.mark.integration
@@ -48,7 +42,9 @@ class TestOllamaClientIntegration:
 
     def test_diary_candidate_inferred(self, client: OllamaClient):
         """感情・出来事への言及から diary または event 候補が推定されること。"""
-        result = client.generate_chat_reply([{"role": "user", "content": "今日は久しぶりに友人と会えてとても嬉しかった"}])
+        result = client.generate_chat_reply(
+            [{"role": "user", "content": "今日は作業が進んで満足した。日記として残したい"}]
+        )
         types = [c["type"] for c in result.entry_candidates]
         assert any(
             t in types for t in ("diary", "event")

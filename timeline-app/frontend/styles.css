@@ -100,6 +100,12 @@ select {
   flex-shrink: 0;
 }
 
+.ai-toggle[data-paused="true"] {
+  background: rgba(191, 90, 54, 0.12);
+  color: var(--accent);
+  border: 1px solid rgba(191, 90, 54, 0.3);
+}
+
 .workspace-bar input {
   width: min(280px, 60vw);
   padding: 8px 14px;

@@ -1,5 +1,6 @@
 """API エンドポイントのテスト（FastAPI TestClient使用）"""
 
+import asyncio
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -34,6 +35,38 @@ class TestHealth:
             mock_cls.return_value.check_health.return_value = ollama_status
             resp = client.get("/api/health")
         assert resp.json()["ollama"] == ollama_status
+
+    def test_includes_worker_states_and_ai_paused(self, client: TestClient):
+        ollama_status = {"reachable": True, "model": "qwen2.5:7b", "model_available": True}
+        with (
+            patch("src.routers.health.OllamaClient") as mock_cls,
+            patch(
+                "src.routers.health.ai_control_service.get_status", return_value={"paused": True}
+            ),
+            patch("src.routers.health.get_scheduler_status", return_value={"running": True}),
+            patch("src.routers.health.activity_worker.get_status", return_value={"running": False}),
+            patch("src.routers.health.browser_worker.get_status", return_value={"running": False}),
+            patch("src.routers.health.info_worker.get_status", return_value={"running": False}),
+            patch(
+                "src.routers.health.analysis_pipeline_worker.get_status",
+                return_value={"running": True, "last_analyzed": 3},
+            ),
+            patch(
+                "src.routers.health.hourly_summary_worker.get_status",
+                return_value={"running": False, "last_generated": 5},
+            ),
+            patch(
+                "src.routers.health.daily_digest_worker.get_status",
+                return_value={"running": False, "last_saved": 1},
+            ),
+        ):
+            mock_cls.return_value.check_health.return_value = ollama_status
+            resp = client.get("/api/health")
+        data = resp.json()
+        assert data["ollama"]["paused"] is True
+        assert data["workers"]["analysis_pipeline"]["last_analyzed"] == 3
+        assert data["workers"]["hourly_summary"]["last_generated"] == 5
+        assert data["workers"]["daily_digest"]["last_saved"] == 1
 
 
 class TestWorkspace:
@@ -136,6 +169,46 @@ class TestTimeline:
         resp = client.get("/api/timeline")
         assert resp.status_code == 200
         assert len(resp.json()["entries"]) >= 1
+
+
+class TestAIControl:
+    def test_ai_status(self, client: TestClient):
+        with patch("src.routers.ai_control.ai_control_service.get_status") as get_status:
+            get_status.return_value = {"paused": False, "paused_at": None, "resumed_at": None}
+            resp = client.get("/api/ai/status")
+        assert resp.status_code == 200
+        assert resp.json()["paused"] is False
+
+    def test_ai_pause(self, client: TestClient):
+        with patch("src.routers.ai_control.ai_control_service.pause") as pause:
+            pause.return_value = {"paused": True, "paused_at": "now", "resumed_at": None}
+            resp = client.post("/api/ai/pause")
+        assert resp.status_code == 200
+        assert resp.json()["paused"] is True
+
+    def test_ai_resume_triggers_catch_up(self, client: TestClient):
+        scheduled: list[asyncio.coroutines] = []
+
+        def _capture_task(coro):
+            scheduled.append(coro)
+
+            class _DummyTask:
+                def cancel(self):
+                    return None
+
+            return _DummyTask()
+
+        with (
+            patch("src.routers.ai_control.ai_control_service.resume") as resume,
+            patch("src.routers.ai_control.asyncio.create_task", side_effect=_capture_task),
+        ):
+            resume.return_value = {"paused": False, "paused_at": "before", "resumed_at": "now"}
+            resp = client.post("/api/ai/resume")
+
+        assert resp.status_code == 200
+        assert resp.json()["paused"] is False
+        assert len(scheduled) == 1
+        scheduled[0].close()
 
 
 def _chat_mock(reply: str, candidates: list | None = None):

@@ -27,5 +27,16 @@ lifelog:
   info_config_dir: "lifelog-system/config/info_collector"
   info_collect_seconds: 3600
   info_limit: 10
+  analysis_pipeline_seconds: 1800
+  analyze_batch_size: 20
+  deep_batch_size: 3
+  deep_min_importance: 0.5
+  deep_min_relevance: 0.5
+  theme_min_articles: 1
+  theme_skip_existing: true
+  report_output_dir: "/mnt/c/YellowMable/00_Raw"
   hourly_summary_seconds: 3600
   hourly_summary_lookback_hours: 48
+  daily_digest_hour: 0
+  daily_digest_minute: 20
+  daily_digest_lookback_days: 7
