@@ -16,11 +16,6 @@ from pathlib import Path
 
 from src.lifelog.database.db_manager import DatabaseManager
 from src.browser_history.repository import BrowserHistoryRepository
-from src.viewer_service.queries import (
-    info_queries,
-    dashboard_queries,
-)
-from src.viewer_service.models import DashboardParams
 
 
 def format_duration(seconds: int) -> str:
@@ -329,32 +324,6 @@ def show_browser_stats(date: str = None) -> None:
     conn.close()
 
 
-def show_news(limit: int = 10, date: str = None) -> None:
-    """最新ニュースを表示."""
-    root = Path(__file__).resolve().parents[2]
-    info_db_path = root / "data" / "ai_secretary.db"
-
-    if not info_db_path.exists():
-        print("Error: ai_secretary.db not found")
-        return
-
-    news = info_queries.get_latest_news(info_db_path, limit=limit)
-
-    if not news:
-        print("\nNo news found")
-        return
-
-    print(f"\n=== Latest News (Last {limit} items) ===\n")
-    print(f"{'Time':<20} {'Source':<20} {'Title':<60}")
-    print("-" * 100)
-
-    for item in news:
-        time_str = item.published_at.strftime("%Y-%m-%d %H:%M:%S") if item.published_at else "N/A"
-        title = item.title[:58] if len(item.title) > 58 else item.title
-        source = item.source[:18] if len(item.source) > 18 else item.source
-        print(f"{time_str:<20} {source:<20} {title:<60}")
-
-
 def show_reports(limit: int = 5) -> None:
     """生成されたレポートを表示."""
     root = Path(__file__).resolve().parents[2]
@@ -401,105 +370,6 @@ def show_reports(limit: int = 5) -> None:
         print("-" * 80)
 
 
-def show_dashboard(date: str = None, limit: int = 5) -> None:
-    """統合ダッシュボードを表示."""
-    root = Path(__file__).resolve().parents[2]
-    lifelog_db_path = root / "data" / "lifelog.db"
-    info_db_path = root / "data" / "ai_secretary.db"
-
-    if date is None:
-        date = datetime.now().strftime("%Y-%m-%d")
-
-    if not lifelog_db_path.exists():
-        print("Error: lifelog.db not found")
-        return
-
-    try:
-        params = DashboardParams(date=date, limit=limit, hours=6, full=False)
-        dashboard_data = dashboard_queries.get_dashboard_data(lifelog_db_path, info_db_path, params)
-    except Exception as e:
-        print(f"Error loading dashboard data: {e}")
-        return
-
-    print(f"\n=== Dashboard for {date} ===\n")
-
-    # Lifelog
-    if dashboard_data.lifelog and dashboard_data.lifelog.total_active_seconds is not None:
-        print("📊 Lifelog:")
-        print(f"  Total Active: {format_duration(dashboard_data.lifelog.total_active_seconds)}")
-        if dashboard_data.lifelog.total_idle_seconds is not None:
-            print(f"  Total Idle: {format_duration(dashboard_data.lifelog.total_idle_seconds)}")
-        if dashboard_data.lifelog.top_apps:
-            print("  Top Apps:")
-            for app in dashboard_data.lifelog.top_apps[:5]:
-                print(f"    - {app.process}: {format_duration(app.total_seconds)}")
-        print()
-
-    # Browser
-    if dashboard_data.browser:
-        if dashboard_data.browser.recent:
-            print("🌐 Browser:")
-            print(f"  Total Visits: {dashboard_data.browser.total_visits}")
-            print("  Recent:")
-            for entry in dashboard_data.browser.recent[:5]:
-                time_str = entry.time.strftime("%H:%M:%S")
-                title = entry.title[:50] if entry.title else "(No title)"
-                print(f"    [{time_str}] {title}")
-            print()
-
-    # Info Collector
-    if dashboard_data.info:
-        if dashboard_data.info.news:
-            print(f"📰 News: {len(dashboard_data.info.news)} items")
-            for item in dashboard_data.info.news[:3]:
-                print(f"  - {item.title[:60]}")
-        if dashboard_data.info.report_latest:
-            print(f"\n📄 Latest Report: {dashboard_data.info.report_latest.title}")
-        print()
-
-
-def show_view(date: str = None) -> None:
-    """今日のサマリーを表示（デフォルトコマンド）."""
-    if date is None:
-        date = datetime.now().strftime("%Y-%m-%d")
-
-    root = Path(__file__).resolve().parents[2]
-    db_path = str(root / "data" / "lifelog.db")
-
-    if not Path(db_path).exists():
-        print(f"Error: Database not found: {db_path}")
-        return
-
-    db = DatabaseManager(db_path)
-
-    # 簡易サマリー表示
-    print(f"\n=== Today's Summary ({date}) ===\n")
-    show_daily_summary(db, date)
-    print()
-    show_dashboard(date, limit=3)
-
-
-def show_recent(hours: int = 6) -> None:
-    """直近N時間の活動を表示."""
-    root = Path(__file__).resolve().parents[2]
-    db_path = str(root / "data" / "lifelog.db")
-
-    if not Path(db_path).exists():
-        print(f"Error: Database not found: {db_path}")
-        return
-
-    db = DatabaseManager(db_path)
-
-    print(f"\n=== Recent Activity (Last {hours} hours) ===\n")
-    show_timeline(db, hours)
-
-    # 最新ニュースも表示
-    info_db_path = root / "data" / "ai_secretary.db"
-    if info_db_path.exists():
-        print()
-        show_news(limit=5)
-
-
 def main() -> None:
     """メインエントリーポイント."""
     parser = argparse.ArgumentParser(description="Lifelog CLI Viewer")
@@ -538,34 +408,10 @@ def main() -> None:
         "--date", type=str, help="Date (YYYY-MM-DD, default: all time)"
     )
 
-    # view コマンド（デフォルト）
-    view_parser = subparsers.add_parser("view", help="Show today's summary (default)")
-    view_parser.add_argument("--date", type=str, help="Date (YYYY-MM-DD, default: today)")
-
-    # recent コマンド
-    recent_parser = subparsers.add_parser("recent", help="Show recent activity")
-    recent_parser.add_argument(
-        "--hours", type=int, default=6, help="Hours to look back (default: 6)"
-    )
-
-    # news コマンド
-    news_parser = subparsers.add_parser("news", help="Show latest news")
-    news_parser.add_argument(
-        "--limit", type=int, default=10, help="Number of items to show (default: 10)"
-    )
-    news_parser.add_argument("--date", type=str, help="Date (YYYY-MM-DD, default: all)")
-
     # reports コマンド
     reports_parser = subparsers.add_parser("reports", help="Show latest reports")
     reports_parser.add_argument(
         "--limit", type=int, default=5, help="Number of reports to show (default: 5)"
-    )
-
-    # dashboard コマンド
-    dashboard_parser = subparsers.add_parser("dashboard", help="Show integrated dashboard")
-    dashboard_parser.add_argument("--date", type=str, help="Date (YYYY-MM-DD, default: today)")
-    dashboard_parser.add_argument(
-        "--limit", type=int, default=5, help="Number of items per category (default: 5)"
     )
 
     args = parser.parse_args()
@@ -593,16 +439,8 @@ def main() -> None:
         show_browser_history(args.limit, args.date)
     elif args.command == "browser-stats":
         show_browser_stats(args.date)
-    elif args.command == "view":
-        show_view(args.date)
-    elif args.command == "recent":
-        show_recent(args.hours)
-    elif args.command == "news":
-        show_news(args.limit, args.date)
     elif args.command == "reports":
         show_reports(args.limit)
-    elif args.command == "dashboard":
-        show_dashboard(args.date, args.limit)
 
 
 if __name__ == "__main__":
