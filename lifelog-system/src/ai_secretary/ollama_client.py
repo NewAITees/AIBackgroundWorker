@@ -15,6 +15,7 @@ from typing import Any, Dict, Optional
 import requests
 
 logger = logging.getLogger(__name__)
+server_logger = logging.getLogger("uvicorn.error")
 
 
 class OllamaClient:
@@ -36,7 +37,14 @@ class OllamaClient:
         self.timeout = timeout or int(os.getenv("OLLAMA_TIMEOUT", "180"))
 
     def generate(
-        self, prompt: str, system: Optional[str] = None, options: Optional[Dict[str, Any]] = None
+        self,
+        prompt: str,
+        system: Optional[str] = None,
+        options: Optional[Dict[str, Any]] = None,
+        *,
+        caller: str | None = None,
+        purpose: str = "generate",
+        context: Optional[Dict[str, Any]] = None,
     ) -> str:
         """
         Call Ollama and return the concatenated response text.
@@ -54,6 +62,20 @@ class OllamaClient:
 
         url = f"{self.base_url}/api/generate"
         logger.debug("Calling Ollama at %s", url)
+        effective_caller = caller or os.getenv("TIMELINE_LLM_CALLER", "lifelog_system")
+        effective_purpose = os.getenv("TIMELINE_LLM_PURPOSE", purpose)
+        log_payload: Dict[str, Any] = {
+            "event": "llm_call",
+            "caller": effective_caller,
+            "purpose": effective_purpose,
+            "model": self.model,
+            "base_url": self.base_url,
+        }
+        if context:
+            log_payload.update({key: value for key, value in context.items() if value is not None})
+        server_logger.info(
+            "llm_call %s", json.dumps(log_payload, ensure_ascii=False, sort_keys=True)
+        )
 
         resp = requests.post(url, json=payload, stream=True, timeout=self.timeout)
         resp.raise_for_status()

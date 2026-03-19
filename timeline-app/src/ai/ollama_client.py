@@ -7,12 +7,16 @@ qwen3 / qwen2.5 等の tool use 対応モデルが前提。
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass
+from typing import Any
 
 import requests
 
 from ..config import AIConfig
+
+logger = logging.getLogger("uvicorn.error")
 
 _TOOL_DEF = {
     "type": "function",
@@ -78,7 +82,13 @@ class OllamaClient:
     def __init__(self, settings: AIConfig):
         self._settings = settings
 
-    def generate_chat_reply(self, messages: list[dict[str, str]]) -> OllamaChatResult:
+    def generate_chat_reply(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        caller: str = "chat_api",
+        context: dict[str, Any] | None = None,
+    ) -> OllamaChatResult:
         from datetime import datetime, timezone
 
         now = datetime.now(timezone.utc).astimezone()
@@ -91,7 +101,13 @@ class OllamaClient:
             ),
         }
         payload_messages = [system_msg, *messages[-12:]]
-        args, fallback_content = self._chat_with_tools(payload_messages, [_TOOL_DEF])
+        args, fallback_content = self._chat_with_tools(
+            payload_messages,
+            [_TOOL_DEF],
+            caller=caller,
+            purpose="generate_chat_reply",
+            context=context,
+        )
         reply = str(args.get("reply", "")).strip() or fallback_content
         candidates_raw = args.get("entry_candidates", [])
 
@@ -123,6 +139,8 @@ class OllamaClient:
         source_type: str,
         target_label: str,
         raw_summary: str,
+        caller: str = "hourly_summary_worker",
+        context: dict[str, Any] | None = None,
     ) -> OllamaSummaryResult:
         tool = {
             "type": "function",
@@ -162,7 +180,16 @@ class OllamaClient:
                 ),
             },
         ]
-        args, fallback_content = self._chat_with_tools(messages, [tool])
+        merged_context = {"source_type": source_type, "target_label": target_label}
+        if context:
+            merged_context.update(context)
+        args, fallback_content = self._chat_with_tools(
+            messages,
+            [tool],
+            caller=caller,
+            purpose=f"summarize_{source_type}",
+            context=merged_context,
+        )
         title = str(args.get("title", "")).strip()
         content = str(args.get("content", "")).strip() or fallback_content
         should_create = bool(args.get("should_create", True))
@@ -204,7 +231,12 @@ class OllamaClient:
         self,
         messages: list[dict[str, str]],
         tools: list[dict],
+        *,
+        caller: str = "timeline_app",
+        purpose: str = "chat_with_tools",
+        context: dict[str, Any] | None = None,
     ) -> tuple[dict, str]:
+        self._log_llm_call(caller=caller, purpose=purpose, context=context)
         payload = {
             "model": self._settings.ollama_model,
             "stream": False,
@@ -231,6 +263,24 @@ class OllamaClient:
         fallback_content = str(message.get("content", "")).strip()
         parsed = self._parse_tool_markup(fallback_content)
         return parsed, fallback_content
+
+    def _log_llm_call(
+        self,
+        *,
+        caller: str,
+        purpose: str,
+        context: dict[str, Any] | None = None,
+    ) -> None:
+        payload: dict[str, Any] = {
+            "event": "llm_call",
+            "caller": caller,
+            "purpose": purpose,
+            "model": self._settings.ollama_model,
+            "base_url": self._settings.ollama_base_url,
+        }
+        if context:
+            payload.update({key: value for key, value in context.items() if value is not None})
+        logger.info("llm_call %s", json.dumps(payload, ensure_ascii=False, sort_keys=True))
 
     def _parse_tool_markup(self, content: str) -> dict:
         """

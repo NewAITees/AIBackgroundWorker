@@ -115,12 +115,16 @@ class AnalysisPipelineWorker:
             "OLLAMA_MODEL": os.environ.get("OLLAMA_MODEL"),
             "OLLAMA_TIMEOUT": os.environ.get("OLLAMA_TIMEOUT"),
             "YELLOWMABLE_DIR": os.environ.get("YELLOWMABLE_DIR"),
+            "TIMELINE_LLM_CALLER": os.environ.get("TIMELINE_LLM_CALLER"),
+            "TIMELINE_LLM_PURPOSE": os.environ.get("TIMELINE_LLM_PURPOSE"),
         }
 
         os.environ["OLLAMA_BASE_URL"] = config.ai.ollama_base_url
         os.environ["OLLAMA_MODEL"] = config.ai.ollama_model
         os.environ["OLLAMA_TIMEOUT"] = str(config.ai.timeout_seconds)
         os.environ["YELLOWMABLE_DIR"] = str(output_dir.parent)
+        os.environ["TIMELINE_LLM_CALLER"] = "analysis_pipeline_worker"
+        os.environ["TIMELINE_LLM_PURPOSE"] = "info_pipeline"
 
         try:
             analyzed = analyze_pending_articles(

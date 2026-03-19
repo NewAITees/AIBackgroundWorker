@@ -188,7 +188,7 @@ def test_daily_digest_worker_generate_for_date_persists_entry(monkeypatch):
     monkeypatch.setattr("src.workers.daily_digest_worker.persist_entry", _persist_entry)
 
     class _DummyClient:
-        def _chat_with_tools(self, messages, tools):
+        def _chat_with_tools(self, messages, tools, **kwargs):
             return ({"title": "振り返り", "content": "よく進めた。次もこの調子。"}, None)
 
     result = worker._generate_for_date(_DummyClient(), "/tmp/workspace", date(2026, 3, 18))

@@ -156,6 +156,50 @@ class TestGenerateChatReply:
         assert "tools" in captured["payload"]
         assert captured["payload"]["tools"][0]["function"]["name"] == "save_entry_candidates"
 
+    def test_logs_model_and_caller(self):
+        client = make_client()
+        with (
+            patch("requests.post", return_value=mock_tool_response("了解です。")),
+            patch("src.ai.ollama_client.logger.info") as log_info,
+        ):
+            client.generate_chat_reply(
+                [{"role": "user", "content": "今日やること"}],
+                caller="chat_api",
+                context={"thread_id": "thread-123"},
+            )
+
+        assert log_info.called
+        message, payload = log_info.call_args[0]
+        assert message == "llm_call %s"
+        assert '"caller": "chat_api"' in payload
+        assert '"model": "test-model"' in payload
+        assert '"thread_id": "thread-123"' in payload
+
+    def test_logs_direct_chat_with_tools_call(self):
+        client = make_client()
+        with (
+            patch("requests.post", return_value=mock_tool_response("了解です。")),
+            patch("src.ai.ollama_client.logger.info") as log_info,
+        ):
+            client._chat_with_tools(
+                [{"role": "user", "content": "x"}],
+                [
+                    {
+                        "type": "function",
+                        "function": {"name": "dummy", "parameters": {"type": "object"}},
+                    }
+                ],
+                caller="daily_digest_worker",
+                purpose="daily_digest",
+                context={"target_date": "2026-03-18"},
+            )
+
+        assert log_info.called
+        _, payload = log_info.call_args[0]
+        assert '"caller": "daily_digest_worker"' in payload
+        assert '"purpose": "daily_digest"' in payload
+        assert '"target_date": "2026-03-18"' in payload
+
 
 class TestCheckHealth:
     def _tags_response(self, model_names: list[str]) -> MagicMock:

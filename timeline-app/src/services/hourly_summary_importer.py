@@ -433,6 +433,7 @@ def summarize_with_llm(
             source_type=source_type,
             target_label=target_label,
             raw_summary=raw_summary,
+            caller="hourly_summary_worker",
         )
         should_create = result.should_create if source_type == "system_event" else True
         return result.title, result.content, should_create

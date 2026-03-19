@@ -126,6 +126,9 @@ class DailyDigestWorker:
                     },
                 ],
                 [_DIGEST_TOOL],
+                caller="daily_digest_worker",
+                purpose="daily_digest",
+                context={"target_date": target_date.isoformat()},
             )
         except OllamaClientError as exc:
             self._status.last_error = str(exc)

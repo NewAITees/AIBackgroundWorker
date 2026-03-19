@@ -148,7 +148,13 @@ class ReportWorker:
                 "content": (f"{date_str} のログです。日記とレポートを生成してください。\n\n" f"{context}"),
             },
         ]
-        args, _ = client._chat_with_tools(messages, [_REPORT_TOOL])
+        args, _ = client._chat_with_tools(
+            messages,
+            [_REPORT_TOOL],
+            caller="report_worker",
+            purpose="daily_report",
+            context={"target_date": target_date.isoformat()},
+        )
 
         diary_title = str(args.get("diary_title", f"{target_date} 日記")).strip()
         diary_content = str(args.get("diary_content", "")).strip()

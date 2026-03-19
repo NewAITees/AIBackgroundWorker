@@ -97,7 +97,11 @@ async def chat(req: ChatRequest):
 
     client = OllamaClient(config.ai)
     try:
-        result = client.generate_chat_reply(history)
+        result = client.generate_chat_reply(
+            history,
+            caller="chat_api",
+            context={"thread_id": thread_id},
+        )
     except OllamaClientError as exc:
         history.pop()
         raise HTTPException(status_code=502, detail=str(exc)) from exc
