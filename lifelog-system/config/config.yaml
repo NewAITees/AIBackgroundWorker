@@ -30,7 +30,7 @@ database:
 # SLO目標値
 slo:
   collection_delay_p95: 3.0    # 秒
-  db_write_time_p95: 50        # ミリ秒
+  db_write_time_p95: 200       # ミリ秒（WSL2仮想FSの遅延を考慮）
   max_drop_rate: 0.005         # 0.5%
   max_memory_mb: 100
 
