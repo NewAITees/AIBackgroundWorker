@@ -27,6 +27,14 @@ def _load_merge_function():
     if scripts_path not in sys.path:
         sys.path.insert(0, scripts_path)
 
+    # timeline-app/src が 'src' パッケージとしてキャッシュ済みのため、
+    # lifelog-system/src を src.__path__ に追加して src.lifelog.* を解決する
+    import src  # noqa: PLC0415
+
+    lifelog_src = str(repo_root() / "lifelog-system" / "src")
+    if lifelog_src not in src.__path__:
+        src.__path__.append(lifelog_src)
+
     from merge_windows_logs import merge_windows_logs  # type: ignore[import-not-found]
 
     return merge_windows_logs
