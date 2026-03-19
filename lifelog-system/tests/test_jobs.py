@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from src.info_collector.jobs import analyze_pending, deep_research, generate_report
-from src.info_collector.repository import InfoCollectorRepository
+from src.info_collector.repository import InfoCollectorRepository  # noqa: F401 (schema init)
 
 
 def _insert_collected(
@@ -28,7 +28,8 @@ def _insert_collected(
 def test_analyze_pending_inserts_analysis(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     db_path = tmp_path / "ai_secretary.db"
 
-    # Arrange: insert one collected article
+    # Arrange: insert one collected article (schema must be initialized first)
+    InfoCollectorRepository(str(db_path))
     conn = sqlite3.connect(db_path)
     _insert_collected(conn, title="重要ニュース", content="生成AIが普及している。")
 
@@ -69,7 +70,8 @@ def test_analyze_pending_saves_reasons(tmp_path: Path, monkeypatch: pytest.Monke
     """analyze_pending.pyで判断理由が取得・保存されることを確認."""
     db_path = tmp_path / "ai_secretary.db"
 
-    # Arrange: insert one collected article
+    # Arrange: insert one collected article (schema must be initialized first)
+    InfoCollectorRepository(str(db_path))
     conn = sqlite3.connect(db_path)
     _insert_collected(conn, title="重要ニュース", content="生成AIが普及している。")
 
@@ -186,7 +188,8 @@ def test_deep_research_creates_entry(tmp_path: Path, monkeypatch: pytest.MonkeyP
     query_prompt = stub_client.prompts[0][0]
     assert "重要な技術動向" in query_prompt or "ユーザーの興味分野と関連" in query_prompt
     # 検索結果統合プロンプトに判断理由が含まれている
-    synthesis_prompt = stub_client.prompts[1][0]
+    # prompts[-1] を使う: filter_by_relevance が中間LLM呼び出しをするため、統合は最後のプロンプト
+    synthesis_prompt = stub_client.prompts[-1][0]
     assert "重要な技術動向" in synthesis_prompt or "ユーザーの興味分野と関連" in synthesis_prompt
 
     conn.close()

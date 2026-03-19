@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from src.info_collector.jobs import analyze_pending, deep_research, generate_theme_report
+from src.info_collector.repository import InfoCollectorRepository
 
 
 def _insert_collected(
@@ -35,7 +36,8 @@ def test_end_to_end_reason_propagation(tmp_path: Path, monkeypatch: pytest.Monke
     db_path = tmp_path / "ai_secretary.db"
     reports_dir = tmp_path / "reports"
 
-    # Step 1: 記事を追加
+    # Step 1: 記事を追加（スキーマを先に初期化してから挿入）
+    InfoCollectorRepository(str(db_path))
     conn = sqlite3.connect(db_path)
     article_id = _insert_collected(
         conn,
@@ -133,7 +135,8 @@ def test_end_to_end_reason_propagation(tmp_path: Path, monkeypatch: pytest.Monke
     assert "AI技術の最新動向で、業界に大きな影響を与える可能性がある" in query_prompt
     assert "ユーザーの興味分野（AI・機械学習）と直接関連している" in query_prompt
 
-    synthesis_prompt = deep_research_client.prompts[1][0]
+    # prompts[-1] を使う: filter_by_relevance が中間LLM呼び出しをするため、統合は最後のプロンプト
+    synthesis_prompt = deep_research_client.prompts[-1][0]
     assert "AI技術の最新動向で、業界に大きな影響を与える可能性がある" in synthesis_prompt
     assert "ユーザーの興味分野（AI・機械学習）と直接関連している" in synthesis_prompt
 
@@ -147,11 +150,15 @@ def test_end_to_end_reason_propagation(tmp_path: Path, monkeypatch: pytest.Monke
             return """# AI技術の普及
 
 ## テーマ概要
-AI技術が急速に普及している。
+生成AIを中心としたAI技術が急速に普及しており、製造業・医療・教育など幅広い産業に大きな変革をもたらしている。
+特にLLM（大規模言語モデル）の登場以降、AIの実用化が加速しており、企業や個人レベルでの活用が一般化しつつある。
+この動向は今後も継続し、社会インフラとしてのAIの役割がますます重要になると予測される。
 
 ## 主要な発見事項
-- AI技術の最新動向
-- 業界への大きな影響
+- AI技術の最新動向として、生成AIの普及が特に顕著である
+- 業界への大きな影響として、既存の業務フローが自動化・効率化されている
+- 研究・開発への投資が継続的に増加しており、技術革新が加速している
+- 倫理・規制面での整備も進んでおり、社会的な受け入れが促進されている
 
 ## 各記事の詳細分析
 ### 記事 1: AI技術の最新動向
@@ -159,6 +166,16 @@ AI技術が急速に普及している。
   - **判断理由**: AI技術の最新動向で、業界に大きな影響を与える可能性がある
 - **関連度**: 0.85
   - **判断理由**: ユーザーの興味分野（AI・機械学習）と直接関連している
+
+元の記事では、生成AIの普及が業界全体に与えるインパクトについて詳細に分析されている。
+深掘り調査により、この傾向が単なる一時的なブームではなく、構造的な変化であることが確認された。
+
+## 統合的な考察
+AI技術の普及は不可逆的なトレンドであり、今後もその影響は拡大し続けると考えられる。
+特にLLMとロボティクスの融合など、新たな応用領域の開拓が期待される。
+
+## 参考ソース一覧
+- http://example.com（AI技術の普及に関する詳細情報）
 """
 
     report_client = ReportStubClient()

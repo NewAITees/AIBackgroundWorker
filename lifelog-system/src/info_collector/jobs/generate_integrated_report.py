@@ -82,20 +82,7 @@ def generate_integrated_daily_report(
         logger.error("Failed to generate report content")
         return None
 
-    # 4. ファイル保存
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    # Obsidianリンクセクションを追加
-    from src.info_collector.jobs.obsidian_links import build_obsidian_links_section
-
-    links_section = build_obsidian_links_section(output_dir, date)
-    content += links_section
-
-    report_path = output_dir / f"integrated_report_{date}.md"
-    report_path.write_text(content, encoding="utf-8")
-    logger.info(f"Report written to {report_path}")
-
-    # 5. DBにも保存
+    # 4. DBに保存（ナビゲーションセクション追加前の純粋なLLM出力を保存）
     repo = InfoCollectorRepository(str(info_db_path))
     repo.save_report(
         title=f"{date} 統合デイリーレポート",
@@ -105,6 +92,18 @@ def generate_integrated_daily_report(
         category="integrated_daily",
         created_at=datetime.now(),
     )
+
+    # 5. ファイル保存（Obsidianナビゲーションセクションを追加してから書き込む）
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    from src.info_collector.jobs.obsidian_links import build_obsidian_links_section
+
+    links_section = build_obsidian_links_section(output_dir, date)
+    content += links_section
+
+    report_path = output_dir / f"integrated_report_{date}.md"
+    report_path.write_text(content, encoding="utf-8")
+    logger.info(f"Report written to {report_path}")
 
     return report_path
 

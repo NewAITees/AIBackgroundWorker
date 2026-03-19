@@ -38,6 +38,14 @@ def _load_pipeline_functions():
     if root_path not in sys.path:
         sys.path.insert(0, root_path)
 
+    # timeline-app 側で既に import 済みの `src` パッケージ配下からも
+    # lifelog-system の `src.info_collector.*` を解決できるようにする。
+    import src as shared_src
+
+    lifelog_src_path = str(Path(root_path) / "src")
+    if lifelog_src_path not in shared_src.__path__:
+        shared_src.__path__.append(lifelog_src_path)
+
     from src.info_collector.jobs.analyze_pending import analyze_pending_articles
     from src.info_collector.jobs.deep_research import deep_research_articles
     from src.info_collector.jobs.generate_theme_report import generate_theme_reports
