@@ -47,9 +47,8 @@
       → `hourly_summary_worker` の `summarize_activity()` が自動的に Windows アプリ使用状況を素材に含める
 - [x] 「今何の作業をしているか」をレポートデータに取り込む
       → unified_timeline ビュー経由で process_name が LLM プロンプトに流れる（追加実装不要）
-- [ ] `merge-windows-logs.timer`（systemd）を停止・無効化する
+- [x] `merge-windows-logs.timer`（systemd）を停止・無効化する
       → WindowsForegroundWorker が代替しているため不要
-      → 手動実行: `sudo systemctl stop merge-windows-logs.timer && sudo systemctl disable merge-windows-logs.timer`
 - [ ] Windows 移行時: `WindowsForegroundWorker` に `powershell.exe foreground_logger.ps1` の起動管理を追加する
       → 現時点は foreground_logger.ps1 は別途起動する運用のまま
 
