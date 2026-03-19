@@ -22,14 +22,13 @@
       → 移動後は `timeline-app/pyproject.toml` に統合する
       → 現状、`activity_worker` / `browser_worker` / `analysis_pipeline_worker` / `info_worker` / `windows_foreground_worker` が直接依存しているため即移動不可
       → 追記: `lifelog-system/pyproject.toml` には console entry point 自体は無く、先に消す対象は `systemd` / `daemon.sh` / viewer / CLI / shell 導線
-- [ ] 正本データを明文化する
-      → `articles/*.md` / `daily/*.md` / SQLite / 生成レポートのうち、更新元と投影先を整理する
-      → 現状の整理: `articles/*.md` が entry 正本、`daily/*.md` が timeline 投影、`lifelog.db` と `ai_secretary.db` が収集・分析の正本、レポートMarkdownは生成物
-- [ ] 不要物の削除を優先順で進める
-      → まず未使用ファイル、次に旧導線スクリプト、次に今は不要な DB・生成物、最後に重複テスト資産を対象にする
-- [ ] 「削除してよいもの」と「まだ参照されているもの」を分類した一覧を作る
-      → 削除は毎回小さく行い、都度テストまたは起動確認を挟む
-      → 分類の基準は `正本データかどうか` と `timeline-app からの実行依存が残っているかどうか`
+- [x] 正本データを明文化する
+      → `articles/*.md` が entry 正本、`daily/*.md` が timeline 投影、`lifelog.db`/`ai_secretary.db` が収集・分析の正本、レポートMarkdownは生成物
+- [x] 不要物の削除を優先順で進める（第1弾完了）
+      → viewer_service.sh / view.sh / main_collector.py / poll_brave_history.sh / install_poll_cron.sh / integrated_pipeline.sh を削除
+      → 保留: obsidian 関連・info_collector 手動ツール群は引き続き置いておく
+- [x] 「削除してよいもの」と「まだ参照されているもの」を分類した一覧を作る
+      → viewer_service: 削除済み / cli_viewer: 保持 / Windows scripts: 本体のみ保持 / obsidian: 保留
 - [ ] `tasks/lessons.md` に、削除判断で見つかった依存関係と再発防止ルールを記録する
 
 ### 後続の重要タスク（削除整理の後に着手）
