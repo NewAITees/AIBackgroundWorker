@@ -86,6 +86,12 @@
 - パターン: hourly worker を `直近1時間だけ` で動かすと、sleep 復帰やアプリ停止中の空白時間を埋められない。
 - 対策: worker は lookback 範囲を走査し、`まだ生成されていない hour / source` だけを補完する。初回 import と定期 worker で同じ生成ロジックを共用し、欠損補完と通常運用を分けない。
 
+- パターン: `activity_worker` が `activity_intervals` をそのまま timeline へ投影すると、12秒や数十秒単位の `lifelog-activity-*` が大量に並び、1時間単位 UI の前提を壊す。
+- 対策: `activity_worker` は収集だけに徹し、timeline へは書かない。画面に出す `activity` は hourly summary worker だけに限定し、既存 `lifelog-activity-*` は daily 読込時に非表示扱いにする。
+
+- パターン: APScheduler の `misfire_grace_time` をデフォルト（1秒）のままにすると、ジョブ実行が1秒を少し超えるたびに "missed" 警告が大量に出る。再起動後も停止中の全スケジュール分が missed と判定される。
+- 対策: `misfire_grace_time` を各ジョブの `interval` 秒数と同じ値に設定する。`coalesce=True` と組み合わせると「間隔以内の遅れは無視、かつ溜まっても1回だけ実行」になる。
+
 - パターン: pre-commit の black フックはコミット時にファイルを自動整形するが、整形後のファイルはステージ外に残りコミットが中断される。
 - 対策: フック失敗後は整形済みファイルを `git add` してから改めて `git commit` する。`--no-verify` は使わない。
 
