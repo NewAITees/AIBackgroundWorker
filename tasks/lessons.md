@@ -144,3 +144,6 @@
 
 - パターン: `scripts/systemd/` を先に消そうとしても、README や設定ガイド、トラブルシュート文書に古い運用導線が大量に残っていると、削除後の利用者が誤誘導される。
 - 対策: `systemd` 系は unit ファイル削除より先に参照ドキュメントを整理する。特に `README.md`, `docs/TASK_SCHEDULER_SETUP.md`, `docs/TROUBLESHOOTING_SYSTEMD.md`, `docs/INFO_COLLECTOR_DEEPDIVE_PLAN.md` を先に更新してから、`scripts/systemd/` を消す。
+
+- パターン: `duckduckgo_search` の rename warning や、テスト中の `sqlite3.Connection` close 漏れが積み上がると、運用ログと CI 出力のノイズが増えて本来の異常を見落としやすい。
+- 対策: `DDGS` は `ddgs` を優先 import し、旧 `duckduckgo_search` へ落ちる場合だけ rename warning を局所的に抑制する。SQLite を使うテストは `with sqlite3.connect(...)` または `try/finally` で必ず close する。

@@ -5,9 +5,19 @@ from __future__ import annotations
 import json
 import logging
 import time
+import warnings
 from typing import Dict, List, Optional
 
-from duckduckgo_search import DDGS
+try:
+    from ddgs import DDGS
+except ImportError:
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=r"This package \(`duckduckgo_search`\) has been renamed to `ddgs`!.*",
+            category=RuntimeWarning,
+        )
+        from duckduckgo_search import DDGS
 
 logger = logging.getLogger(__name__)
 

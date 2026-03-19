@@ -70,17 +70,16 @@ def test_end_to_end_reason_propagation(tmp_path: Path, monkeypatch: pytest.Monke
     assert processed == 1
 
     # 判断理由が保存されていることを確認
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.execute(
-        "SELECT importance_reason, relevance_reason FROM article_analysis WHERE article_id = ?",
-        (article_id,),
-    )
-    analysis_row = cursor.fetchone()
-    assert analysis_row is not None
-    assert analysis_row["importance_reason"] == "AI技術の最新動向で、業界に大きな影響を与える可能性がある"
-    assert analysis_row["relevance_reason"] == "ユーザーの興味分野（AI・機械学習）と直接関連している"
-    conn.close()
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        cursor = conn.execute(
+            "SELECT importance_reason, relevance_reason FROM article_analysis WHERE article_id = ?",
+            (article_id,),
+        )
+        analysis_row = cursor.fetchone()
+        assert analysis_row is not None
+        assert analysis_row["importance_reason"] == "AI技術の最新動向で、業界に大きな影響を与える可能性がある"
+        assert analysis_row["relevance_reason"] == "ユーザーの興味分野（AI・機械学習）と直接関連している"
 
     # Step 3: 深掘り調査（判断理由がプロンプトに含まれることを確認）
     class DeepResearchStubClient:

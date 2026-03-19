@@ -9,7 +9,18 @@ DuckDuckGo検索コレクター
 
 from typing import List
 from datetime import datetime
-from duckduckgo_search import DDGS
+import warnings
+
+try:
+    from ddgs import DDGS
+except ImportError:
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=r"This package \(`duckduckgo_search`\) has been renamed to `ddgs`!.*",
+            category=RuntimeWarning,
+        )
+        from duckduckgo_search import DDGS
 
 from ..models import SearchResult
 from .base import BaseCollector

@@ -57,13 +57,17 @@ def test_analyze_pending_inserts_analysis(tmp_path: Path, monkeypatch: pytest.Mo
 
     # Assert
     assert processed == 1
-    cur = conn.execute("SELECT importance_score, relevance_score, category FROM article_analysis")
-    row = cur.fetchone()
-    assert row is not None
-    assert row[0] == pytest.approx(0.9)
-    assert row[1] == pytest.approx(0.8)
-    assert row[2] == "AI"
-    conn.close()
+    try:
+        cur = conn.execute(
+            "SELECT importance_score, relevance_score, category FROM article_analysis"
+        )
+        row = cur.fetchone()
+        assert row is not None
+        assert row[0] == pytest.approx(0.9)
+        assert row[1] == pytest.approx(0.8)
+        assert row[2] == "AI"
+    finally:
+        conn.close()
 
 
 def test_analyze_pending_saves_reasons(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -101,12 +105,14 @@ def test_analyze_pending_saves_reasons(tmp_path: Path, monkeypatch: pytest.Monke
 
     # Assert
     assert processed == 1
-    cur = conn.execute("SELECT importance_reason, relevance_reason FROM article_analysis")
-    row = cur.fetchone()
-    assert row is not None
-    assert row[0] == "AI技術の最新動向で、業界に大きな影響を与える可能性がある"
-    assert row[1] == "ユーザーの興味分野（AI・機械学習）と直接関連している"
-    conn.close()
+    try:
+        cur = conn.execute("SELECT importance_reason, relevance_reason FROM article_analysis")
+        row = cur.fetchone()
+        assert row is not None
+        assert row[0] == "AI技術の最新動向で、業界に大きな影響を与える可能性がある"
+        assert row[1] == "ユーザーの興味分野（AI・機械学習）と直接関連している"
+    finally:
+        conn.close()
 
 
 def test_deep_research_creates_entry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -176,23 +182,24 @@ def test_deep_research_creates_entry(tmp_path: Path, monkeypatch: pytest.MonkeyP
     processed = deep_research.deep_research_articles(db_path=db_path, batch_size=5)
 
     assert processed == 1
-    cur = conn.execute("SELECT search_query, synthesized_content FROM deep_research")
-    row = cur.fetchone()
-    assert row is not None
-    assert "AI トレンド" in row[0]
-    assert row[1] == "統合結果"
+    try:
+        cur = conn.execute("SELECT search_query, synthesized_content FROM deep_research")
+        row = cur.fetchone()
+        assert row is not None
+        assert "AI トレンド" in row[0]
+        assert row[1] == "統合結果"
 
-    # プロンプトに判断理由が含まれていることを確認
-    assert len(stub_client.prompts) >= 2
-    # 検索クエリ生成プロンプトに判断理由が含まれている
-    query_prompt = stub_client.prompts[0][0]
-    assert "重要な技術動向" in query_prompt or "ユーザーの興味分野と関連" in query_prompt
-    # 検索結果統合プロンプトに判断理由が含まれている
-    # prompts[-1] を使う: filter_by_relevance が中間LLM呼び出しをするため、統合は最後のプロンプト
-    synthesis_prompt = stub_client.prompts[-1][0]
-    assert "重要な技術動向" in synthesis_prompt or "ユーザーの興味分野と関連" in synthesis_prompt
-
-    conn.close()
+        # プロンプトに判断理由が含まれていることを確認
+        assert len(stub_client.prompts) >= 2
+        # 検索クエリ生成プロンプトに判断理由が含まれている
+        query_prompt = stub_client.prompts[0][0]
+        assert "重要な技術動向" in query_prompt or "ユーザーの興味分野と関連" in query_prompt
+        # 検索結果統合プロンプトに判断理由が含まれている
+        # prompts[-1] を使う: filter_by_relevance が中間LLM呼び出しをするため、統合は最後のプロンプト
+        synthesis_prompt = stub_client.prompts[-1][0]
+        assert "重要な技術動向" in synthesis_prompt or "ユーザーの興味分野と関連" in synthesis_prompt
+    finally:
+        conn.close()
 
 
 def test_generate_report_creates_markdown(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -236,6 +243,8 @@ def test_generate_report_creates_markdown(tmp_path: Path, monkeypatch: pytest.Mo
     content = report_path.read_text(encoding="utf-8")
     assert "Generated content" in content
 
-    cur = conn.execute("SELECT COUNT(*) FROM reports")
-    assert cur.fetchone()[0] == 1
-    conn.close()
+    try:
+        cur = conn.execute("SELECT COUNT(*) FROM reports")
+        assert cur.fetchone()[0] == 1
+    finally:
+        conn.close()

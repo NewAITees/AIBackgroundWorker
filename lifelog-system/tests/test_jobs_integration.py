@@ -46,27 +46,25 @@ def test_full_pipeline_real_services(tmp_path: Path):
 
         # 収集データを1件投入（スキーマを先に初期化してから挿入）
         InfoCollectorRepository(str(db_path))
-        conn = sqlite3.connect(db_path)
         now = "2025-01-01T00:00:00"
-        conn.execute(
-            """
-            INSERT INTO collected_info (source_type, title, url, content, snippet, published_at, fetched_at, source_name, metadata_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                "rss",
-                "統合テスト用記事",
-                "http://example.com/integration",
-                "生成AIが広く普及し始めている。",
-                "snip",
-                now,
-                now,
-                "integration",
-                None,
-            ),
-        )
-        conn.commit()
-        conn.close()
+        with sqlite3.connect(db_path) as conn:
+            conn.execute(
+                """
+                INSERT INTO collected_info (source_type, title, url, content, snippet, published_at, fetched_at, source_name, metadata_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "rss",
+                    "統合テスト用記事",
+                    "http://example.com/integration",
+                    "生成AIが広く普及し始めている。",
+                    "snip",
+                    now,
+                    now,
+                    "integration",
+                    None,
+                ),
+            )
 
         # 分析（LLM①）
         processed = analyze_pending.analyze_pending_articles(db_path=db_path, batch_size=1)

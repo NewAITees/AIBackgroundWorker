@@ -15,33 +15,31 @@ from src.workers.analysis_pipeline_worker import AnalysisPipelineWorker, _load_p
 
 
 def _insert_collected_article(db_path: Path) -> None:
-    conn = sqlite3.connect(db_path)
     now = datetime(2026, 3, 19, 9, 0, tzinfo=UTC).isoformat()
-    conn.execute(
-        """
-        INSERT INTO collected_info (
-            source_type, title, url, content, snippet,
-            published_at, fetched_at, source_name, metadata_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            "rss",
-            "生成AIの導入が開発現場で広がっている",
-            "https://example.com/ai-adoption",
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO collected_info (
+                source_type, title, url, content, snippet,
+                published_at, fetched_at, source_name, metadata_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
             (
-                "生成AIの導入が開発現場で広がっている。"
-                "企業はコード補完だけでなく、調査やドキュメント作成にもAIを使い始めた。"
-                "一方で品質保証や監査体制の整備が新たな論点になっている。"
+                "rss",
+                "生成AIの導入が開発現場で広がっている",
+                "https://example.com/ai-adoption",
+                (
+                    "生成AIの導入が開発現場で広がっている。"
+                    "企業はコード補完だけでなく、調査やドキュメント作成にもAIを使い始めた。"
+                    "一方で品質保証や監査体制の整備が新たな論点になっている。"
+                ),
+                "生成AI導入の拡大",
+                now,
+                now,
+                "integration",
+                None,
             ),
-            "生成AI導入の拡大",
-            now,
-            now,
-            "integration",
-            None,
-        ),
-    )
-    conn.commit()
-    conn.close()
+        )
 
 
 @pytest.mark.integration
@@ -91,11 +89,12 @@ def test_analysis_pipeline_worker_runs_end_to_end_with_real_ollama(tmp_path, mon
     result = asyncio.run(worker.sync_once())
     assert result >= 3
 
-    conn = sqlite3.connect(db_path)
-    assert conn.execute("SELECT COUNT(*) FROM article_analysis").fetchone()[0] == 1
-    assert conn.execute("SELECT COUNT(*) FROM deep_research").fetchone()[0] == 1
-    assert conn.execute("SELECT COUNT(*) FROM reports WHERE category = 'theme'").fetchone()[0] == 1
-    conn.close()
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM article_analysis").fetchone()[0] == 1
+        assert conn.execute("SELECT COUNT(*) FROM deep_research").fetchone()[0] == 1
+        assert (
+            conn.execute("SELECT COUNT(*) FROM reports WHERE category = 'theme'").fetchone()[0] == 1
+        )
 
     report_files = list(reports_dir.glob("article_*.md"))
     assert len(report_files) == 1
