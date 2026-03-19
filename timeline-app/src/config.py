@@ -49,8 +49,19 @@ class LifelogConfig(BaseModel):
     info_config_dir: str = "lifelog-system/config/info_collector"
     info_collect_seconds: int = 3600
     info_limit: int = 10
+    analysis_pipeline_seconds: int = 1800
+    analyze_batch_size: int = 20
+    deep_batch_size: int = 3
+    deep_min_importance: float = 0.5
+    deep_min_relevance: float = 0.5
+    theme_min_articles: int = 1
+    theme_skip_existing: bool = True
+    report_output_dir: str = "/mnt/c/YellowMable/00_Raw"
     hourly_summary_seconds: int = 3600
     hourly_summary_lookback_hours: int = 48
+    daily_digest_hour: int = 0
+    daily_digest_minute: int = 20
+    daily_digest_lookback_days: int = 7
 
 
 class AppConfig(BaseModel):
