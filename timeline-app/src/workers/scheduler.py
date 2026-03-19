@@ -14,6 +14,7 @@ from .browser_worker import browser_worker
 from .daily_digest_worker import daily_digest_worker
 from .hourly_summary_worker import hourly_summary_worker
 from .info_worker import info_worker
+from .windows_foreground_worker import windows_foreground_worker
 
 _scheduler: AsyncIOScheduler | None = None
 
@@ -95,6 +96,17 @@ def start_scheduler() -> AsyncIOScheduler:
             coalesce=True,
             replace_existing=True,
             misfire_grace_time=3600,
+        )
+    if scheduler.get_job("windows-foreground-merge") is None:
+        scheduler.add_job(
+            windows_foreground_worker.sync_once,
+            "interval",
+            seconds=config.lifelog.windows_foreground_merge_seconds,
+            id="windows-foreground-merge",
+            max_instances=1,
+            coalesce=True,
+            replace_existing=True,
+            misfire_grace_time=config.lifelog.windows_foreground_merge_seconds,
         )
     if not scheduler.running:
         scheduler.start()

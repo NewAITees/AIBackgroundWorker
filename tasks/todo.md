@@ -28,6 +28,7 @@
 
 > MVP の追加実装より先に、既存バグの温床になりうる複雑さを減らす。
 > **このセクションが完了するまで、それ以降の機能追加・派生実装・新規拡張は進めない。**
+> **ただし直近の実作業は、棚卸し済みの削除を先に進める。Windowsログ統合は重要タスクとして残すが、削除整理の後に着手する。**
 
 - [ ] `timeline-app/` を唯一の運用入口として固定し、起動経路・設定経路・health 確認経路の二重化を洗い出す
 - [ ] `lifelog-system/` を「`timeline-app` から呼ばれるライブラリ層」として整理し、単独起動前提の導線を棚卸しする
@@ -39,25 +40,35 @@
       → 削除は毎回小さく行い、都度テストまたは起動確認を挟む
 - [ ] `tasks/lessons.md` に、削除判断で見つかった依存関係と再発防止ルールを記録する
 
+### 後続の重要タスク（削除整理の後に着手）
+
+- [x] Windowsログを正式にシステムへ統合する
+      → `WindowsForegroundWorker` を実装し、15分ごとに JSONL → activity_intervals へマージ
+      → `hourly_summary_worker` の `summarize_activity()` が自動的に Windows アプリ使用状況を素材に含める
+- [x] 「今何の作業をしているか」をレポートデータに取り込む
+      → unified_timeline ビュー経由で process_name が LLM プロンプトに流れる（追加実装不要）
+- [ ] `merge-windows-logs.timer`（systemd）を停止・無効化する
+      → WindowsForegroundWorker が代替しているため不要
+      → 手動実行: `sudo systemctl stop merge-windows-logs.timer && sudo systemctl disable merge-windows-logs.timer`
+- [ ] Windows 移行時: `WindowsForegroundWorker` に `powershell.exe foreground_logger.ps1` の起動管理を追加する
+      → 現時点は foreground_logger.ps1 は別途起動する運用のまま
+
 ### 削除候補の棚卸し結果
 
-- [ ] 即削除候補: キャッシュ・一時生成物を削除する
-      → `timeline-app/**/__pycache__/`, `lifelog-system/**/__pycache__/`, `.pytest_cache/`, `.mypy_cache/`
-- [ ] 即削除候補: リポジトリ管理対象にしない生成ログを削除する
+- [x] 確実に削除してよい候補: `gitignore` されたキャッシュ類を削除する
+      → `./.mypy_cache/`, `./.pytest_cache/`, `./lifelog-system/.pytest_cache/`
+      → `./lifelog-system/__pycache__/`, `./lifelog-system/src/__pycache__/`, `./lifelog-system/tests/__pycache__/`
+      → `./scripts/lifelog/__pycache__/`, `./scripts/system/__pycache__/`
+      → `./timeline-app/__pycache__/`, `./timeline-app/scripts/__pycache__/`, `./timeline-app/src/__pycache__/`, `./timeline-app/tests/__pycache__/`
+      → 2026-03-19 に削除実施
+- [ ] 削除しない候補: Windowsログ・外部モデル・現行DBを保持する
       → `scripts/logs/windows_foreground.jsonl`, `scripts/logs/windows_foreground.jsonl.processed`
-- [ ] 即削除候補: 参照されていない外部モデル配置物を確認し、不要なら削除する
       → `models/176039414170160856.vrm`, `models/176039414170160856.vrm:Zone.Identifier`
-- [ ] 参照確認後に削除: `systemd` 残骸を段階的に消す
-      → `scripts/systemd/` 一式, `docs/TASK_SCHEDULER_SETUP.md`, `docs/TROUBLESHOOTING_SYSTEMD.md`, `README.md` / `CLAUDE.md` 内の旧 systemd 記述
-- [ ] 参照確認後に削除: 旧 `daemon.sh` 前提の案内を整理する
-      → `README.md`, `CLAUDE.md`, `lifelog-system/README.md`, `lifelog-system/docs/QUICKSTART.md`, `docs/PROJECT_OVERVIEW.md`
-- [ ] 参照確認後に削除: shell ベースの旧 info collector 導線を整理する
-      → `scripts/info_collector/integrated_pipeline.sh` を最優先で確認し、不要なら関連 shell 群も整理する
-- [ ] 参照確認後に削除: 単独 viewer 導線がまだ必要か判定する
-      → `scripts/viewer_service.sh`, `lifelog-system/src/viewer_service/`, `lifelog-system/src/lifelog/cli_viewer.py`
-- [ ] 参照確認後に削除: 旧実 DB をどこまで正本として残すか決める
       → `lifelog-system/data/ai_secretary.db`, `lifelog-system/data/info.db`, `lifelog-system/data/lifelog.db*`
-- [ ] 参照確認後に削除: integration テストの重複と役割重複を整理する
+- [ ] 保留: 追跡済みかつ参照が残るため、今は削除しない
+      → `scripts/systemd/` 一式, `docs/TASK_SCHEDULER_SETUP.md`, `docs/TROUBLESHOOTING_SYSTEMD.md`
+      → `README.md`, `CLAUDE.md`, `lifelog-system/README.md`, `lifelog-system/docs/QUICKSTART.md`, `docs/PROJECT_OVERVIEW.md`
+      → `scripts/info_collector/integrated_pipeline.sh`, `scripts/viewer_service.sh`, `lifelog-system/src/viewer_service/`, `lifelog-system/src/lifelog/cli_viewer.py`
       → `lifelog-system/tests/test_integration.py`, `lifelog-system/tests/test_integration_reasons.py`, `lifelog-system/tests/test_jobs_integration.py`, `timeline-app/tests/test_analysis_pipeline_integration.py`
 
 ---

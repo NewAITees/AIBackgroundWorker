@@ -62,6 +62,8 @@ class LifelogConfig(BaseModel):
     daily_digest_hour: int = 0
     daily_digest_minute: int = 20
     daily_digest_lookback_days: int = 7
+    windows_foreground_log_path: str = "scripts/logs/windows_foreground.jsonl"
+    windows_foreground_merge_seconds: int = 900
 
 
 class AppConfig(BaseModel):
