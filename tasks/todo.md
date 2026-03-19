@@ -24,6 +24,44 @@
 
 ---
 
+## 最優先: 単純化・削減フェーズ
+
+> MVP の追加実装より先に、既存バグの温床になりうる複雑さを減らす。
+> **このセクションが完了するまで、それ以降の機能追加・派生実装・新規拡張は進めない。**
+
+- [ ] `timeline-app/` を唯一の運用入口として固定し、起動経路・設定経路・health 確認経路の二重化を洗い出す
+- [ ] `lifelog-system/` を「`timeline-app` から呼ばれるライブラリ層」として整理し、単独起動前提の導線を棚卸しする
+- [ ] 正本データを明文化する
+      → `articles/*.md` / `daily/*.md` / SQLite / 生成レポートのうち、更新元と投影先を整理する
+- [ ] 不要物の削除を優先順で進める
+      → まず未使用ファイル、次に旧導線スクリプト、次に今は不要な DB・生成物、最後に重複テスト資産を対象にする
+- [ ] 「削除してよいもの」と「まだ参照されているもの」を分類した一覧を作る
+      → 削除は毎回小さく行い、都度テストまたは起動確認を挟む
+- [ ] `tasks/lessons.md` に、削除判断で見つかった依存関係と再発防止ルールを記録する
+
+### 削除候補の棚卸し結果
+
+- [ ] 即削除候補: キャッシュ・一時生成物を削除する
+      → `timeline-app/**/__pycache__/`, `lifelog-system/**/__pycache__/`, `.pytest_cache/`, `.mypy_cache/`
+- [ ] 即削除候補: リポジトリ管理対象にしない生成ログを削除する
+      → `scripts/logs/windows_foreground.jsonl`, `scripts/logs/windows_foreground.jsonl.processed`
+- [ ] 即削除候補: 参照されていない外部モデル配置物を確認し、不要なら削除する
+      → `models/176039414170160856.vrm`, `models/176039414170160856.vrm:Zone.Identifier`
+- [ ] 参照確認後に削除: `systemd` 残骸を段階的に消す
+      → `scripts/systemd/` 一式, `docs/TASK_SCHEDULER_SETUP.md`, `docs/TROUBLESHOOTING_SYSTEMD.md`, `README.md` / `CLAUDE.md` 内の旧 systemd 記述
+- [ ] 参照確認後に削除: 旧 `daemon.sh` 前提の案内を整理する
+      → `README.md`, `CLAUDE.md`, `lifelog-system/README.md`, `lifelog-system/docs/QUICKSTART.md`, `docs/PROJECT_OVERVIEW.md`
+- [ ] 参照確認後に削除: shell ベースの旧 info collector 導線を整理する
+      → `scripts/info_collector/integrated_pipeline.sh` を最優先で確認し、不要なら関連 shell 群も整理する
+- [ ] 参照確認後に削除: 単独 viewer 導線がまだ必要か判定する
+      → `scripts/viewer_service.sh`, `lifelog-system/src/viewer_service/`, `lifelog-system/src/lifelog/cli_viewer.py`
+- [ ] 参照確認後に削除: 旧実 DB をどこまで正本として残すか決める
+      → `lifelog-system/data/ai_secretary.db`, `lifelog-system/data/info.db`, `lifelog-system/data/lifelog.db*`
+- [ ] 参照確認後に削除: integration テストの重複と役割重複を整理する
+      → `lifelog-system/tests/test_integration.py`, `lifelog-system/tests/test_integration_reasons.py`, `lifelog-system/tests/test_jobs_integration.py`, `timeline-app/tests/test_analysis_pipeline_integration.py`
+
+---
+
 # 開発 TODO（詳細版）
 
 > 要件書: `docs/新しい開発要件`
@@ -222,7 +260,9 @@
 - [x] `scripts/start.sh` で timeline-app を起動すれば全ワーカーも起動することを確認
 - [x] `scripts/daemon.sh` の `start()` に「timeline-app に統合済み」と記載
 - [x] `tasks/lessons.md` に移行の設計判断を記録
-- [x] `lifelog-daemon.service` を停止・無効化する（ユーザーが手動で `sudo systemctl stop/disable lifelog-daemon.service` 実行）
+- [x] `lifelog-daemon.service` を停止・無効化してよい状態に整理する
+      → 手動実行コマンド: `sudo systemctl stop lifelog-daemon.service && sudo systemctl disable lifelog-daemon.service`
+      → 実際に停止したかどうかは運用側で別途確認する
 
 ### 4.5-7. systemd 移行残作業（整理）
 
@@ -251,10 +291,12 @@
     → §9.1 §15.1 の「日記の要約 / AI コメント」に対応
 ```
 
-- [x] `info-report.timer` を停止・無効化する（ユーザーが手動で `sudo systemctl stop/disable info-report.timer` 実行）
-- [ ] `info-integrated.timer` の代替を timeline-app に実装する
-      → analyze → deep → theme report → reports テーブル投入 のパイプラインを
-        `timeline-app/src/workers/` に移植する（フェーズ5.6 として別途計画）
+- [x] `info-report.timer` を停止・無効化してよい状態に整理する
+      → 手動実行コマンド: `sudo systemctl stop info-report.timer && sudo systemctl disable info-report.timer`
+      → 実際に停止したかどうかは運用側で別途確認する
+- [ ] `info-integrated.timer` の代替を timeline-app に実装し、運用確認まで完了する
+      → 実装自体は `analysis_pipeline_worker.py` と scheduler 統合まで完了
+      → 残作業は「定期実行で reports テーブルへ継続投入されることの確認」と「旧 timer を停止してよい最終判断」
 
 ---
 
@@ -293,7 +335,7 @@
 - [x] `timeline-app/src/workers/analysis_pipeline_worker.py` を作成
   - `integrate_pipeline.sh` が行う3段階（analyze / deep / theme_report）を Python で再実装
   - 30分ごと実行、results を `ai_secretary.db::reports` テーブルに書き込む
-  - 完了後は `info-integrated.timer` を停止・無効化できる
+  - 実装は完了。残りは運用確認と `todo` / systemd 側の整理
 
 ### 5-0c. LLM 一時停止機能（PC負荷軽減）
 
@@ -345,7 +387,8 @@
 - [ ] AI 性格・System Prompt 設定（要件書 §15.4）
 - [ ] Ollama 接続設定（ベースURL・モデル名・タイムアウト）（要件書 §17.1）
 - [ ] RSS フィード登録（要件書 §17.1）
-- [ ] AI 処理 ON/OFF（要件書 §15.5）
+- [ ] AI 処理 ON/OFF の設定ページ対応（要件書 §15.5）
+      → pause/resume API とトップバー切り替えは実装済み。設定画面からも操作できるようにする
 - [ ] Big Five フィードバックの有効/無効（要件書 §17.1）
 
 ### 5-5. カレンダービュー
@@ -353,6 +396,42 @@
 - [ ] 日/週単位のカレンダービューをタイムラインの別ビューとして追加する（要件書 §5.6）
       → 別ページではなくビュー切り替え式にする
 - [ ] カレンダー上での予定作成 → タイムライン未来側にも反映される
+
+---
+
+### 5-6. メモ機能・右ペイン拡張
+
+> 要件書: `docs/新しい開発要件` §28
+
+#### [[タイトル]] 記法によるメモ作成（§28.1）
+
+- [ ] チャット入力欄で `[[タイトル]]` パターンを検出するパーサを実装する
+      → 正規表現 `\[\[(.+?)\]\]` でタイトル抽出
+- [ ] `POST /api/memo` エンドポイントを新規作成する
+      → `articles/{タイトル}.md` の存在チェック（既存なら右ペインを開くだけ）
+      → 新規の場合は Ollama に章立て・概要の生成を依頼
+- [ ] 生成テキストを YAML frontmatter 付きで `articles/{タイトル}.md` に保存する
+- [ ] `type: memo` の entry をタイムラインに追加し、右ペインを編集モードで開く
+
+#### 右ペイン AI 編集機能（§28.2）
+
+- [ ] 右ペインの閲覧モードに「AI に投げる」ボタンを追加する
+- [ ] ボタン押下で本文の上/下に指示入力欄（textarea）を展開する
+- [ ] `POST /api/entries/{id}/ai_edit` エンドポイントを新規作成する
+      → リクエスト: `{ "instruction": "..." }`
+      → Ollama に「現在の content + instruction」を渡して編集済み全文を返させる
+- [ ] 編集結果を右ペインにプレビュー表示し、「保存」「キャンセル」で確定/破棄する
+- [ ] 編集リクエスト前に `articles/{id}.bak.md` へバックアップを取る
+      → 保存/キャンセル時にバックアップを削除する
+
+#### 右ペインでのチャット継続（§28.3）
+
+- [ ] entry の type が `chat` / `chat_ai` の場合、右ペインに会話履歴を Markdown 描画で表示する
+- [ ] 右ペイン下部にチャット入力欄と送信ボタンを追加する（非チャット型 entry には表示しない）
+- [ ] 送信時に `POST /api/chat` へ既存の `thread_id` を渡してスレッドを継続する
+- [ ] `POST /api/entries/{id}/append_message` エンドポイントを新規作成する
+      → 末尾追記方式で `articles/{id}.md` にメッセージを保存する（競合・破損リスク低減）
+- [ ] AI 応答が返り次第、右ペイン下部に即時追記表示する（ポーリングまたは SSE）
 
 ---
 

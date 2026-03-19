@@ -56,6 +56,7 @@ def db_manager():
     Path(db_path).unlink(missing_ok=True)
 
 
+@pytest.mark.integration
 def test_short_collection_flow(db_manager, test_config, test_privacy_config):
     """短時間の収集→DB保存フローのテスト."""
     collector = ActivityCollector(

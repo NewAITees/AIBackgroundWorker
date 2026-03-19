@@ -230,3 +230,6 @@ timeline-app/config.yaml
 # timeline-app 生成データ（git管理外）
 timeline-app/daily/
 timeline-app/articles/
+
+# VRM・3Dモデルファイル
+models/

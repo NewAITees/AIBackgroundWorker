@@ -54,3 +54,6 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+markers = [
+    "integration: 外部サービス（Ollama等）や実スレッドが必要な統合テスト（pytest -m integration）",
+]
