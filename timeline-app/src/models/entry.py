@@ -15,6 +15,7 @@ class EntryType(str, Enum):
     event = "event"
     diary = "diary"
     todo = "todo"
+    todo_done = "todo_done"
     news = "news"
     system_log = "system_log"
     memo = "memo"
@@ -38,6 +39,7 @@ class EntryMeta(BaseModel):
     thread_id: Optional[str] = None
     source_path: Optional[str] = None
     confidence: Optional[float] = None
+    completed_at: Optional[datetime] = None
 
 
 class Entry(BaseModel):
@@ -68,6 +70,7 @@ class EntryCreate(BaseModel):
 
 
 class EntryUpdate(BaseModel):
+    type: Optional[EntryType] = None
     title: Optional[str] = None
     summary: Optional[str] = None
     content: Optional[str] = None

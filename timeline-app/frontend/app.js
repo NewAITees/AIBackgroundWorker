@@ -195,7 +195,40 @@ function buildEntryCard(entry) {
   contentEl.textContent = entry.summary || entry.content;
 
   button.addEventListener("click", () => selectEntry(entry.id));
+
+  if (entry.type === "todo" || entry.type === "todo_done") {
+    const checkbox = document.createElement("button");
+    checkbox.className = "todo-checkbox";
+    checkbox.type = "button";
+    checkbox.setAttribute("aria-label", entry.type === "todo_done" ? "完了済み" : "完了にする");
+    checkbox.disabled = entry.type === "todo_done";
+    checkbox.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (entry.type === "todo") completeTodo(entry.id);
+    });
+    node.appendChild(checkbox);
+  }
+
   return node;
+}
+
+async function completeTodo(entryId) {
+  try {
+    const now = new Date().toISOString();
+    const updated = await api(`/api/entries/${encodeURIComponent(entryId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        type: "todo_done",
+        status: "done",
+        meta: { completed_at: now },
+      }),
+    });
+    const idx = state.entries.findIndex((e) => e.id === entryId);
+    if (idx !== -1) state.entries[idx] = updated;
+    renderTimeline();
+  } catch (err) {
+    console.warn("completeTodo failed:", err);
+  }
 }
 
 function fallbackTitle(entry) {

@@ -9,6 +9,7 @@
   --event: #4f7ea1;
   --diary: #b9715d;
   --todo: #cf8f29;
+  --todo-done: #3a7d44;
   --chat: #7c7b74;
   --news: #5d8d86;
   --shadow: 0 20px 40px rgba(77, 59, 35, 0.12);
@@ -262,6 +263,37 @@ button {
   transform: translateY(-1px);
 }
 
+.todo-checkbox {
+  position: absolute;
+  top: 18px;
+  right: 14px;
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--todo);
+  border-radius: 5px;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  z-index: 1;
+  transition: background 0.15s, border-color 0.15s;
+}
+.todo-checkbox:hover {
+  background: rgba(207, 143, 41, 0.18);
+}
+.entry-card[data-type="todo_done"] .todo-checkbox {
+  border-color: var(--todo-done);
+  background: var(--todo-done);
+}
+.entry-card[data-type="todo_done"] .todo-checkbox::after {
+  content: "✓";
+  display: block;
+  text-align: center;
+  color: white;
+  font-size: 14px;
+  line-height: 18px;
+}
+
 .entry-card[data-type="event"] .entry-card-button  {
   border-left-color: var(--event);
   background: rgba(79, 126, 161, 0.07);
@@ -273,6 +305,11 @@ button {
 .entry-card[data-type="todo"] .entry-card-button   {
   border-left-color: var(--todo);
   background: rgba(207, 143, 41, 0.07);
+}
+.entry-card[data-type="todo_done"] .entry-card-button {
+  border-left-color: var(--todo-done);
+  background: rgba(58, 125, 68, 0.07);
+  opacity: 0.75;
 }
 .entry-card[data-type="news"] .entry-card-button   {
   border-left-color: var(--news);
@@ -326,7 +363,8 @@ button {
 
 .entry-type[data-type="event"]::before { background: var(--event); }
 .entry-type[data-type="diary"]::before { background: var(--diary); }
-.entry-type[data-type="todo"]::before { background: var(--todo); }
+.entry-type[data-type="todo"]::before      { background: var(--todo); }
+.entry-type[data-type="todo_done"]::before { background: var(--todo-done); }
 .entry-type[data-type="news"]::before { background: var(--news); }
 .entry-type[data-type="chat_ai"]::before,
 .entry-type[data-type="chat_user"]::before,
