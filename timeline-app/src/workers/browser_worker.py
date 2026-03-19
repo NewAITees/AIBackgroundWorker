@@ -101,11 +101,13 @@ class BrowserWorker:
 
     def _get_latest_visit_time(self, db_path: Path) -> str | None:
         conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        cursor.execute("SELECT visit_time FROM browser_history ORDER BY id DESC LIMIT 1")
-        row = cursor.fetchone()
-        conn.close()
-        return str(row[0]) if row and row[0] else None
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT visit_time FROM browser_history ORDER BY id DESC LIMIT 1")
+            row = cursor.fetchone()
+            return str(row[0]) if row and row[0] else None
+        finally:
+            conn.close()
 
     def _fetch_new_history_rows(self, db_path: Path, last_history_id: int) -> list[sqlite3.Row]:
         conn = sqlite3.connect(db_path)

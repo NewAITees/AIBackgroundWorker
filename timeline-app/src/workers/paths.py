@@ -29,8 +29,10 @@ def lifelog_src() -> Path:
 def get_latest_sqlite_id(db_path: Path | str, table: str) -> int:
     """SQLite テーブルの MAX(id) を返す。レコードがなければ 0 を返す。"""
     conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    cursor.execute(f"SELECT COALESCE(MAX(id), 0) FROM {table}")  # noqa: S608
-    row = cursor.fetchone()
-    conn.close()
-    return int(row[0] or 0)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT COALESCE(MAX(id), 0) FROM {table}")  # noqa: S608
+        row = cursor.fetchone()
+        return int(row[0] or 0)
+    finally:
+        conn.close()
