@@ -5,6 +5,25 @@
 
 ---
 
+## バグ修正（既存テスト失敗）
+
+> `lifelog-system/` 側の既存バグ。我々の変更とは無関係だが放置しない。
+
+- [ ] `test_integrated_report_pipeline.py::test_generate_integrated_report_writes_file_and_db`
+      → レポート content にナビゲーションセクションが付与され期待値とずれている
+- [ ] `test_integration_reasons.py::test_end_to_end_reason_propagation`
+      → テスト用 DB に `collected_info` テーブルが作られていない（スキーマ未適用）
+- [ ] `test_jobs.py::test_analyze_pending_inserts_analysis`
+      → 同上（`collected_info` テーブル未作成）
+- [ ] `test_jobs.py::test_analyze_pending_saves_reasons`
+      → 同上
+- [ ] `test_jobs.py::test_deep_research_creates_entry`
+      → プロンプト文言の変更により期待文字列が一致しない
+- [ ] `test_jobs_integration.py::test_full_pipeline_real_services`
+      → 同上（`collected_info` テーブル未作成）
+
+---
+
 # 開発 TODO（詳細版）
 
 > 要件書: `docs/新しい開発要件`
@@ -203,7 +222,7 @@
 - [x] `scripts/start.sh` で timeline-app を起動すれば全ワーカーも起動することを確認
 - [x] `scripts/daemon.sh` の `start()` に「timeline-app に統合済み」と記載
 - [x] `tasks/lessons.md` に移行の設計判断を記録
-- [ ] `lifelog-daemon.service` を停止・無効化する（`sudo systemctl stop/disable lifelog-daemon.service`）
+- [x] `lifelog-daemon.service` を停止・無効化する（ユーザーが手動で `sudo systemctl stop/disable lifelog-daemon.service` 実行）
 
 ### 4.5-7. systemd 移行残作業（整理）
 
@@ -232,7 +251,7 @@
     → §9.1 §15.1 の「日記の要約 / AI コメント」に対応
 ```
 
-- [ ] `info-report.timer` を停止・無効化する（旧日次レポートは新設計不要）
+- [x] `info-report.timer` を停止・無効化する（ユーザーが手動で `sudo systemctl stop/disable info-report.timer` 実行）
 - [ ] `info-integrated.timer` の代替を timeline-app に実装する
       → analyze → deep → theme report → reports テーブル投入 のパイプラインを
         `timeline-app/src/workers/` に移植する（フェーズ5.6 として別途計画）
@@ -243,10 +262,10 @@
 
 > §22.1「MVP で必須」に明記されていたが todo.md に未記載だった漏れ
 
-- [ ] タイムライン上の `todo` カードにチェックボックスを表示する
-- [ ] チェック時に `PATCH /api/entries/{id}` で `type: todo_done` + `status: done` + `meta.completed_at` を更新する
-- [ ] 完了後、カード表示を `todo_done` スタイル（緑系）に切り替える
-- [ ] 完了済み TODO は過去側タイムラインへ再配置する（timestamp を完了時刻に更新）
+- [x] タイムライン上の `todo` カードにチェックボックスを表示する
+- [x] チェック時に `PATCH /api/entries/{id}` で `type: todo_done` + `status: done` + `meta.completed_at` を更新する
+- [x] 完了後、カード表示を `todo_done` スタイル（緑系）に切り替える
+- [x] 完了済み TODO は過去側タイムラインへ再配置する（timestamp を完了時刻に更新）
 
 ---
 
@@ -260,18 +279,18 @@
 > 要件書 §9.1「1日単位でまとまった日記を別途生成できる」§15.1「日記の要約 / AI コメント」
 > hourly_summary_worker とは別レイヤー。1日1回、その日の diary entry を振り返る。
 
-- [ ] `timeline-app/src/workers/daily_digest_worker.py` を作成
+- [x] `timeline-app/src/workers/daily_digest_worker.py` を作成
   - 1日1回（例: 翌朝 7:00）、前日の `diary` type entry を読み込む
   - Ollama に渡して「その日の振り返りコメント」entry を生成
   - `type: memo`（または `diary`）として `articles/` + `daily/` に保存
-- [ ] `scheduler.py` に `daily-digest` ジョブを追加（cron: 毎朝 7:00）
+- [x] `scheduler.py` に `daily-digest` ジョブを追加
 
 ### 5-0b. info-integrated 代替 worker（RSS分析パイプライン）
 
 > 現在 `info-integrated.timer` が担っている analyze → deep → theme report → reports テーブル投入 を
 > timeline-app に移植することで systemd 依存を完全に断つ
 
-- [ ] `timeline-app/src/workers/analysis_pipeline_worker.py` を作成
+- [x] `timeline-app/src/workers/analysis_pipeline_worker.py` を作成
   - `integrate_pipeline.sh` が行う3段階（analyze / deep / theme_report）を Python で再実装
   - 30分ごと実行、results を `ai_secretary.db::reports` テーブルに書き込む
   - 完了後は `info-integrated.timer` を停止・無効化できる
@@ -280,11 +299,12 @@
 
 > 要件書 §15.5「Ollama 接続を ON/OFF できるようにする / ゲーム中や高負荷時に CPU/GPU 負荷を下げる」
 
-- [ ] バックエンド: `config` または API で LLM 処理を一時停止するフラグを持つ
+- [x] バックエンド: `config` または API で LLM 処理を一時停止するフラグを持つ
   - `POST /api/ai/pause` / `POST /api/ai/resume` エンドポイントを追加
   - フラグが ON の間、`OllamaClient` を呼ぶ全 worker がスキップ（収集は継続）
   - `GET /api/health` に `ai.paused` 状態を追加
-- [ ] フロント: トップバーに「LLM 停止 / 再開」ボタンを追加
+  - `resume` 時に `hourly_summary_worker` / `daily_digest_worker` の catch-up を即時実行する
+- [x] フロント: トップバーに「LLM 停止 / 再開」ボタンを追加
   - 停止中はボタンの色を変えて視覚的に判別できるようにする
 
 ### 5-1. タイムライン実用強化

@@ -92,6 +92,27 @@
 - パターン: `collected_info` の生ニュースを1件ずつ timeline に出すと、素材と生成物が同じ粒度で混ざり、`reports` の意味が薄れる。
 - 対策: 生ニュースは時間帯ごとに1件へ束ねて `content` にリンク付き一覧を持たせる。`reports` は生成物ごとに個別 entry として投影し、素材の束ね entry と成果物 entry を分けて扱う。
 
+- パターン: LLM 一時停止機能を UI だけで実装すると、見た目は止まっていても worker が裏で推論を続けてしまう。
+- 対策: 一時停止状態はバックエンドの共有状態として持ち、`chat` と LLM 利用 worker の両方で参照する。フロントはその状態を操作・表示するだけにする。
+
+- パターン: AI pause を解除しても通常スケジュール時刻まで待つ実装だと、停止中に溜まった hour/day の要約がすぐ再開されず、ユーザーの期待とずれる。
+- 対策: `resume` 時に catch-up を即時キックする。hourly 系は lookback 補完を 1 回走らせ、daily 系は複数日 lookback で未生成分を埋める。
+
+- パターン: 日次の AI コメントは独立した diary を再生成するより、既存 `diary` を束ねた `memo` として入れた方がタイムライン上で役割が明確になる。
+- 対策: `daily_digest_worker` は前日の `diary` を読み、振り返りコメントを `memo` entry として 1 件だけ保存する。
+
+- パターン: 旧 `integrated_pipeline.sh` を timeline-app へ移すときに shell ごと呼ぶ設計のままだと、systemd 依存は消えても責務分離が進まず、pause/resume や health 連携も弱い。
+- 対策: `analyze_pending_articles` / `deep_research_articles` / `generate_theme_reports` の Python 関数を worker から直接呼ぶ。設定値と Ollama 接続先は timeline-app 側 `config` と環境変数で注入し、scheduler / health / AI pause に統合する。
+
+- パターン: pipeline worker のテストで実際の Ollama/DDG/SQLite を叩くと、原因切り分けが難しくなり単体テストが不安定になる。
+- 対策: `analysis_pipeline_worker` のテストは `_load_pipeline_functions()` を stub に差し替え、`pause`, 設定値伝播, status 更新, 例外記録だけをまず固定する。実サービス確認は別の統合テストで分ける。
+
+- パターン: worker 系は実装が進むほど API テストだけでは regressions を拾えず、`pause/resume`, lookback, catch-up のような内部制御が漏れやすい。
+- 対策: API テストに加えて worker 単体テストを作り、`paused`, `workspace 未設定`, `status 更新`, `既存 entry スキップ`, `persist 呼び出し` を mock ベースで直接押さえる。
+
+- パターン: 実 Ollama を使う integration テストでは、意味的には同じでも prompt の言い回し次第でモデルが 500 を返すことがあり、機能不具合とモデル揺れの区別がつきにくい。
+- 対策: integration の prompt は「todo 推定」「diary 推定」など確認したい振る舞いが明確で、かつ実際に安定して通る短い文に固定する。モデルの創発的な難問をテストにしない。
+
 - パターン: APScheduler の `misfire_grace_time` をデフォルト（1秒）のままにすると、ジョブ実行が1秒を少し超えるたびに "missed" 警告が大量に出る。再起動後も停止中の全スケジュール分が missed と判定される。
 - 対策: `misfire_grace_time` を各ジョブの `interval` 秒数と同じ値に設定する。`coalesce=True` と組み合わせると「間隔以内の遅れは無視、かつ溜まっても1回だけ実行」になる。
 
