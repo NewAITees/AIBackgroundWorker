@@ -276,6 +276,17 @@
   - 30分ごと実行、results を `ai_secretary.db::reports` テーブルに書き込む
   - 完了後は `info-integrated.timer` を停止・無効化できる
 
+### 5-0c. LLM 一時停止機能（PC負荷軽減）
+
+> 要件書 §15.5「Ollama 接続を ON/OFF できるようにする / ゲーム中や高負荷時に CPU/GPU 負荷を下げる」
+
+- [ ] バックエンド: `config` または API で LLM 処理を一時停止するフラグを持つ
+  - `POST /api/ai/pause` / `POST /api/ai/resume` エンドポイントを追加
+  - フラグが ON の間、`OllamaClient` を呼ぶ全 worker がスキップ（収集は継続）
+  - `GET /api/health` に `ai.paused` 状態を追加
+- [ ] フロント: トップバーに「LLM 停止 / 再開」ボタンを追加
+  - 停止中はボタンの色を変えて視覚的に判別できるようにする
+
 ### 5-1. タイムライン実用強化
 
 - [ ] 種別フィルタ（chat / diary / event / todo / news を切り替え）
