@@ -5,24 +5,6 @@
 
 ---
 
-## バグ修正（既存テスト失敗）
-
-> `lifelog-system/` 側の既存バグ。我々の変更とは無関係だが放置しない。
-
-- [ ] `test_integrated_report_pipeline.py::test_generate_integrated_report_writes_file_and_db`
-      → レポート content にナビゲーションセクションが付与され期待値とずれている
-- [ ] `test_integration_reasons.py::test_end_to_end_reason_propagation`
-      → テスト用 DB に `collected_info` テーブルが作られていない（スキーマ未適用）
-- [ ] `test_jobs.py::test_analyze_pending_inserts_analysis`
-      → 同上（`collected_info` テーブル未作成）
-- [ ] `test_jobs.py::test_analyze_pending_saves_reasons`
-      → 同上
-- [ ] `test_jobs.py::test_deep_research_creates_entry`
-      → プロンプト文言の変更により期待文字列が一致しない
-- [ ] `test_jobs_integration.py::test_full_pipeline_real_services`
-      → 同上（`collected_info` テーブル未作成）
-
----
 
 ## 最優先: 単純化・削減フェーズ
 
