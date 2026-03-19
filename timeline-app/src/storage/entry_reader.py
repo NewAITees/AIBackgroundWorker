@@ -10,9 +10,12 @@ from ..models.entry import Entry
 from .common import article_path, ensure_entry_summary
 
 _FRONTMATTER_RE = re.compile(r"(?ms)^---\n(?P<meta>.*?)\n---\n?(?P<body>.*)\Z")
+_SAFE_ENTRY_ID_RE = re.compile(r"^[A-Za-z0-9_.+:\-]+$")
 
 
 def read_entry(workspace_path: str, articles_dir: str, entry_id: str) -> Entry:
+    if not _SAFE_ENTRY_ID_RE.match(entry_id):
+        raise FileNotFoundError(f"無効な entry_id: {entry_id}")
     path = article_path(workspace_path, articles_dir, entry_id)
     raw = path.read_text(encoding="utf-8")
     match = _FRONTMATTER_RE.match(raw)

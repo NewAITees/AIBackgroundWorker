@@ -18,6 +18,8 @@ from ..storage.persistence import persist_entry
 
 router = APIRouter()
 _threads: dict[str, list[dict[str, str]]] = {}
+_MAX_THREADS = 200
+_MAX_HISTORY_PER_THREAD = 100
 
 
 class ChatRequest(BaseModel):
@@ -81,7 +83,16 @@ async def chat(req: ChatRequest):
 
     workspace = get_open_workspace()
     thread_id = req.thread_id or f"thread-{uuid.uuid4().hex[:8]}"
+
+    # スレッド数上限を超えたら古いものから削除
+    if thread_id not in _threads and len(_threads) >= _MAX_THREADS:
+        oldest = next(iter(_threads))
+        del _threads[oldest]
+
     history = _threads.setdefault(thread_id, [])
+    # スレッド内の履歴上限（古いメッセージから削除）
+    if len(history) >= _MAX_HISTORY_PER_THREAD:
+        history[:] = history[-(_MAX_HISTORY_PER_THREAD - 1) :]
     history.append({"role": "user", "content": req.content})
 
     client = OllamaClient(config.ai)
