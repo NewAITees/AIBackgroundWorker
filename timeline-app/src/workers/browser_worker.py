@@ -3,34 +3,23 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 import sqlite3
 from typing import Any
 
-from ..config import config, to_local_path
+from ..config import config
 from ..models.entry import Entry, EntryMeta, EntrySource, EntryStatus, EntryType
-from ..routers.workspace import peek_workspace
-from ..storage.daily_writer import upsert_entry_in_daily
-from ..storage.entry_writer import write_entry
-
-
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[3]
-
-
-def _lifelog_src() -> Path:
-    root = Path(to_local_path(config.lifelog.root_dir))
-    if not root.is_absolute():
-        root = (_repo_root() / root).resolve()
-    return root / "src"
+from ..routers.workspace import resolve_workspace_path
+from ..storage.persistence import persist_entry
+from .paths import get_latest_sqlite_id, lifelog_src, resolve_lifelog_path
 
 
 def _load_browser_classes():
     import sys
 
-    src_path = str(_lifelog_src())
+    src_path = str(lifelog_src())
     if src_path not in sys.path:
         sys.path.insert(0, src_path)
 
@@ -57,15 +46,7 @@ class BrowserWorker:
         self._lock = asyncio.Lock()
 
     def get_status(self) -> dict[str, Any]:
-        return {
-            "running": self._status.running,
-            "db_path": self._status.db_path,
-            "last_history_id": self._status.last_history_id,
-            "last_visit_time": self._status.last_visit_time,
-            "last_sync_at": self._status.last_sync_at,
-            "last_import_count": self._status.last_import_count,
-            "last_error": self._status.last_error,
-        }
+        return asdict(self._status)
 
     async def sync_once(self) -> int:
         async with self._lock:
@@ -77,13 +58,13 @@ class BrowserWorker:
 
     def _sync_once_blocking(self) -> int:
         self._status.last_error = None
-        info_db_path = self._resolve_path(config.lifelog.info_db_path)
+        info_db_path = resolve_lifelog_path(config.lifelog.info_db_path)
         self._status.db_path = str(info_db_path)
         BraveHistoryImporter, BrowserHistoryRepository = _load_browser_classes()
         repository = BrowserHistoryRepository(info_db_path)
 
         if self._status.last_history_id is None:
-            self._status.last_history_id = self._get_latest_history_id(info_db_path)
+            self._status.last_history_id = get_latest_sqlite_id(info_db_path, "browser_history")
             self._status.last_visit_time = self._get_latest_visit_time(info_db_path)
 
         importer = BraveHistoryImporter(repository)
@@ -104,7 +85,7 @@ class BrowserWorker:
             self._status.last_sync_at = datetime.now(UTC).isoformat()
             return 0
 
-        workspace_path = self._resolve_workspace_path()
+        workspace_path = resolve_workspace_path()
         synced = 0
         for row in rows:
             self._status.last_history_id = int(row["id"])
@@ -112,34 +93,11 @@ class BrowserWorker:
             if not workspace_path:
                 continue
             entry = self._row_to_entry(workspace_path, row, str(info_db_path))
-            write_entry(workspace_path, config.workspace.dirs.articles, entry)
-            upsert_entry_in_daily(workspace_path, config.workspace.dirs.daily, entry)
+            persist_entry(workspace_path, entry)
             synced += 1
 
         self._status.last_sync_at = datetime.now(UTC).isoformat()
         return synced
-
-    def _resolve_path(self, raw_path: str) -> Path:
-        path = Path(to_local_path(raw_path))
-        if path.is_absolute():
-            return path.resolve()
-        return (_repo_root() / path).resolve()
-
-    def _resolve_workspace_path(self) -> str | None:
-        workspace = peek_workspace()
-        if workspace:
-            return workspace["path"]
-        if config.workspace.default_path:
-            return str(Path(to_local_path(config.workspace.default_path)).resolve())
-        return None
-
-    def _get_latest_history_id(self, db_path: Path) -> int:
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        cursor.execute("SELECT COALESCE(MAX(id), 0) FROM browser_history")
-        row = cursor.fetchone()
-        conn.close()
-        return int(row[0] or 0)
 
     def _get_latest_visit_time(self, db_path: Path) -> str | None:
         conn = sqlite3.connect(db_path)

@@ -7,10 +7,8 @@ from fastapi import APIRouter, HTTPException
 from ..config import config
 from ..models.entry import Entry, EntryCreate, EntryType, EntryUpdate
 from ..routers.workspace import get_open_workspace
-from ..storage.common import ensure_entry_summary
-from ..storage.daily_writer import upsert_entry_in_daily
 from ..storage.entry_reader import read_entry
-from ..storage.entry_writer import write_entry
+from ..storage.persistence import persist_entry
 
 router = APIRouter()
 
@@ -43,9 +41,7 @@ async def create_entry(req: EntryCreate):
         related_ids=req.related_ids,
         meta=req.meta,
     )
-    entry = ensure_entry_summary(entry)
-    write_entry(workspace_path, config.workspace.dirs.articles, entry)
-    upsert_entry_in_daily(workspace_path, config.workspace.dirs.daily, entry)
+    persist_entry(workspace_path, entry)
     return entry
 
 
@@ -85,7 +81,6 @@ async def update_entry(entry_id: str, req: EntryUpdate):
     if req.type == EntryType.todo_done:
         update_data["timestamp"] = datetime.now(timezone.utc)
 
-    updated = ensure_entry_summary(entry.model_copy(update=update_data))
-    write_entry(workspace_path, config.workspace.dirs.articles, updated)
-    upsert_entry_in_daily(workspace_path, config.workspace.dirs.daily, updated)
+    updated = entry.model_copy(update=update_data)
+    persist_entry(workspace_path, updated)
     return updated

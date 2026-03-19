@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 import sqlite3
@@ -11,22 +11,8 @@ import subprocess
 import json
 from typing import Any
 
-from ..config import config, to_local_path
-
-
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[3]
-
-
-def _resolve_path(raw_path: str) -> Path:
-    path = Path(to_local_path(raw_path))
-    if path.is_absolute():
-        return path.resolve()
-    return (_repo_root() / path).resolve()
-
-
-def _lifelog_src() -> Path:
-    return _resolve_path(config.lifelog.root_dir) / "src"
+from ..config import config
+from .paths import get_latest_sqlite_id, resolve_lifelog_path
 
 
 @dataclass
@@ -46,15 +32,7 @@ class InfoWorker:
         self._lock = asyncio.Lock()
 
     def get_status(self) -> dict[str, Any]:
-        return {
-            "running": self._status.running,
-            "db_path": self._status.db_path,
-            "config_dir": self._status.config_dir,
-            "last_info_id": self._status.last_info_id,
-            "last_sync_at": self._status.last_sync_at,
-            "last_collect_summary": self._status.last_collect_summary,
-            "last_error": self._status.last_error,
-        }
+        return asdict(self._status)
 
     async def sync_once(self) -> int:
         async with self._lock:
@@ -66,13 +44,13 @@ class InfoWorker:
 
     def _sync_once_blocking(self) -> int:
         self._status.last_error = None
-        db_path = _resolve_path(config.lifelog.info_db_path)
-        config_dir = _resolve_path(config.lifelog.info_config_dir)
+        db_path = resolve_lifelog_path(config.lifelog.info_db_path)
+        config_dir = resolve_lifelog_path(config.lifelog.info_config_dir)
         self._status.db_path = str(db_path)
         self._status.config_dir = str(config_dir)
 
         if self._status.last_info_id is None:
-            self._status.last_info_id = self._get_latest_info_id(db_path)
+            self._status.last_info_id = get_latest_sqlite_id(db_path, "collected_info")
 
         summary: dict[str, Any] = {}
         try:
@@ -94,7 +72,7 @@ class InfoWorker:
         return len(rows)
 
     def _run_info_collection(self) -> dict[str, Any]:
-        lifelog_root = _resolve_path(config.lifelog.root_dir)
+        lifelog_root = resolve_lifelog_path(config.lifelog.root_dir)
         cmd = [
             "uv",
             "run",
@@ -122,14 +100,6 @@ class InfoWorker:
         if not stdout:
             return {}
         return json.loads(stdout)
-
-    def _get_latest_info_id(self, db_path: Path) -> int:
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        cursor.execute("SELECT COALESCE(MAX(id), 0) FROM collected_info")
-        row = cursor.fetchone()
-        conn.close()
-        return int(row[0] or 0)
 
     def _fetch_new_info_rows(self, db_path: Path, last_info_id: int) -> list[sqlite3.Row]:
         conn = sqlite3.connect(db_path)

@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from typing import Any
 
-from ..config import config, to_local_path
-from ..routers.workspace import peek_workspace
+from ..config import config
+from ..routers.workspace import resolve_workspace_path
+from ..services.ai_control import ai_control_service
 from ..services.hourly_summary_importer import import_missing_hours, resolve_context
 
 
@@ -29,14 +29,7 @@ class HourlySummaryWorker:
         self._lock = asyncio.Lock()
 
     def get_status(self) -> dict[str, Any]:
-        return {
-            "running": self._status.running,
-            "last_range_start": self._status.last_range_start,
-            "last_range_end": self._status.last_range_end,
-            "last_generated": self._status.last_generated,
-            "last_sync_at": self._status.last_sync_at,
-            "last_error": self._status.last_error,
-        }
+        return asdict(self._status)
 
     async def sync_once(self) -> int:
         async with self._lock:
@@ -48,7 +41,10 @@ class HourlySummaryWorker:
 
     def _sync_once_blocking(self) -> int:
         self._status.last_error = None
-        workspace_path = self._resolve_workspace_path()
+        if ai_control_service.is_paused():
+            self._status.last_generated = 0
+            return 0
+        workspace_path = resolve_workspace_path()
         if not workspace_path:
             self._status.last_generated = 0
             return 0
@@ -74,14 +70,6 @@ class HourlySummaryWorker:
             self._status.last_error = str(exc)
             self._status.last_generated = 0
             raise
-
-    def _resolve_workspace_path(self) -> str | None:
-        workspace = peek_workspace()
-        if workspace:
-            return workspace["path"]
-        if config.workspace.default_path:
-            return str(Path(to_local_path(config.workspace.default_path)).resolve())
-        return None
 
 
 hourly_summary_worker = HourlySummaryWorker()

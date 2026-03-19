@@ -8,18 +8,16 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, date, datetime, timedelta
-from pathlib import Path
 from typing import Any
 
 from ..ai.ollama_client import OllamaClient, OllamaClientError
-from ..config import config, to_local_path
+from ..config import config
 from ..models.entry import Entry, EntryMeta, EntrySource, EntryStatus, EntryType
-from ..routers.workspace import peek_workspace
+from ..routers.workspace import resolve_workspace_path
 from ..storage.daily_reader import read_daily_entries
-from ..storage.daily_writer import upsert_entry_in_daily
-from ..storage.entry_writer import write_entry
+from ..storage.persistence import persist_entry
 
 logger = logging.getLogger(__name__)
 
@@ -79,12 +77,7 @@ class ReportWorker:
         self._lock = asyncio.Lock()
 
     def get_status(self) -> dict[str, Any]:
-        return {
-            "last_run_at": self._status.last_run_at,
-            "last_target_date": self._status.last_target_date,
-            "last_saved": self._status.last_saved,
-            "last_error": self._status.last_error,
-        }
+        return asdict(self._status)
 
     async def sync_once(self) -> int:
         """前日分のレポートを生成する。scheduler から呼ばれる。"""
@@ -96,7 +89,7 @@ class ReportWorker:
         target_date = date.today() - timedelta(days=1)
         self._status.last_target_date = target_date.isoformat()
 
-        workspace_path = self._resolve_workspace_path()
+        workspace_path = resolve_workspace_path()
         if not workspace_path:
             logger.debug("report_worker: workspace 未設定のためスキップ")
             return 0
@@ -170,46 +163,40 @@ class ReportWorker:
 
         saved = 0
         if diary_content:
-            entry = Entry(
-                id=f"report-diary-{target_date.isoformat()}",
-                type=EntryType.diary,
-                title=diary_title,
-                content=diary_content,
-                timestamp=ts_diary,
-                status=EntryStatus.active,
-                source=EntrySource.ai,
-                workspace_path=workspace_path,
-                meta=EntryMeta(),
+            persist_entry(
+                workspace_path,
+                Entry(
+                    id=f"report-diary-{target_date.isoformat()}",
+                    type=EntryType.diary,
+                    title=diary_title,
+                    content=diary_content,
+                    timestamp=ts_diary,
+                    status=EntryStatus.active,
+                    source=EntrySource.ai,
+                    workspace_path=workspace_path,
+                    meta=EntryMeta(),
+                ),
             )
-            write_entry(workspace_path, config.workspace.dirs.articles, entry)
-            upsert_entry_in_daily(workspace_path, config.workspace.dirs.daily, entry)
             saved += 1
 
         if report_content:
-            entry = Entry(
-                id=f"report-daily-{target_date.isoformat()}",
-                type=EntryType.memo,
-                title=report_title,
-                content=report_content,
-                timestamp=ts_report,
-                status=EntryStatus.active,
-                source=EntrySource.ai,
-                workspace_path=workspace_path,
-                meta=EntryMeta(),
+            persist_entry(
+                workspace_path,
+                Entry(
+                    id=f"report-daily-{target_date.isoformat()}",
+                    type=EntryType.memo,
+                    title=report_title,
+                    content=report_content,
+                    timestamp=ts_report,
+                    status=EntryStatus.active,
+                    source=EntrySource.ai,
+                    workspace_path=workspace_path,
+                    meta=EntryMeta(),
+                ),
             )
-            write_entry(workspace_path, config.workspace.dirs.articles, entry)
-            upsert_entry_in_daily(workspace_path, config.workspace.dirs.daily, entry)
             saved += 1
 
         return saved
-
-    def _resolve_workspace_path(self) -> str | None:
-        workspace = peek_workspace()
-        if workspace:
-            return workspace["path"]
-        if config.workspace.default_path:
-            return str(Path(to_local_path(config.workspace.default_path)).resolve())
-        return None
 
 
 report_worker = ReportWorker()

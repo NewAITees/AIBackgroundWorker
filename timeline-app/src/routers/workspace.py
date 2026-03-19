@@ -72,6 +72,16 @@ def peek_workspace() -> dict | None:
     return _workspace or None
 
 
+def resolve_workspace_path() -> str | None:
+    """workers から使うワークスペースパス取得。未設定時は default_path を使う。"""
+    workspace = peek_workspace()
+    if workspace:
+        return workspace["path"]
+    if config.workspace.default_path:
+        return str(Path(to_local_path(config.workspace.default_path)).resolve())
+    return None
+
+
 @router.get("/workspace")
 async def get_workspace():
     """現在開いているワークスペース情報を返す"""

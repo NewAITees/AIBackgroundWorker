@@ -13,8 +13,8 @@ from ..ai.ollama_client import OllamaClient, OllamaClientError
 from ..config import config
 from ..models.entry import Entry, EntryMeta, EntrySource, EntryType
 from ..routers.workspace import get_open_workspace
-from ..storage.daily_writer import upsert_entry_in_daily
-from ..storage.entry_writer import write_entry
+from ..services.ai_control import ai_control_service
+from ..storage.persistence import persist_entry
 
 router = APIRouter()
 _threads: dict[str, list[dict[str, str]]] = {}
@@ -69,14 +69,16 @@ def _save_chat_ai_entry(workspace_path: str, thread_id: str, reply: str) -> Entr
         workspace_path=workspace_path,
         meta=EntryMeta(thread_id=thread_id),
     )
-    write_entry(workspace_path, config.workspace.dirs.articles, entry)
-    upsert_entry_in_daily(workspace_path, config.workspace.dirs.daily, entry)
+    persist_entry(workspace_path, entry)
     return entry
 
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest):
     """チャット入力に AI が応答し、記録候補も返す。"""
+    if ai_control_service.is_paused():
+        raise HTTPException(status_code=409, detail="AI処理は一時停止中です")
+
     workspace = get_open_workspace()
     thread_id = req.thread_id or f"thread-{uuid.uuid4().hex[:8]}"
     history = _threads.setdefault(thread_id, [])

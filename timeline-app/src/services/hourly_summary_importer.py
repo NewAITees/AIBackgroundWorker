@@ -11,8 +11,7 @@ from ..ai.ollama_client import OllamaClient, OllamaClientError
 from ..config import config, to_local_path
 from ..models.entry import Entry, EntryMeta, EntrySource, EntryType
 from ..storage.daily_reader import read_daily_entries
-from ..storage.daily_writer import upsert_entry_in_daily
-from ..storage.entry_writer import write_entry
+from ..storage.persistence import persist_entry
 
 HOURLY_SUFFIXES = ("activity", "browser", "news", "system")
 
@@ -41,7 +40,7 @@ def import_range(ctx: ImportContext, start_date: date, end_date: date) -> int:
         while current <= end_date:
             for hour in range(24):
                 for entry in build_entries_for_hour(lifelog_conn, info_conn, current, hour, client):
-                    _persist_entry(ctx.workspace_path, entry)
+                    persist_entry(str(ctx.workspace_path), entry)
                     total += 1
             current += timedelta(days=1)
     return total
@@ -86,7 +85,7 @@ def import_missing_hours(ctx: ImportContext, start_hour: datetime, end_hour: dat
                     allowed_suffixes=set(missing_suffixes),
                     existing_ids=existing_ids,
                 ):
-                    _persist_entry(ctx.workspace_path, entry)
+                    persist_entry(str(ctx.workspace_path), entry)
                     existing_ids.add(entry.id)
                     total += 1
             current += timedelta(hours=1)
@@ -481,12 +480,6 @@ def _resolve_repo_path(raw_path: str) -> Path:
     if path.is_absolute():
         return path.resolve()
     return (Path(__file__).resolve().parents[3] / path).resolve()
-
-
-def _persist_entry(workspace_path: Path, entry: Entry) -> None:
-    normalized = entry.model_copy(update={"workspace_path": str(workspace_path)})
-    write_entry(str(workspace_path), config.workspace.dirs.articles, normalized)
-    upsert_entry_in_daily(str(workspace_path), config.workspace.dirs.daily, normalized)
 
 
 def _normalize_hour(value: datetime) -> datetime:
