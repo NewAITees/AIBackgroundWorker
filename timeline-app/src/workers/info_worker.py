@@ -5,10 +5,11 @@ from __future__ import annotations
 import asyncio
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
+import json
+import os
 from pathlib import Path
 import sqlite3
 import subprocess
-import json
 from typing import Any
 
 from ..config import config
@@ -85,7 +86,7 @@ class InfoWorker:
             str(config.lifelog.info_limit),
         ]
         env = {
-            **__import__("os").environ,
+            **os.environ,
             "PYTHONPATH": str(lifelog_root),
         }
         result = subprocess.run(
