@@ -15,7 +15,9 @@ const state = {
   noMorePast: false,
   noMoreFuture: false,
   aiPaused: false,
-  mobileActivePane: "timeline",
+  leftPaneOpen: true,
+  detailPaneOpen: true,
+  responsiveInitialized: false,
 };
 
 const refs = {};
@@ -34,6 +36,8 @@ function cacheRefs() {
   refs.showVrmPane = document.getElementById("show-vrm-pane");
   refs.showDetailPane = document.getElementById("show-detail-pane");
   refs.showTimelinePane = document.getElementById("show-timeline-pane");
+  refs.closeVrmPane = document.getElementById("close-vrm-pane");
+  refs.closeDetailPane = document.getElementById("close-detail-pane");
   refs.workspaceSummary = document.getElementById("workspace-summary");
   refs.timelineStatus = document.getElementById("timeline-status");
   refs.workspaceEmpty = document.getElementById("workspace-empty");
@@ -68,21 +72,45 @@ function cacheRefs() {
   refs.detailFormSubmit = document.getElementById("detail-form");
   refs.jumpNow = document.getElementById("jump-now");
   refs.nowAnchor = document.getElementById("now-anchor");
+  // settings panel
+  refs.navTimeline = document.getElementById("nav-timeline");
+  refs.navSettings = document.getElementById("nav-settings");
+  refs.settingsPanel = document.getElementById("settings-panel");
+  refs.settingsClose = document.getElementById("settings-close");
+  refs.sOllamaUrl = document.getElementById("s-ollama-url");
+  refs.sOllamaModel = document.getElementById("s-ollama-model");
+  refs.sOllamaTimeout = document.getElementById("s-ollama-timeout");
+  refs.sAiStatus = document.getElementById("s-ai-status");
+  refs.sAiSave = document.getElementById("s-ai-save");
+  refs.sWorkers = document.getElementById("s-workers");
+  refs.sFeeds = document.getElementById("s-feeds");
+  refs.sFeedUrl = document.getElementById("s-feed-url");
+  refs.sFeedAdd = document.getElementById("s-feed-add");
+  refs.sFeedStatus = document.getElementById("s-feed-status");
 }
 
 function bindEvents() {
   refs.workspaceOpen.addEventListener("click", openWorkspace);
-  refs.showVrmPane.addEventListener("click", () => setActivePane("vrm"));
-  refs.showDetailPane.addEventListener("click", () => setActivePane("detail"));
-  refs.showTimelinePane.addEventListener("click", () => setActivePane("timeline"));
+  refs.showVrmPane.addEventListener("click", () => setLeftPaneOpen(true));
+  refs.showDetailPane.addEventListener("click", () => setDetailPaneOpen(true));
+  refs.showTimelinePane.addEventListener("click", () => {
+    setLeftPaneOpen(false);
+    setDetailPaneOpen(false);
+  });
+  refs.closeVrmPane.addEventListener("click", () => setLeftPaneOpen(false));
+  refs.closeDetailPane.addEventListener("click", () => setDetailPaneOpen(false));
   refs.aiToggle.addEventListener("click", toggleAI);
   refs.chatForm.addEventListener("submit", submitChat);
   refs.detailEditToggle.addEventListener("click", toggleDetailEdit);
   refs.detailForm.addEventListener("submit", saveDetail);
   refs.jumpNow.addEventListener("click", () => scrollToNow("smooth"));
+  refs.navSettings.addEventListener("click", openSettingsPanel);
+  refs.navTimeline.addEventListener("click", closeSettingsPanel);
+  refs.settingsClose.addEventListener("click", closeSettingsPanel);
+  refs.sAiSave.addEventListener("click", saveAiSettings);
+  refs.sFeedAdd.addEventListener("click", addFeed);
   document.addEventListener("keydown", handleGlobalKeydown);
   window.addEventListener("resize", syncResponsivePaneState);
-  bindSwipeNavigation();
   syncResponsivePaneState();
   setupInfiniteScroll();
 }
@@ -91,53 +119,34 @@ function isMobileLayout() {
   return window.matchMedia("(max-width: 900px)").matches;
 }
 
-function setActivePane(pane) {
-  state.mobileActivePane = pane;
+function setLeftPaneOpen(open) {
+  state.leftPaneOpen = open;
+  syncResponsivePaneState();
+}
+
+function setDetailPaneOpen(open) {
+  state.detailPaneOpen = open;
   syncResponsivePaneState();
 }
 
 function syncResponsivePaneState() {
   const mobile = isMobileLayout();
-  document.body.dataset.mobileLayout = mobile ? "true" : "false";
-  const paneMap = {
-    vrm: refs.vrmPane,
-    detail: refs.detailPane,
-    timeline: refs.timelinePane,
-  };
-  for (const [pane, node] of Object.entries(paneMap)) {
-    if (!node) continue;
-    node.dataset.active = mobile ? String(state.mobileActivePane === pane) : "true";
-  }
-  refs.showVrmPane.dataset.active = String(state.mobileActivePane === "vrm");
-  refs.showDetailPane.dataset.active = String(state.mobileActivePane === "detail");
-  refs.showTimelinePane.dataset.active = String(state.mobileActivePane === "timeline");
-}
-
-function bindSwipeNavigation() {
-  let touchStartX = null;
-  let touchStartY = null;
-  refs.layout.addEventListener("touchstart", (event) => {
-    const touch = event.touches[0];
-    touchStartX = touch.clientX;
-    touchStartY = touch.clientY;
-  }, { passive: true });
-
-  refs.layout.addEventListener("touchend", (event) => {
-    if (!isMobileLayout() || touchStartX == null || touchStartY == null) return;
-    const touch = event.changedTouches[0];
-    const deltaX = touch.clientX - touchStartX;
-    const deltaY = touch.clientY - touchStartY;
-    touchStartX = null;
-    touchStartY = null;
-    if (Math.abs(deltaX) < 50 || Math.abs(deltaX) <= Math.abs(deltaY)) return;
-    const order = ["vrm", "detail", "timeline"];
-    const currentIndex = order.indexOf(state.mobileActivePane);
-    if (deltaX < 0 && currentIndex < order.length - 1) {
-      setActivePane(order[currentIndex + 1]);
-    } else if (deltaX > 0 && currentIndex > 0) {
-      setActivePane(order[currentIndex - 1]);
+  if (!state.responsiveInitialized) {
+    if (mobile) {
+      state.leftPaneOpen = false;
+      state.detailPaneOpen = false;
     }
-  }, { passive: true });
+    state.responsiveInitialized = true;
+  }
+  document.body.dataset.mobileLayout = mobile ? "true" : "false";
+  refs.layout.dataset.leftOpen = String(state.leftPaneOpen);
+  refs.layout.dataset.detailOpen = String(state.detailPaneOpen);
+  refs.vrmPane.dataset.active = mobile ? String(state.leftPaneOpen) : "true";
+  refs.detailPane.dataset.active = mobile ? String(state.detailPaneOpen) : "true";
+  refs.timelinePane.dataset.active = "true";
+  refs.showVrmPane.dataset.active = String(state.leftPaneOpen);
+  refs.showDetailPane.dataset.active = String(state.detailPaneOpen);
+  refs.showTimelinePane.dataset.active = String(!state.leftPaneOpen && !state.detailPaneOpen);
 }
 
 async function api(path, options = {}) {
@@ -385,8 +394,8 @@ async function selectEntry(entryId) {
   try {
     state.selectedEntry = await api(`/api/entries/${encodeURIComponent(entryId)}`);
     state.editMode = false;
+    setDetailPaneOpen(true);
     renderDetail();
-    if (isMobileLayout()) setActivePane("detail");
   } catch (error) {
     refs.detailEmpty.classList.remove("hidden");
     refs.detailView.classList.add("hidden");
@@ -476,7 +485,10 @@ async function submitChat(event) {
     renderCandidates(response.entry_candidates || []);
     refs.chatResponse.classList.remove("hidden");
     refs.chatStatus.textContent = "応答を保存しました";
-    if (isMobileLayout()) setActivePane("timeline");
+    if (isMobileLayout()) {
+      setLeftPaneOpen(false);
+      setDetailPaneOpen(false);
+    }
     await loadTimeline();
   } catch (error) {
     refs.chatStatus.textContent = error.message;
@@ -518,7 +530,10 @@ async function createCandidateEntry(candidate) {
     }
     await api("/api/entries", { method: "POST", body: JSON.stringify(body) });
     refs.chatStatus.textContent = `${candidate.type} を保存しました`;
-    if (isMobileLayout()) setActivePane("timeline");
+    if (isMobileLayout()) {
+      setLeftPaneOpen(false);
+      setDetailPaneOpen(false);
+    }
     await loadTimeline();
   } catch (error) {
     refs.chatStatus.textContent = error.message;
@@ -637,6 +652,143 @@ function formatDateTime(value) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+// ---------------------------------------------------------------------------
+// 設定パネル
+// ---------------------------------------------------------------------------
+
+async function openSettingsPanel() {
+  refs.settingsPanel.classList.remove("hidden");
+  refs.navSettings.classList.add("active");
+  refs.navTimeline.classList.remove("active");
+  await loadSettings();
+}
+
+function closeSettingsPanel() {
+  refs.settingsPanel.classList.add("hidden");
+  refs.navSettings.classList.remove("active");
+  refs.navTimeline.classList.add("active");
+}
+
+async function loadSettings() {
+  try {
+    const s = await api("/api/settings");
+    refs.sOllamaUrl.value = s.ai.ollama_base_url;
+    refs.sOllamaModel.value = s.ai.ollama_model;
+    refs.sOllamaTimeout.value = s.ai.timeout_seconds;
+    renderWorkers(s.workers);
+    renderFeeds(s.feeds);
+  } catch (e) {
+    refs.sAiStatus.textContent = e.message;
+  }
+}
+
+function renderWorkers(workers) {
+  const labels = {
+    activity: "活動ログ収集",
+    browser: "ブラウザ履歴",
+    info: "RSS / ニュース収集",
+    analysis: "RSS 分析パイプライン",
+    hourly_summary: "1時間まとめ生成",
+    daily_digest: "日次振り返り",
+    windows: "Windows フォアグラウンド",
+  };
+  refs.sWorkers.innerHTML = "";
+  for (const [id, enabled] of Object.entries(workers)) {
+    const row = document.createElement("label");
+    row.className = "settings-toggle-row";
+    row.innerHTML = `
+      <span>${labels[id] ?? id}</span>
+      <input type="checkbox" data-worker="${id}" ${enabled ? "checked" : ""} />
+    `;
+    row.querySelector("input").addEventListener("change", (e) => {
+      updateWorker(id, e.target.checked);
+    });
+    refs.sWorkers.appendChild(row);
+  }
+}
+
+async function updateWorker(workerId, enabled) {
+  try {
+    await api("/api/settings/workers", {
+      method: "PATCH",
+      body: JSON.stringify({ workers: { [workerId]: enabled } }),
+    });
+  } catch (e) {
+    console.warn("worker update failed:", e);
+  }
+}
+
+function renderFeeds(feeds) {
+  refs.sFeeds.innerHTML = "";
+  if (!feeds.length) {
+    refs.sFeeds.textContent = "登録済みフィードなし";
+    return;
+  }
+  for (const url of feeds) {
+    const row = document.createElement("div");
+    row.className = "settings-feed-row";
+    const label = document.createElement("span");
+    label.textContent = url;
+    label.title = url;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "ghost-button";
+    btn.textContent = "削除";
+    btn.addEventListener("click", () => deleteFeed(url));
+    row.appendChild(label);
+    row.appendChild(btn);
+    refs.sFeeds.appendChild(row);
+  }
+}
+
+async function saveAiSettings() {
+  refs.sAiStatus.textContent = "保存中...";
+  try {
+    await api("/api/settings/ai", {
+      method: "PATCH",
+      body: JSON.stringify({
+        ollama_base_url: refs.sOllamaUrl.value.trim(),
+        ollama_model: refs.sOllamaModel.value.trim(),
+        timeout_seconds: parseInt(refs.sOllamaTimeout.value, 10),
+      }),
+    });
+    refs.sAiStatus.textContent = "保存しました";
+  } catch (e) {
+    refs.sAiStatus.textContent = e.message;
+  }
+}
+
+async function addFeed() {
+  const url = refs.sFeedUrl.value.trim();
+  if (!url) return;
+  refs.sFeedStatus.textContent = "追加中...";
+  try {
+    const res = await api("/api/settings/feeds", {
+      method: "POST",
+      body: JSON.stringify({ url }),
+    });
+    refs.sFeedUrl.value = "";
+    refs.sFeedStatus.textContent = "追加しました";
+    renderFeeds(res.feeds);
+  } catch (e) {
+    refs.sFeedStatus.textContent = e.message;
+  }
+}
+
+async function deleteFeed(url) {
+  refs.sFeedStatus.textContent = "削除中...";
+  try {
+    const res = await api("/api/settings/feeds", {
+      method: "DELETE",
+      body: JSON.stringify({ url }),
+    });
+    refs.sFeedStatus.textContent = "削除しました";
+    renderFeeds(res.feeds);
+  } catch (e) {
+    refs.sFeedStatus.textContent = e.message;
+  }
 }
 
 function toDatetimeLocal(isoString) {

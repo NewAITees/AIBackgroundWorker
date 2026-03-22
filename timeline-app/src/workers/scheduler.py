@@ -9,6 +9,7 @@ from typing import Any
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from ..config import config
+from ..services.worker_control_service import worker_control_service
 from .activity_worker import activity_worker
 from .analysis_pipeline_worker import analysis_pipeline_worker
 from .browser_worker import browser_worker
@@ -25,6 +26,17 @@ def _configure_scheduler_logging() -> None:
     logging.getLogger("apscheduler.executors.default").setLevel(logging.WARNING)
 
 
+def _guarded(worker_id: str, fn: Any):
+    """worker_control_service の enabled フラグを確認してから実行するラッパー。"""
+
+    async def _inner() -> None:
+        if worker_control_service.is_enabled(worker_id):
+            await fn()
+
+    _inner.__name__ = f"{worker_id}_guarded"
+    return _inner
+
+
 def get_scheduler() -> AsyncIOScheduler:
     """AsyncIOScheduler のシングルトンを返す。"""
     global _scheduler
@@ -39,7 +51,7 @@ def start_scheduler() -> AsyncIOScheduler:
     scheduler = get_scheduler()
     if scheduler.get_job("activity-sync") is None:
         scheduler.add_job(
-            activity_worker.sync_once,
+            _guarded("activity", activity_worker.sync_once),
             "interval",
             seconds=config.lifelog.activity_sync_seconds,
             id="activity-sync",
@@ -50,7 +62,7 @@ def start_scheduler() -> AsyncIOScheduler:
         )
     if scheduler.get_job("browser-sync") is None:
         scheduler.add_job(
-            browser_worker.sync_once,
+            _guarded("browser", browser_worker.sync_once),
             "interval",
             seconds=config.lifelog.browser_import_seconds,
             id="browser-sync",
@@ -61,7 +73,7 @@ def start_scheduler() -> AsyncIOScheduler:
         )
     if scheduler.get_job("info-sync") is None:
         scheduler.add_job(
-            info_worker.sync_once,
+            _guarded("info", info_worker.sync_once),
             "interval",
             seconds=config.lifelog.info_collect_seconds,
             id="info-sync",
@@ -72,7 +84,7 @@ def start_scheduler() -> AsyncIOScheduler:
         )
     if scheduler.get_job("analysis-pipeline-sync") is None:
         scheduler.add_job(
-            analysis_pipeline_worker.sync_once,
+            _guarded("analysis", analysis_pipeline_worker.sync_once),
             "interval",
             seconds=config.lifelog.analysis_pipeline_seconds,
             id="analysis-pipeline-sync",
@@ -83,7 +95,7 @@ def start_scheduler() -> AsyncIOScheduler:
         )
     if scheduler.get_job("hourly-summary-sync") is None:
         scheduler.add_job(
-            hourly_summary_worker.sync_once,
+            _guarded("hourly_summary", hourly_summary_worker.sync_once),
             "interval",
             seconds=config.lifelog.hourly_summary_seconds,
             id="hourly-summary-sync",
@@ -94,7 +106,7 @@ def start_scheduler() -> AsyncIOScheduler:
         )
     if scheduler.get_job("daily-digest-sync") is None:
         scheduler.add_job(
-            daily_digest_worker.sync_once,
+            _guarded("daily_digest", daily_digest_worker.sync_once),
             "cron",
             hour=config.lifelog.daily_digest_hour,
             minute=config.lifelog.daily_digest_minute,
@@ -106,7 +118,7 @@ def start_scheduler() -> AsyncIOScheduler:
         )
     if scheduler.get_job("windows-foreground-merge") is None:
         scheduler.add_job(
-            windows_foreground_worker.sync_once,
+            _guarded("windows", windows_foreground_worker.sync_once),
             "interval",
             seconds=config.lifelog.windows_foreground_merge_seconds,
             id="windows-foreground-merge",
