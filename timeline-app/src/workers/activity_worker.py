@@ -112,6 +112,7 @@ class ActivityWorker:
         finally:
             collector.stop_collection()
             self._collector = None
+            db_manager.close()
 
     def _sync_once_blocking(self) -> int:
         db_path = self._status.db_path or str(resolve_lifelog_path(config.lifelog.db_path))
