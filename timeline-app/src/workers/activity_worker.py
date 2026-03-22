@@ -110,9 +110,8 @@ class ActivityWorker:
                 self._sync_once_blocking()
                 self._stop_event.wait(timeout=self._poll_seconds)
         finally:
-            collector.stop_collection()
+            collector.stop_collection()  # join 後に db_manager.close() まで行う
             self._collector = None
-            db_manager.close()
 
     def _sync_once_blocking(self) -> int:
         db_path = self._status.db_path or str(resolve_lifelog_path(config.lifelog.db_path))

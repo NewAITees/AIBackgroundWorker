@@ -93,13 +93,14 @@ class ActivityCollector:
         logger.info("Activity collection started")
 
     def stop_collection(self) -> None:
-        """収集を停止し、全スレッドの終了を待つ."""
+        """収集を停止し、全スレッドの終了を待ってから DB 接続を閉じる."""
         self._running = False
         for t in self._threads:
             t.join(timeout=15)
             if t.is_alive():
                 logger.warning("Thread %s did not stop within timeout", t.name)
         self._threads = []
+        self.db.close()
         logger.info("Activity collection stopped")
 
     def _collection_loop(self) -> None:

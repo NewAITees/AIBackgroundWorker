@@ -491,7 +491,13 @@ class DatabaseManager:
         if hasattr(self._local, "conn"):
             delattr(self._local, "conn")
 
+    def __enter__(self) -> "DatabaseManager":
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self.close()
+
     def __del__(self) -> None:
-        """GC 時に未クローズ接続を閉じる。"""
+        """GC 時に未クローズ接続を閉じる（best-effort フォールバック）。"""
         with contextlib.suppress(Exception):
             self.close()

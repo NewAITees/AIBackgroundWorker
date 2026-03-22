@@ -5,9 +5,10 @@ ResourceWarning が出ないことを確認する。
 検証手順:
   1. start_collection() でスレッドを起動
   2. 少し動かす（スレッドが DB 接続を作成するのを待つ）
-  3. stop_collection() でスレッドを join して完全停止を待つ
-  4. db_manager.close() で全接続を明示クローズ
-  5. gc.collect() で GC を強制し、ResourceWarning が出ないことを確認
+  3. stop_collection() でスレッドを join して完全停止を待ち、DB 接続も閉じる
+     ※ stop_collection() が db_manager.close() まで担う設計のため、
+        呼び出し側は stop_collection() だけを呼べばよい
+  4. gc.collect() で GC を強制し、ResourceWarning が出ないことを確認
 """
 
 import gc
@@ -80,13 +81,11 @@ class TestActivityCollectorStop:
             collector.start_collection()
             # スレッドが _get_connection() を呼んで接続を作るのに十分な時間を与える
             time.sleep(0.3)
-            # join() で全スレッド終了を待ってから返る
+            # join() で全スレッド終了を待ち、そのまま db_manager.close() まで行う
             collector.stop_collection()
 
-        # 全接続を明示クローズ（_connections セット内の全スレッド分を含む）
-        db_manager.close()
-
         # ローカル参照を破棄して GC 対象にする
+        # ※ db_manager.close() は stop_collection() 内で完了しているため不要
         del collector
         del db_manager
 
