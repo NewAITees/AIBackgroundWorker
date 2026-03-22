@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from src.config import config
 from src.models.entry import Entry, EntryMeta, EntrySource, EntryStatus, EntryType
@@ -65,15 +65,22 @@ def test_hourly_summary_worker_imports_missing_hours(monkeypatch, tmp_path):
         "src.workers.hourly_summary_worker.import_missing_hours", _import_missing_hours
     )
 
+    # コードと同じ方法で期待値を算出（ローカルタイムゾーンに依存しない比較）
+    naive_now = datetime(2026, 3, 19, 10, 15)
+    expected_end = naive_now.astimezone().replace(minute=0, second=0, microsecond=0) - timedelta(
+        hours=1
+    )
+    expected_start = expected_end - timedelta(hours=2)  # lookback_hours=3 → -2h
+
     assert worker._sync_once_blocking() == 4
     assert imported["workspace_path"] == workspace_path
     assert imported["ctx"] == "CTX"
-    assert imported["start_hour"] == datetime(2026, 3, 19, 7, 0, tzinfo=UTC)
-    assert imported["end_hour"] == datetime(2026, 3, 19, 9, 0, tzinfo=UTC)
+    assert imported["start_hour"] == expected_start
+    assert imported["end_hour"] == expected_end
     status = worker.get_status()
     assert status["last_generated"] == 4
-    assert status["last_range_start"] == datetime(2026, 3, 19, 7, 0, tzinfo=UTC).isoformat()
-    assert status["last_range_end"] == datetime(2026, 3, 19, 9, 0, tzinfo=UTC).isoformat()
+    assert status["last_range_start"] == expected_start.isoformat()
+    assert status["last_range_end"] == expected_end.isoformat()
     assert status["last_sync_at"] is not None
 
 
@@ -81,12 +88,13 @@ def test_daily_digest_worker_target_dates_respects_lookback(monkeypatch):
     worker = DailyDigestWorker()
     monkeypatch.setattr(config.lifelog, "daily_digest_lookback_days", 3)
 
-    class _FixedDate(date):
+    # _target_dates は datetime.now(UTC).date() を使うので datetime をmonkeypatch する
+    class _FixedDatetime(datetime):
         @classmethod
-        def today(cls):
-            return cls(2026, 3, 19)
+        def now(cls, tz=None):
+            return cls(2026, 3, 19, 12, 0, tzinfo=UTC)
 
-    monkeypatch.setattr("src.workers.daily_digest_worker.date", _FixedDate)
+    monkeypatch.setattr("src.workers.daily_digest_worker.datetime", _FixedDatetime)
 
     assert worker._target_dates() == [
         date(2026, 3, 16),
