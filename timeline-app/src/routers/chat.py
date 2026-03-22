@@ -47,6 +47,7 @@ def _normalize_candidates(raw_candidates: list[dict]) -> list[dict]:
         candidate_type = str(item.get("type", "")).strip()
         content = str(item.get("content", "")).strip()
         title = item.get("title")
+        timestamp = item.get("timestamp")
         if candidate_type not in _ALLOWED_CANDIDATE_TYPES or not content:
             continue
         candidates.append(
@@ -54,6 +55,7 @@ def _normalize_candidates(raw_candidates: list[dict]) -> list[dict]:
                 "type": candidate_type,
                 "title": str(title).strip() if title else None,
                 "content": content,
+                "timestamp": str(timestamp).strip() if timestamp else None,
             }
         )
     return candidates[:3]

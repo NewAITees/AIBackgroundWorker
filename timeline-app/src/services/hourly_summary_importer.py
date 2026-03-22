@@ -175,7 +175,8 @@ def summarize_activity(
         suffix="activity",
         entry_type=EntryType.system_log,
         title=title,
-        content=content,
+        summary=content,
+        content=raw_summary,
         source_path="lifelog-system/data/lifelog.db",
     )
 
@@ -241,7 +242,8 @@ def summarize_system(
         suffix="system",
         entry_type=EntryType.system_log,
         title=title,
-        content=content,
+        summary=content,
+        content=raw_summary,
         source_path="lifelog-system/data/lifelog.db",
     )
 
@@ -291,9 +293,10 @@ def summarize_browser(
         target_date=target_date,
         hour=hour,
         suffix="browser",
-        entry_type=EntryType.memo,
+        entry_type=EntryType.system_log,
         title=title,
-        content=content,
+        summary=content,
+        content=raw_summary,
         source_path="lifelog-system/data/ai_secretary.db",
     )
 
@@ -405,6 +408,7 @@ def build_entry(
     entry_type: EntryType,
     title: str,
     content: str,
+    summary: str | None = None,
     source_path: str,
 ) -> Entry:
     workspace_path = str(Path(to_local_path(config.workspace.default_path)).resolve())
@@ -412,6 +416,7 @@ def build_entry(
         id=make_entry_id(target_date, hour, suffix),
         type=entry_type,
         title=title,
+        summary=summary,
         content=content,
         timestamp=make_timestamp(target_date, hour),
         source=EntrySource.imported,

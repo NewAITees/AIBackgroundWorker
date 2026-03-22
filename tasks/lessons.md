@@ -177,3 +177,15 @@
 - 対策: `priority_min` を下限ではなく上限として扱い、`journalctl --priority=0..{min_priority}` にする。数値 priority (`"3"`, `"4"`) も分類器で明示的に `err` / `warning` 等へ変換する。
 - パターン: `tee` を使ったラッパースクリプトの定常ログは journald に流れ、syslog collector が拾うと `system_events` を急速に肥大化させる。
 - 対策: Linux event collector に `ignored_processes` を持たせ、少なくとも `tee` は既定で除外する。運用ログの保存先と system event 収集対象を分離する。
+- パターン: タイムラインを「上が未来・下が過去」の逆順に変えるとき、カードの並び順だけ反転しても破綻する。DOM 順、境界付近の時刻ソート、無限スクロールの読み込み方向が旧仕様のままだと、Now 近傍の情報配置と追加読み込みが逆転して見える。
+- 対策: 逆順タイムラインでは `future -> upcoming -> now -> past` の DOM 順を先に固定し、`Now` に近いカードが境界側に来るよう各帯を降順で描画する。さらに「上端で未来を追加、下端で過去を追加」を 1 セットで直し、表示順だけの局所変更にしない。
+- パターン: タイムラインの向きを変えた後も `今日へ戻る` やキーボード移動が旧方向前提のままだと、表示順だけ新しく見えても操作感が一致せず混乱する。
+- 対策: 向き変更時は描画順だけでなく、`Now` への復帰関数、初期スクロール位置、`Home` / `End` などの移動操作も同じメンタルモデルで再定義する。
+- パターン: タイムラインカードに左余白の導線を付けたままカード本体を `100%` 幅で描画すると、中央ペイン内で数pxはみ出し、横スクロールバーが出る。
+- 対策: 導線用の `margin-left` を持つカードは、カード本体の実幅を `calc(100% - margin)` に制限する。あわせてペイン側も `overflow-x: hidden/clip` を入れて、レスポンシブ時の微小はみ出しを吸収する。
+- パターン: `system_log` の import で LLM 要約文をそのまま `article.content` に保存すると、`daily` と右ペイン詳細が同じ短文になり、詳細表示の意味が消える。
+- 対策: import summary entry は `summary` と `content` を分離して保存する。タイムライン / `daily` は短い summary を使い、右ペインは `articles/*.md` の詳細本文（event counts・sample messages・集計素材など）を表示させる。少なくとも `activity` / `browser` / `system_log` はこの形に揃える。
+- パターン: browser 履歴の時間帯 summary を `memo` にすると、ユーザーが書いたメモと外部取り込みログが同じ見え方になり、分類意図が崩れる。
+- 対策: browser / activity / system event のような自動集約ログは `system_log` に寄せ、`memo` はユーザーまたはAIが本文を書くノート系 entry に限定する。
+- パターン: AI が候補に `timestamp` を返していても、API 側の候補正規化で値を落とすと、本文に「12時頃」と書いてあっても保存時刻の entry になってしまう。
+- 対策: `POST /api/chat` の候補正規化では `timestamp` も保持し、フロントの candidate 保存でそのまま `POST /api/entries` に渡す。既定時刻と AI 上書きの両方を使う場合は、API の途中で捨てないことを確認する。
