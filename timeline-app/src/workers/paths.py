@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import sqlite3
 from pathlib import Path
 
@@ -28,7 +29,7 @@ def lifelog_src() -> Path:
 
 def get_latest_sqlite_id(db_path: Path | str, table: str) -> int:
     """SQLite テーブルの MAX(id) を返す。レコードがなければ 0 を返す。"""
-    with sqlite3.connect(db_path) as conn:
+    with contextlib.closing(sqlite3.connect(db_path)) as conn:
         cursor = conn.cursor()
         cursor.execute(f"SELECT COALESCE(MAX(id), 0) FROM {table}")  # noqa: S608
         row = cursor.fetchone()

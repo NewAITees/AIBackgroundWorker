@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 import json
@@ -103,7 +104,7 @@ class InfoWorker:
         return json.loads(stdout)
 
     def _fetch_new_info_rows(self, db_path: Path, last_info_id: int) -> list[sqlite3.Row]:
-        with sqlite3.connect(db_path) as conn:
+        with contextlib.closing(sqlite3.connect(db_path)) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute(

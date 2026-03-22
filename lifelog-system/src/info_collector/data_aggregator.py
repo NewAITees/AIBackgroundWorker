@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -210,7 +211,7 @@ class DailyReportDataAggregator:
             ブラウザ履歴データのリスト
         """
         # 直接SQLクエリで指定日の履歴を取得（DATE()関数を使用）
-        with sqlite3.connect(self.info_db_path_str) as conn:
+        with contextlib.closing(sqlite3.connect(self.info_db_path_str)) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 """

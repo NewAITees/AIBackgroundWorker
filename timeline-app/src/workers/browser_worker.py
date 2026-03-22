@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -86,14 +87,14 @@ class BrowserWorker:
         return 0
 
     def _get_latest_visit_time(self, db_path: Path) -> str | None:
-        with sqlite3.connect(db_path) as conn:
+        with contextlib.closing(sqlite3.connect(db_path)) as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT visit_time FROM browser_history ORDER BY id DESC LIMIT 1")
             row = cursor.fetchone()
             return str(row[0]) if row and row[0] else None
 
     def _fetch_new_history_rows(self, db_path: Path, last_history_id: int) -> list[sqlite3.Row]:
-        with sqlite3.connect(db_path) as conn:
+        with contextlib.closing(sqlite3.connect(db_path)) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute(

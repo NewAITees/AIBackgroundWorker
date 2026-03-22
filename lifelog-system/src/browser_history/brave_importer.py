@@ -4,6 +4,7 @@ Brave browser history importer.
 This module provides functionality to import history from Brave browser's SQLite database.
 """
 
+import contextlib
 import sqlite3
 import logging
 from pathlib import Path
@@ -106,9 +107,6 @@ class BraveHistoryImporter:
             shutil.copy2(history_path, temp_history)
 
             # SQLiteデータベースから履歴を読み取り
-            conn = sqlite3.connect(str(temp_history))
-            conn.row_factory = sqlite3.Row
-
             query = """
                 SELECT
                     url,
@@ -122,8 +120,10 @@ class BraveHistoryImporter:
             if limit:
                 query += f" LIMIT {limit}"
 
-            cursor = conn.execute(query)
-            rows = cursor.fetchall()
+            with contextlib.closing(sqlite3.connect(str(temp_history))) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.execute(query)
+                rows = cursor.fetchall()
 
             count = 0
             for row in rows:
@@ -135,7 +135,6 @@ class BraveHistoryImporter:
                     f"(visits: {row['visit_count']})"
                 )
 
-            conn.close()
             logger.info(f"Imported {count} history entries from Brave")
             return count
 

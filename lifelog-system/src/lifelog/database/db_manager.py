@@ -5,6 +5,7 @@ Design: Thread-local connections with WAL mode optimization.
 See: doc/design/database_design.md
 """
 
+import contextlib
 import logging
 import sqlite3
 import threading
@@ -48,7 +49,9 @@ class DatabaseManager:
 
     def _init_database(self) -> None:
         """データベースの初期化とPRAGMA設定."""
-        with sqlite3.connect(self.db_path, timeout=30.0, check_same_thread=False) as conn:
+        with contextlib.closing(
+            sqlite3.connect(self.db_path, timeout=30.0, check_same_thread=False)
+        ) as conn:
             # PRAGMA設定
             for pragma in get_pragma_settings():
                 conn.execute(pragma)
@@ -64,7 +67,9 @@ class DatabaseManager:
         既存DBへのマイグレーションを実行.
         system_eventsテーブルとビューが存在しない場合に追加する.
         """
-        with sqlite3.connect(self.db_path, timeout=30.0, check_same_thread=False) as conn:
+        with contextlib.closing(
+            sqlite3.connect(self.db_path, timeout=30.0, check_same_thread=False)
+        ) as conn:
             for pragma in get_pragma_settings():
                 conn.execute(pragma)
             cursor = conn.cursor()

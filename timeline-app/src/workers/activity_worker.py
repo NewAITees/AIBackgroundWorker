@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
+import contextlib
 import logging
 import sqlite3
 import threading
@@ -115,7 +116,7 @@ class ActivityWorker:
     def _sync_once_blocking(self) -> int:
         db_path = self._status.db_path or str(resolve_lifelog_path(config.lifelog.db_path))
         self._status.db_path = db_path
-        with sqlite3.connect(db_path) as conn:
+        with contextlib.closing(sqlite3.connect(db_path)) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
 

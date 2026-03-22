@@ -10,6 +10,7 @@ Usage:
 """
 
 import argparse
+import contextlib
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -337,7 +338,7 @@ def show_reports(limit: int = 5) -> None:
     # reportsテーブルから直接取得
     import sqlite3
 
-    with sqlite3.connect(f"file:{info_db_path}?mode=ro", uri=True) as conn:
+    with contextlib.closing(sqlite3.connect(f"file:{info_db_path}?mode=ro", uri=True)) as conn:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 

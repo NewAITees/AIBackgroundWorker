@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
@@ -35,7 +36,9 @@ def resolve_context(workspace_path: str | Path) -> ImportContext:
 def import_range(ctx: ImportContext, start_date: date, end_date: date) -> int:
     total = 0
     client = OllamaClient(config.ai)
-    with sqlite3.connect(ctx.lifelog_db) as lifelog_conn, sqlite3.connect(ctx.info_db) as info_conn:
+    with contextlib.closing(sqlite3.connect(ctx.lifelog_db)) as lifelog_conn, contextlib.closing(
+        sqlite3.connect(ctx.info_db)
+    ) as info_conn:
         current = start_date
         while current <= end_date:
             for hour in range(24):
@@ -56,7 +59,9 @@ def import_missing_hours(ctx: ImportContext, start_hour: datetime, end_hour: dat
     total = 0
     cached_ids: dict[date, set[str]] = {}
 
-    with sqlite3.connect(ctx.lifelog_db) as lifelog_conn, sqlite3.connect(ctx.info_db) as info_conn:
+    with contextlib.closing(sqlite3.connect(ctx.lifelog_db)) as lifelog_conn, contextlib.closing(
+        sqlite3.connect(ctx.info_db)
+    ) as info_conn:
         current = start_hour
         while current <= end_hour:
             target_date = current.date()
