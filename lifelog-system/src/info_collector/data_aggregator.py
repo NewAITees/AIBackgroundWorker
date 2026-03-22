@@ -71,6 +71,16 @@ class DailyReportDataAggregator:
         # info_db_pathを文字列として保存（ブラウザ履歴取得で使用）
         self.info_db_path_str = str(info_db_path)
 
+    def close(self) -> None:
+        """データベース接続をクローズ."""
+        self.lifelog_db.close()
+
+    def __del__(self) -> None:
+        import contextlib
+
+        with contextlib.suppress(Exception):
+            self.close()
+
     def aggregate_daily_data(
         self,
         date: str,

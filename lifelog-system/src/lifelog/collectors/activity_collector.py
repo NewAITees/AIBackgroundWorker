@@ -52,6 +52,7 @@ class ActivityCollector:
         self.current_interval: Optional[dict[str, Any]] = None
         self.health_monitor = HealthMonitor()
         self._running = False
+        self._threads: list[threading.Thread] = []
 
         # イベント収集の初期化
         self.event_collector = None
@@ -66,29 +67,39 @@ class ActivityCollector:
     def start_collection(self) -> None:
         """収集ループとバルク書き込みを並行実行."""
         self._running = True
+        self._threads = []
 
         # 収集スレッド
         collect_thread = threading.Thread(target=self._collection_loop, daemon=True)
         collect_thread.start()
+        self._threads.append(collect_thread)
 
         # バルク書き込みスレッド
         write_thread = threading.Thread(target=self._bulk_write_loop, daemon=True)
         write_thread.start()
+        self._threads.append(write_thread)
 
         # ヘルスモニタリングスレッド
         health_thread = threading.Thread(target=self._health_monitoring_loop, daemon=True)
         health_thread.start()
+        self._threads.append(health_thread)
 
         # イベント収集スレッド
         if self.event_collector:
             event_thread = threading.Thread(target=self._event_collection_loop, daemon=True)
             event_thread.start()
+            self._threads.append(event_thread)
 
         logger.info("Activity collection started")
 
     def stop_collection(self) -> None:
-        """収集を停止."""
+        """収集を停止し、全スレッドの終了を待つ."""
         self._running = False
+        for t in self._threads:
+            t.join(timeout=15)
+            if t.is_alive():
+                logger.warning("Thread %s did not stop within timeout", t.name)
+        self._threads = []
         logger.info("Activity collection stopped")
 
     def _collection_loop(self) -> None:
@@ -245,6 +256,8 @@ class ActivityCollector:
         while self._running:
             try:
                 time.sleep(snapshot_interval)
+                if not self._running:
+                    return
 
                 # メトリクス収集
                 metrics = self.health_monitor.get_metrics()
@@ -272,6 +285,8 @@ class ActivityCollector:
         while self._running:
             try:
                 time.sleep(collection_interval)
+                if not self._running:
+                    return
 
                 # イベント収集
                 events = self.event_collector.collect_events(since=last_collection_time)
