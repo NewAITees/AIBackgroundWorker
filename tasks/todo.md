@@ -17,11 +17,7 @@
       → health.py に windows_foreground_worker を追加
       → 残骸: lifelog-daemon.service / daemon.sh（削除候補として後続タスクへ）
 - [x] `lifelog-system/` を「`timeline-app` から呼ばれるライブラリ層」として整理し、単独起動前提の導線を棚卸しする
-      → **最終ゴール: `lifelog-system/` を `timeline-app/lifelog-system/` 配下に移動する**
-      → 移動前に単独起動導線・systemd unit・独自 pyproject.toml エントリポイントを除去しておく
-      → 移動後は `timeline-app/pyproject.toml` に統合する
-      → 現状、`activity_worker` / `browser_worker` / `analysis_pipeline_worker` / `info_worker` / `windows_foreground_worker` が直接依存しているため即移動不可
-      → 追記: `lifelog-system/pyproject.toml` には console entry point 自体は無く、先に消す対象は `systemd` / `daemon.sh` / viewer / CLI / shell 導線
+      → 単独起動導線・systemd unit・daemon.sh・viewer・CLI 導線は除去済み
 - [x] 正本データを明文化する
       → `articles/*.md` が entry 正本、`daily/*.md` が timeline 投影、`lifelog.db`/`ai_secretary.db` が収集・分析の正本、レポートMarkdownは生成物
 - [x] 不要物の削除を優先順で進める（第1弾完了）
@@ -33,6 +29,16 @@
 
 ### 後続の重要タスク（削除整理の後に着手）
 
+- [x] `analysis_pipeline_worker` 実行時の `sqlite3.Connection` 未クローズ warning を調査し、接続管理を修正する
+      → `lifelog-system/src/info_collector/repository.py` と関連 worker の read 経路で例外時 close 漏れを確認する
+      → 再現確認後に `tasks/lessons.md` へ知見を追記する
+- [x] `generate_theme_report` 実行後も残る `sqlite3.Connection` 未クローズ warning を追加調査し、残存経路を閉じる
+      → `generate_theme_report` 自体だけでなく並行 worker を含む手動 `close()` 経路を確認する
+      → 再現確認後に `tasks/lessons.md` を追記する
+- [x] `system_events` 肥大化の原因になっている Linux syslog の過剰収集を抑止する
+      → `priority_min: warning` が `info/debug` まで拾っている実装を修正する
+      → `tee` 等の定常運用ログを collector 側で除外し、今後の `lifelog.db` 増大を抑える
+
 - [x] Windowsログを正式にシステムへ統合する
       → `WindowsForegroundWorker` を実装し、15分ごとに JSONL → activity_intervals へマージ
       → `hourly_summary_worker` の `summarize_activity()` が自動的に Windows アプリ使用状況を素材に含める
@@ -42,6 +48,25 @@
       → WindowsForegroundWorker が代替しているため不要
 - [ ] Windows 移行時: `WindowsForegroundWorker` に `powershell.exe foreground_logger.ps1` の起動管理を追加する
       → 現時点は foreground_logger.ps1 は別途起動する運用のまま
+
+### UI/データ不整合の不具合メモ（2026-03-19 画面確認ベース）
+
+- [ ] `しばらくお待ちください...` 系 entry が大量発生している原因を特定する
+      → 同一または類似 URL (`itch.io/login` / Cloudflare challenge) の重複取り込み・重複表示・重複要約のどこで増えているかを切り分ける
+- [ ] `しばらくお待ちください...` を `memo` 扱いしている分類を見直す
+      → browser 履歴由来の一時ページや Cloudflare challenge を `memo` にするのが正しいか確認し、必要なら `system_log` または別扱いへ変更する
+- [ ] TODO カードのチェックボックス位置と時刻表示の重なりを修正する
+      → 右上のチェックボックス付近に時刻が重なって見づらい
+- [ ] TODO が過去セクションへ流れることがある不具合を修正する
+      → TODO は常に未来側へ残し、見落としを防ぐ
+- [ ] タイムライン逆順化に合わせて「未来 → Now → 過去」の視線導線を再整理する
+      → 現在直上の TODO / 予定帯と、下方向へ積む過去ログの境界を UI 上で明確にする
+- [ ] タイムライン上の時刻表示が誤っている問題を調査する
+      → entry の timestamp、表示上の時刻、元データの時刻のどこでずれているかを確認する
+- [ ] `system_log` の対象時刻とカード表示時刻のずれを修正する
+      → 例: `2026-03-19 01時のシステムイベント` なのにカード表示が `03/19 10:30` になっている
+- [ ] 画面に出ている結果が「現状の正しい仕様」なのか「テストデータや仮実装由来」なのか判別できない点を整理する
+      → browser 取り込み・要約・分類・UI表示の各段で、意図した挙動と暫定挙動を明文化する
 
 ### 削除候補の棚卸し結果
 
@@ -70,6 +95,18 @@
 - [x] `daemon.sh` 残骸を削除候補として切り出す → 削除完了（2026-03-19）
 - [x] viewer / CLI 導線の存廃を決める
       → `viewer_service/` 削除、`cli_viewer.py` は手動確認用として保持（viewer_service 依存を除去済み）
+
+### lifelog-system 移動タスク（§33）
+
+> 前提: 単独起動導線の除去は完了済み
+
+- [ ] `timeline-app/src/workers/` が `lifelog-system/src/` をインポートしている箇所を全列挙する
+      → 現在は `sys.path` 操作 + `src.__path__` 拡張で対応中
+- [ ] `lifelog-system/` を `timeline-app/lifelog-system/` へ移動する
+- [ ] インポートパス・設定ファイル内のパス参照（`config.yaml` 等）を更新する
+- [ ] `lifelog-system/pyproject.toml` の依存を `timeline-app/pyproject.toml` に統合し、`uv sync` で確認する
+- [ ] 動作確認（`./scripts/start.sh` で全ワーカーが正常起動すること）
+- [ ] 旧 `lifelog-system/pyproject.toml` を削除する
 
 ---
 
@@ -170,7 +207,7 @@
 ### 3-2. 中央タイムライン
 
 - [x] `GET /api/timeline` を叩いてカード一覧を縦に表示する
-- [x] 上が過去・下が未来の順で表示する（要件書 §4.2）
+- [x] 初期実装として上が過去・下が未来の順で表示する（後続で逆順へ再設計）
 - [x] 現在位置に「Now」ラベルを表示する
 - [x] 初回ロード時に「Now」位置へ自動スクロールする（IntersectionObserver + `initialScrollDone` フラグ）
 - [x] 種別ごとに色・バッジで判別できるようにする（要件書 §5.7）
@@ -188,8 +225,8 @@
 - [x] 現在地点の `Now` スロットにチャット入力欄を表示する（要件調整）
 - [x] 送信すると `POST /api/chat` を叩き、AI 応答をタイムラインに追加する
 - [x] AI が返す `entry_candidates` をボタンで確定できるようにする（「TODOにする」「日記にする」等）
-- [x] TODO type は デフォルト timestamp を当日 23:59 UTC に設定し、常に未来セクションに表示する
-      → `routers/entries.py` で `req.type == "todo"` のとき `datetime.combine(now.date(), time(23, 59))`
+- [x] TODO type は近未来 timestamp を既定値にして、未完了 TODO を未来側へ残す
+      → 現在は `routers/entries.py` で新規 `todo` を数分後へ寄せ、取得時にも未完了 TODO を近未来へ投影している
 
 ### 3-5. 補助操作
 
@@ -359,6 +396,45 @@
   - `resume` 時に `hourly_summary_worker` / `daily_digest_worker` の catch-up を即時実行する
 - [x] フロント: トップバーに「LLM 停止 / 再開」ボタンを追加
   - 停止中はボタンの色を変えて視覚的に判別できるようにする
+
+### 5-0d. タイムライン方向（§29）
+
+> 要件書 §29「タイムライン方向」
+> 方針変更: 方向切り替えは持たず、「上が未来・下が過去」の逆順を正式仕様に固定する
+
+- [ ] タイムライン描画を逆順前提へ再設計する（上: 未来 / 中央: Now / 下: 過去）
+- [ ] `GET /api/timeline` の返却構造を逆順仕様に合わせて整理する
+- [ ] 無限スクロールの向きと基準時刻更新を逆順仕様に合わせて見直す
+- [ ] キーボード移動・`今日へ戻る`・初期スクロール位置を逆順仕様で再定義する
+- [ ] 方向切り替え前提の文言・設定項目・実装メモを削除する
+
+### 5-0e. リマインダー機能（§30）
+
+> 要件書 §30「リマインダー機能」
+
+- [ ] `event` / `todo` entry に指定時刻のリマインダーを追加できるようにする
+- [ ] 指定時刻になったらブラウザ通知またはトーストでリマインド
+- [ ] AI プロアクティブ通知（AI から話しかける）を並行検討（§30.2）
+      → VRM アシスタント（§16.1）との連携も視野に
+
+### 5-0f. 右ペイン Markdown 描画（§31）
+
+> 要件書 §31「右ペインの Markdown 描画」
+
+- [x] `marked.js` + `DOMPurify` を導入する
+- [x] 右ペイン閲覧モードで Markdown をレンダリング表示する
+- [x] 編集モードはテキストエリアのまま（プレビュー切り替えは任意）
+
+### 5-0g. レスポンシブ3ペインレイアウト（§32）
+
+> 要件書 §32「レスポンシブ3ペインレイアウト」
+> モバイル（スマートフォン等）からの表示を想定
+
+- [ ] CSS メディアクエリで画面幅に応じてレイアウト切り替え
+- [ ] PC（広い画面）: 左・中央・右の3ペイン常時表示を維持
+- [ ] モバイル（狭い画面）: 各ペインをフロート/ドロワー化
+      → 表示優先順位: 左ペイン → 右ペイン → 中央タイムライン
+      → タップまたはスワイプでパネル切り替え
 
 ### 5-1. タイムライン実用強化
 
