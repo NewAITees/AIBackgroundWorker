@@ -3,6 +3,7 @@ timeline-app FastAPI エントリポイント
 要件書 21.1.2 の M1 最小 API セット
 """
 
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -14,6 +15,10 @@ from fastapi.staticfiles import StaticFiles
 from .routers import ai_control, health, workspace, timeline, entries, chat, settings
 from .workers.activity_worker import activity_worker
 from .workers.scheduler import shutdown_scheduler, start_scheduler
+
+# primp は DDG 検索の HTTP 層。レスポンス URL と status code だけを INFO で吐くが
+# 検索結果の有無は ddg_client 側で既にログされるため WARNING 以上のみにする
+logging.getLogger("primp").setLevel(logging.WARNING)
 
 
 @asynccontextmanager
