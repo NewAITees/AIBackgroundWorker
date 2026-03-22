@@ -23,10 +23,15 @@
         <input id="workspace-path" type="text" placeholder="ワークスペースのパス" />
         <button id="workspace-open">開く</button>
       </div>
+      <div class="mobile-panel-nav" aria-label="モバイルパネル切り替え">
+        <button id="show-vrm-pane" class="ghost-button mobile-panel-button" type="button">AI</button>
+        <button id="show-detail-pane" class="ghost-button mobile-panel-button" type="button">詳細</button>
+        <button id="show-timeline-pane" class="ghost-button mobile-panel-button" type="button">タイムライン</button>
+      </div>
     </header>
 
     <main class="layout">
-      <aside class="vrm-pane">
+      <aside class="vrm-pane" data-pane="vrm">
         <div class="vrm-placeholder">
           <div class="vrm-avatar-area">
             <p class="vrm-label">AI アシスタント</p>
@@ -35,7 +40,7 @@
         </div>
       </aside>
 
-      <section class="timeline-pane">
+      <section class="timeline-pane" data-pane="timeline">
         <div class="timeline-header">
           <div id="timeline-status" class="timeline-status">読み込み中...</div>
         </div>
@@ -46,9 +51,10 @@
         </div>
 
         <div id="timeline-root" class="timeline-root hidden">
-          <div id="past-list" class="timeline-list"></div>
+          <div id="future-list" class="timeline-list"></div>
+          <div id="todo-list" class="timeline-list"></div>
 
-          <section id="now-anchor" class="now-card">
+          <section id="now-anchor" class="now-card" tabindex="-1">
             <div class="now-badge">Now</div>
             <div class="now-copy">
               <h2>現在地点</h2>
@@ -71,12 +77,11 @@
             </div>
           </section>
 
-          <div id="todo-list" class="timeline-list"></div>
-          <div id="future-list" class="timeline-list"></div>
+          <div id="past-list" class="timeline-list"></div>
         </div>
       </section>
 
-      <aside class="detail-pane">
+      <aside class="detail-pane" data-pane="detail">
         <div id="detail-empty" class="detail-empty">
           <h2>詳細</h2>
           <p>タイムラインのカードを開くと、ここで内容を確認・編集できます。</p>
@@ -100,6 +105,9 @@
           <form id="detail-form" class="detail-form hidden">
             <input id="detail-title-input" type="text" placeholder="タイトル" />
             <textarea id="detail-content-input" rows="14"></textarea>
+            <label class="detail-field-label">日時
+              <input id="detail-timestamp-input" type="datetime-local" step="60" />
+            </label>
             <select id="detail-status-input">
               <option value="active">active</option>
               <option value="done">done</option>

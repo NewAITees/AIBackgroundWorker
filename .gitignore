@@ -237,5 +237,5 @@ timeline-app/.playwright-cli/*.png
 timeline-app/.playwright-cli/*.log
 
 # VRM・3Dモデルファイル
-models/
+/models/
 .playwright-output/

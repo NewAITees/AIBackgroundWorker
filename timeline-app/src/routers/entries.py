@@ -78,8 +78,8 @@ async def update_entry(entry_id: str, req: EntryUpdate):
         merged_meta = entry.meta.model_copy(update=req.meta.model_dump(exclude_none=True))
         update_data["meta"] = merged_meta
 
-    # todo → todo_done 完了時に timestamp を完了時刻へ更新
-    if req.type == EntryType.todo_done:
+    # todo → todo_done 完了時は timestamp を完了時刻へ更新（手動指定がなければ）
+    if req.type == EntryType.todo_done and req.timestamp is None:
         update_data["timestamp"] = datetime.now(timezone.utc)
 
     updated = entry.model_copy(update=update_data)

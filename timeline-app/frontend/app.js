@@ -15,6 +15,7 @@ const state = {
   noMorePast: false,
   noMoreFuture: false,
   aiPaused: false,
+  mobileActivePane: "timeline",
 };
 
 const refs = {};
@@ -30,10 +31,16 @@ function cacheRefs() {
   refs.workspacePath = document.getElementById("workspace-path");
   refs.aiToggle = document.getElementById("ai-toggle");
   refs.workspaceOpen = document.getElementById("workspace-open");
+  refs.showVrmPane = document.getElementById("show-vrm-pane");
+  refs.showDetailPane = document.getElementById("show-detail-pane");
+  refs.showTimelinePane = document.getElementById("show-timeline-pane");
   refs.workspaceSummary = document.getElementById("workspace-summary");
   refs.timelineStatus = document.getElementById("timeline-status");
   refs.workspaceEmpty = document.getElementById("workspace-empty");
+  refs.layout = document.querySelector(".layout");
+  refs.vrmPane = document.querySelector(".vrm-pane");
   refs.timelineRoot = document.getElementById("timeline-root");
+  refs.timelinePane = document.querySelector(".timeline-pane");
   refs.pastList = document.getElementById("past-list");
   refs.todoList = document.getElementById("todo-list");
   refs.futureList = document.getElementById("future-list");
@@ -46,12 +53,14 @@ function cacheRefs() {
   refs.detailEmpty = document.getElementById("detail-empty");
   refs.detailView = document.getElementById("detail-view");
   refs.detailType = document.getElementById("detail-type");
+  refs.detailPane = document.querySelector(".detail-pane");
   refs.detailTitle = document.getElementById("detail-title");
   refs.detailMeta = document.getElementById("detail-meta");
   refs.detailContent = document.getElementById("detail-content");
   refs.detailForm = document.getElementById("detail-form");
   refs.detailTitleInput = document.getElementById("detail-title-input");
   refs.detailContentInput = document.getElementById("detail-content-input");
+  refs.detailTimestampInput = document.getElementById("detail-timestamp-input");
   refs.detailStatusInput = document.getElementById("detail-status-input");
   refs.detailEditToggle = document.getElementById("detail-edit-toggle");
   refs.detailReadonly = document.getElementById("detail-readonly");
@@ -63,14 +72,72 @@ function cacheRefs() {
 
 function bindEvents() {
   refs.workspaceOpen.addEventListener("click", openWorkspace);
+  refs.showVrmPane.addEventListener("click", () => setActivePane("vrm"));
+  refs.showDetailPane.addEventListener("click", () => setActivePane("detail"));
+  refs.showTimelinePane.addEventListener("click", () => setActivePane("timeline"));
   refs.aiToggle.addEventListener("click", toggleAI);
   refs.chatForm.addEventListener("submit", submitChat);
   refs.detailEditToggle.addEventListener("click", toggleDetailEdit);
   refs.detailForm.addEventListener("submit", saveDetail);
-  refs.jumpNow.addEventListener("click", () => {
-    refs.nowAnchor.scrollIntoView({ behavior: "smooth", block: "center" });
-  });
+  refs.jumpNow.addEventListener("click", () => scrollToNow("smooth"));
+  document.addEventListener("keydown", handleGlobalKeydown);
+  window.addEventListener("resize", syncResponsivePaneState);
+  bindSwipeNavigation();
+  syncResponsivePaneState();
   setupInfiniteScroll();
+}
+
+function isMobileLayout() {
+  return window.matchMedia("(max-width: 900px)").matches;
+}
+
+function setActivePane(pane) {
+  state.mobileActivePane = pane;
+  syncResponsivePaneState();
+}
+
+function syncResponsivePaneState() {
+  const mobile = isMobileLayout();
+  document.body.dataset.mobileLayout = mobile ? "true" : "false";
+  const paneMap = {
+    vrm: refs.vrmPane,
+    detail: refs.detailPane,
+    timeline: refs.timelinePane,
+  };
+  for (const [pane, node] of Object.entries(paneMap)) {
+    if (!node) continue;
+    node.dataset.active = mobile ? String(state.mobileActivePane === pane) : "true";
+  }
+  refs.showVrmPane.dataset.active = String(state.mobileActivePane === "vrm");
+  refs.showDetailPane.dataset.active = String(state.mobileActivePane === "detail");
+  refs.showTimelinePane.dataset.active = String(state.mobileActivePane === "timeline");
+}
+
+function bindSwipeNavigation() {
+  let touchStartX = null;
+  let touchStartY = null;
+  refs.layout.addEventListener("touchstart", (event) => {
+    const touch = event.touches[0];
+    touchStartX = touch.clientX;
+    touchStartY = touch.clientY;
+  }, { passive: true });
+
+  refs.layout.addEventListener("touchend", (event) => {
+    if (!isMobileLayout() || touchStartX == null || touchStartY == null) return;
+    const touch = event.changedTouches[0];
+    const deltaX = touch.clientX - touchStartX;
+    const deltaY = touch.clientY - touchStartY;
+    touchStartX = null;
+    touchStartY = null;
+    if (Math.abs(deltaX) < 50 || Math.abs(deltaX) <= Math.abs(deltaY)) return;
+    const order = ["vrm", "detail", "timeline"];
+    const currentIndex = order.indexOf(state.mobileActivePane);
+    if (deltaX < 0 && currentIndex < order.length - 1) {
+      setActivePane(order[currentIndex + 1]);
+    } else if (deltaX > 0 && currentIndex > 0) {
+      setActivePane(order[currentIndex - 1]);
+    }
+  }, { passive: true });
 }
 
 async function api(path, options = {}) {
@@ -176,7 +243,7 @@ async function loadTimeline() {
     refs.timelineStatus.textContent = `${state.entries.length} 件を表示`;
     if (!state.initialScrollDone) {
       state.initialScrollDone = true;
-      refs.nowAnchor.scrollIntoView({ behavior: "instant", block: "center" });
+      scrollToNow("instant");
     }
   } catch (error) {
     setTimelineState({});
@@ -185,28 +252,72 @@ async function loadTimeline() {
   }
 }
 
+function scrollToNow(behavior = "smooth") {
+  refs.nowAnchor.scrollIntoView({ behavior, block: "center" });
+}
+
+function scrollToTimelineEdge(edge, behavior = "smooth") {
+  const target =
+    edge === "future"
+      ? refs.futureList.firstElementChild || refs.timelineRoot
+      : refs.pastList.lastElementChild || refs.timelineRoot;
+  if (!target) return;
+  target.scrollIntoView({
+    behavior,
+    block: edge === "future" ? "start" : "end",
+  });
+}
+
+function handleGlobalKeydown(event) {
+  if (shouldIgnoreGlobalKeydown(event)) return;
+
+  if (event.key === "Home") {
+    event.preventDefault();
+    scrollToTimelineEdge("future");
+    return;
+  }
+  if (event.key === "End") {
+    event.preventDefault();
+    scrollToTimelineEdge("past");
+    return;
+  }
+  if (event.key === "n" || event.key === "N") {
+    event.preventDefault();
+    scrollToNow();
+  }
+}
+
+function shouldIgnoreGlobalKeydown(event) {
+  if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return true;
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  const tag = target.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || tag === "BUTTON";
+}
+
 function renderTimeline() {
   // sentinel を退避（innerHTML クリアで消えるのを防ぐ）
   const topSentinel = document.getElementById("sentinel-top");
   const bottomSentinel = document.getElementById("sentinel-bottom");
 
-  refs.pastList.innerHTML = "";
-  refs.todoList.innerHTML = "";
   refs.futureList.innerHTML = "";
+  refs.todoList.innerHTML = "";
+  refs.pastList.innerHTML = "";
 
-  for (const entry of state.pastEntries.sort(sortByTimeAsc)) {
-    refs.pastList.appendChild(buildEntryCard(entry));
+  for (const entry of state.futureEntries.sort(sortByTimeDesc)) {
+    refs.futureList.appendChild(buildEntryCard(entry));
   }
-  for (const entry of state.todoEntries.sort(sortByTimeAsc)) {
+  for (const entry of state.todoEntries.sort(sortByTimeDesc)) {
     refs.todoList.appendChild(buildEntryCard(entry));
   }
-  for (const entry of state.futureEntries.sort(sortByTimeAsc)) {
-    refs.futureList.appendChild(buildEntryCard(entry));
+  for (const entry of state.pastEntries.sort(sortByTimeDesc)) {
+    refs.pastList.appendChild(buildEntryCard(entry));
   }
 
   // sentinel を再挿入（observer は同じ要素を observe し続けるので再登録不要）
-  if (topSentinel) refs.pastList.prepend(topSentinel);
-  if (bottomSentinel) refs.futureList.append(bottomSentinel);
+  if (topSentinel) refs.futureList.prepend(topSentinel);
+  if (bottomSentinel) refs.pastList.append(bottomSentinel);
   updateTimelineBounds();
 }
 
@@ -275,6 +386,7 @@ async function selectEntry(entryId) {
     state.selectedEntry = await api(`/api/entries/${encodeURIComponent(entryId)}`);
     state.editMode = false;
     renderDetail();
+    if (isMobileLayout()) setActivePane("detail");
   } catch (error) {
     refs.detailEmpty.classList.remove("hidden");
     refs.detailView.classList.add("hidden");
@@ -297,6 +409,7 @@ function renderDetail() {
   refs.detailContent.innerHTML = DOMPurify.sanitize(marked.parse(state.selectedEntry.content || ""));
   refs.detailTitleInput.value = state.selectedEntry.title || "";
   refs.detailContentInput.value = state.selectedEntry.content;
+  refs.detailTimestampInput.value = toDatetimeLocal(state.selectedEntry.timestamp);
   refs.detailStatusInput.value = state.selectedEntry.status;
   applyDetailMode();
 }
@@ -324,6 +437,9 @@ async function saveDetail(event) {
       body: JSON.stringify({
         title: refs.detailTitleInput.value.trim() || null,
         content: refs.detailContentInput.value,
+        timestamp: refs.detailTimestampInput.value
+          ? new Date(refs.detailTimestampInput.value).toISOString()
+          : undefined,
         status: refs.detailStatusInput.value,
       }),
     });
@@ -360,6 +476,7 @@ async function submitChat(event) {
     renderCandidates(response.entry_candidates || []);
     refs.chatResponse.classList.remove("hidden");
     refs.chatStatus.textContent = "応答を保存しました";
+    if (isMobileLayout()) setActivePane("timeline");
     await loadTimeline();
   } catch (error) {
     refs.chatStatus.textContent = error.message;
@@ -401,6 +518,7 @@ async function createCandidateEntry(candidate) {
     }
     await api("/api/entries", { method: "POST", body: JSON.stringify(body) });
     refs.chatStatus.textContent = `${candidate.type} を保存しました`;
+    if (isMobileLayout()) setActivePane("timeline");
     await loadTimeline();
   } catch (error) {
     refs.chatStatus.textContent = error.message;
@@ -408,22 +526,22 @@ async function createCandidateEntry(candidate) {
 }
 
 function setupInfiniteScroll() {
-  // past-list の先頭に sentinel を置いて「過去をもっと読む」
+  // future-list の先頭に sentinel を置いて「未来をもっと読む」
   const topSentinel = document.createElement("div");
   topSentinel.id = "sentinel-top";
-  refs.pastList.prepend(topSentinel);
+  refs.futureList.prepend(topSentinel);
 
-  // future-list の末尾に sentinel を置いて「未来をもっと読む」
+  // past-list の末尾に sentinel を置いて「過去をもっと読む」
   const bottomSentinel = document.createElement("div");
   bottomSentinel.id = "sentinel-bottom";
-  refs.futureList.append(bottomSentinel);
+  refs.pastList.append(bottomSentinel);
 
   const observer = new IntersectionObserver(
     (entries) => {
       for (const entry of entries) {
         if (!entry.isIntersecting || state.loadingMore) continue;
-        if (entry.target.id === "sentinel-top") loadMorePast();
-        if (entry.target.id === "sentinel-bottom") loadMoreFuture();
+        if (entry.target.id === "sentinel-top") loadMoreFuture();
+        if (entry.target.id === "sentinel-bottom") loadMorePast();
       }
     },
     { rootMargin: "200px" }
@@ -443,7 +561,7 @@ async function loadMorePast() {
       (e) => !state.pastEntries.some((ex) => ex.id === e.id)
     );
     if (incoming.length > 0) {
-      state.pastEntries = [...incoming, ...state.pastEntries];
+      state.pastEntries = [...state.pastEntries, ...incoming];
       state.entries = [...state.pastEntries, ...state.todoEntries, ...state.futureEntries];
       updateTimelineBounds();
       renderTimeline();
@@ -467,7 +585,7 @@ async function loadMoreFuture() {
       (e) => !state.futureEntries.some((ex) => ex.id === e.id)
     );
     if (incoming.length > 0) {
-      state.futureEntries = [...state.futureEntries, ...incoming];
+      state.futureEntries = [...incoming, ...state.futureEntries];
       state.entries = [...state.pastEntries, ...state.todoEntries, ...state.futureEntries];
       updateTimelineBounds();
       renderTimeline();
@@ -483,6 +601,10 @@ async function loadMoreFuture() {
 
 function sortByTimeAsc(a, b) {
   return new Date(a.timestamp) - new Date(b.timestamp);
+}
+
+function sortByTimeDesc(a, b) {
+  return new Date(b.timestamp) - new Date(a.timestamp);
 }
 
 function setTimelineState(response) {
@@ -515,4 +637,13 @@ function formatDateTime(value) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function toDatetimeLocal(isoString) {
+  const d = new Date(isoString);
+  const pad = (n) => String(n).padStart(2, "0");
+  return (
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+    `T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  );
 }

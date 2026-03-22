@@ -74,6 +74,7 @@ class EntryUpdate(BaseModel):
     title: Optional[str] = None
     summary: Optional[str] = None
     content: Optional[str] = None
+    timestamp: Optional[datetime] = None
     status: Optional[EntryStatus] = None
     links: Optional[list[str]] = None
     related_ids: Optional[list[str]] = None
