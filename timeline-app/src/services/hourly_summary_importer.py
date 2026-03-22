@@ -133,8 +133,8 @@ def summarize_activity(
         """
         SELECT COALESCE(process_name, '') AS process_name
         FROM unified_timeline
-        WHERE date(timestamp) = ?
-          AND strftime('%H', timestamp) = ?
+        WHERE date(datetime(timestamp, 'localtime')) = ?
+          AND strftime('%H', datetime(timestamp, 'localtime')) = ?
           AND event_source = 'activity'
         """,
         (target_date.isoformat(), f"{hour:02d}"),
@@ -193,8 +193,8 @@ def summarize_system(
                COALESCE(process_name, '') AS process_name,
                COALESCE(message, '') AS message
         FROM system_events
-        WHERE date(event_timestamp) = ?
-          AND strftime('%H', event_timestamp) = ?
+        WHERE date(datetime(event_timestamp, 'localtime')) = ?
+          AND strftime('%H', datetime(event_timestamp, 'localtime')) = ?
         ORDER BY event_timestamp DESC
         """,
         (target_date.isoformat(), f"{hour:02d}"),
@@ -256,8 +256,8 @@ def summarize_browser(
         """
         SELECT COALESCE(title, ''), url
         FROM browser_history
-        WHERE date(visit_time) = ?
-          AND strftime('%H', visit_time) = ?
+        WHERE date(datetime(visit_time, 'localtime')) = ?
+          AND strftime('%H', datetime(visit_time, 'localtime')) = ?
         ORDER BY visit_time DESC
         LIMIT 12
         """,
@@ -309,8 +309,8 @@ def summarize_reports(
         """
         SELECT id, title, content, category, created_at
         FROM reports
-        WHERE date(created_at) = ?
-          AND strftime('%H', created_at) = ?
+        WHERE date(datetime(created_at, 'localtime')) = ?
+          AND strftime('%H', datetime(created_at, 'localtime')) = ?
         ORDER BY created_at DESC
         LIMIT 6
         """,
@@ -354,8 +354,8 @@ def summarize_news(
         """
         SELECT id, COALESCE(title, ''), url, COALESCE(source_name, ''), COALESCE(snippet, '')
         FROM collected_info
-        WHERE date(fetched_at) = ?
-          AND strftime('%H', fetched_at) = ?
+        WHERE date(datetime(fetched_at, 'localtime')) = ?
+          AND strftime('%H', datetime(fetched_at, 'localtime')) = ?
         ORDER BY fetched_at DESC
         LIMIT 20
         """,
@@ -389,7 +389,8 @@ def summarize_news(
 
 
 def make_timestamp(target_date: date, hour: int) -> datetime:
-    return datetime.combine(target_date, time(hour=hour, minute=30, tzinfo=UTC))
+    local_tz = datetime.now().astimezone().tzinfo
+    return datetime.combine(target_date, time(hour=hour, minute=30), tzinfo=local_tz)
 
 
 def make_entry_id(target_date: date, hour: int, suffix: str) -> str:
@@ -484,7 +485,7 @@ def _resolve_repo_path(raw_path: str) -> Path:
 
 
 def _normalize_hour(value: datetime) -> datetime:
-    return value.astimezone(UTC).replace(minute=0, second=0, microsecond=0)
+    return value.astimezone().replace(minute=0, second=0, microsecond=0)
 
 
 def _allow(suffix: str, allowed_suffixes: set[str] | None) -> bool:
