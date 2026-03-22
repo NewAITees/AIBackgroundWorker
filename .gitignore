@@ -231,6 +231,11 @@ timeline-app/config.yaml
 timeline-app/daily/
 timeline-app/articles/
 
+
+timeline-app/.playwright-cli/*.yml
+timeline-app/.playwright-cli/*.png
+timeline-app/.playwright-cli/*.log
+
 # VRM・3Dモデルファイル
 models/
 .playwright-output/
