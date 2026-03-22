@@ -41,6 +41,8 @@ class DatabaseManager:
         """
         self.db_path = db_path
         self._local = threading.local()
+        self._connections: set[sqlite3.Connection] = set()
+        self._connections_lock = threading.Lock()
         # データベースの初期化（新規・既存問わず）
         self._init_database()
         # 既存DBの場合はマイグレーションも実行
@@ -128,6 +130,8 @@ class DatabaseManager:
             self._local.conn.row_factory = sqlite3.Row
             for pragma in get_pragma_settings():
                 self._local.conn.execute(pragma)
+            with self._connections_lock:
+                self._connections.add(self._local.conn)
         return self._local.conn
 
     def _get_or_create_app_in_tx(
@@ -476,6 +480,18 @@ class DatabaseManager:
 
     def close(self) -> None:
         """データベース接続をクローズ."""
+        with self._connections_lock:
+            connections = list(self._connections)
+            self._connections.clear()
+
+        for conn in connections:
+            with contextlib.suppress(Exception):
+                conn.close()
+
         if hasattr(self._local, "conn"):
-            self._local.conn.close()
             delattr(self._local, "conn")
+
+    def __del__(self) -> None:
+        """GC 時に未クローズ接続を閉じる。"""
+        with contextlib.suppress(Exception):
+            self.close()

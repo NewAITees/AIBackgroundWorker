@@ -5,9 +5,10 @@ from __future__ import annotations
 import os
 import sqlite3
 import time
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import Generator, List, Optional
 
 from .models import BrowserHistoryEntry
 
@@ -38,18 +39,24 @@ class BrowserHistoryRepository:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._ensure_tables()
 
-    def _connect(self) -> sqlite3.Connection:
-        """データベース接続を作成"""
+    @contextmanager
+    def _connect(self) -> Generator[sqlite3.Connection, None, None]:
+        """データベース接続を作成するコンテキストマネージャ"""
         conn = sqlite3.connect(self.db_path, timeout=30.0)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
         conn.execute("PRAGMA busy_timeout=30000")
         conn.row_factory = sqlite3.Row
-        return conn
+        try:
+            yield conn
+        finally:
+            conn.close()
 
     @staticmethod
     def _is_lock_error(exc: Exception) -> bool:
-        return isinstance(exc, sqlite3.OperationalError) and "database is locked" in str(exc).lower()
+        return (
+            isinstance(exc, sqlite3.OperationalError) and "database is locked" in str(exc).lower()
+        )
 
     def _run_with_lock_retry(self, fn, retries: int = 5, base_sleep: float = 0.2):
         for attempt in range(retries + 1):
