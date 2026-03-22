@@ -10,9 +10,10 @@
 import json
 import sqlite3
 import time
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, Generator, List, Optional
 
 from .models import CollectedInfo, InfoSummary
 
@@ -29,16 +30,24 @@ class InfoCollectorRepository:
         """DBディレクトリの存在確認・作成"""
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def _connect(self) -> Generator[sqlite3.Connection, None, None]:
         """
-        DB接続を取得.
+        DB接続を取得するコンテキストマネージャ.
         競合時の `database is locked` を避けるため timeout/busy_timeout を長めに設定する。
         """
         conn = sqlite3.connect(self.db_path, timeout=30.0)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
         conn.execute("PRAGMA busy_timeout=30000")
-        return conn
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
 
     @staticmethod
     def _is_lock_error(exc: Exception) -> bool:
