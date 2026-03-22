@@ -49,7 +49,9 @@ class HourlySummaryWorker:
             self._status.last_generated = 0
             return 0
 
-        end_hour = datetime.now(UTC).replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
+        end_hour = datetime.now().astimezone().replace(
+            minute=0, second=0, microsecond=0
+        ) - timedelta(hours=1)
         lookback_hours = max(config.lifelog.hourly_summary_lookback_hours, 1)
         start_hour = end_hour - timedelta(hours=lookback_hours - 1)
 

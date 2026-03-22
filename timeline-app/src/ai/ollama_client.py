@@ -97,7 +97,8 @@ class OllamaClient:
             "content": (
                 "あなたはライフログ支援AIです。日本語で短く自然に返答してください。\n"
                 f"現在日時: {now.strftime('%Y-%m-%d %H:%M %Z')}（この日時を基準に「明日」「来週」等を解釈すること）\n"
-                "timestamp を設定する場合は ISO 8601 形式で、タイムゾーンオフセットを必ず付けること。"
+                "timestamp を設定する場合は ISO 8601 形式で、タイムゾーンオフセットを必ず付けること。\n"
+                "entry_candidates の content は Markdown 形式で書くこと。HTML タグは使わないこと。"
             ),
         }
         payload_messages = [system_msg, *messages[-12:]]
@@ -168,6 +169,7 @@ class OllamaClient:
                     "reports は生成物の要点、system_event は重要な運用イベントだけを抽出してください。"
                     "system_event がノイズだけなら should_create=false を返してください。"
                     "本文は箇条書きではなく、2〜5文の自然な要約を基本にしてください。"
+                    "content は Markdown 形式で書くこと。HTML タグは使わないこと。"
                 ),
             },
             {

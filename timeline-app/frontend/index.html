@@ -63,7 +63,7 @@
             </form>
             <div id="chat-response" class="chat-response hidden">
               <h3>AI 応答</h3>
-              <p id="chat-reply-text"></p>
+              <div id="chat-reply-text" class="md-body"></div>
               <div>
                 <h4>記録候補</h4>
                 <div id="candidate-list" class="candidate-list"></div>
@@ -71,6 +71,7 @@
             </div>
           </section>
 
+          <div id="todo-list" class="timeline-list"></div>
           <div id="future-list" class="timeline-list"></div>
         </div>
       </section>
@@ -93,7 +94,7 @@
           <div id="detail-meta" class="detail-meta"></div>
 
           <div id="detail-readonly" class="detail-readonly">
-            <p id="detail-content"></p>
+            <div id="detail-content" class="md-body"></div>
           </div>
 
           <form id="detail-form" class="detail-form hidden">
@@ -119,7 +120,10 @@
       <button class="entry-card-button" type="button">
         <div class="entry-card-top">
           <span class="entry-type"></span>
-          <time class="entry-time"></time>
+          <div class="entry-card-meta">
+            <time class="entry-time"></time>
+            <span class="entry-card-actions"></span>
+          </div>
         </div>
         <h3 class="entry-title"></h3>
         <p class="entry-content"></p>
@@ -131,6 +135,8 @@
     <button type="button" class="candidate-button"></button>
   </template>
 
+  <script src="https://cdn.jsdelivr.net/npm/marked@14/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
   <script src="/assets/app.js" defer></script>
 </body>
 </html>

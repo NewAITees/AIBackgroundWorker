@@ -1,6 +1,9 @@
 const state = {
   workspace: null,
   entries: [],
+  pastEntries: [],
+  todoEntries: [],
+  futureEntries: [],
   selectedEntryId: null,
   selectedEntry: null,
   chatThreadId: null,
@@ -32,6 +35,7 @@ function cacheRefs() {
   refs.workspaceEmpty = document.getElementById("workspace-empty");
   refs.timelineRoot = document.getElementById("timeline-root");
   refs.pastList = document.getElementById("past-list");
+  refs.todoList = document.getElementById("todo-list");
   refs.futureList = document.getElementById("future-list");
   refs.chatForm = document.getElementById("chat-form");
   refs.chatInput = document.getElementById("chat-input");
@@ -167,7 +171,7 @@ async function loadTimeline() {
   state.noMoreFuture = false;
   try {
     const response = await api("/api/timeline");
-    state.entries = response.entries || [];
+    setTimelineState(response);
     renderTimeline();
     refs.timelineStatus.textContent = `${state.entries.length} 件を表示`;
     if (!state.initialScrollDone) {
@@ -175,7 +179,7 @@ async function loadTimeline() {
       refs.nowAnchor.scrollIntoView({ behavior: "instant", block: "center" });
     }
   } catch (error) {
-    state.entries = [];
+    setTimelineState({});
     renderTimeline();
     refs.timelineStatus.textContent = error.message;
   }
@@ -187,28 +191,23 @@ function renderTimeline() {
   const bottomSentinel = document.getElementById("sentinel-bottom");
 
   refs.pastList.innerHTML = "";
+  refs.todoList.innerHTML = "";
   refs.futureList.innerHTML = "";
 
-  const now = new Date();
-  const past = state.entries.filter((entry) => new Date(entry.timestamp) <= now);
-  const future = state.entries.filter((entry) => new Date(entry.timestamp) > now);
-
-  for (const entry of past.sort(sortByTimeAsc)) {
+  for (const entry of state.pastEntries.sort(sortByTimeAsc)) {
     refs.pastList.appendChild(buildEntryCard(entry));
   }
-  for (const entry of future.sort(sortByTimeAsc)) {
+  for (const entry of state.todoEntries.sort(sortByTimeAsc)) {
+    refs.todoList.appendChild(buildEntryCard(entry));
+  }
+  for (const entry of state.futureEntries.sort(sortByTimeAsc)) {
     refs.futureList.appendChild(buildEntryCard(entry));
   }
 
   // sentinel を再挿入（observer は同じ要素を observe し続けるので再登録不要）
   if (topSentinel) refs.pastList.prepend(topSentinel);
   if (bottomSentinel) refs.futureList.append(bottomSentinel);
-
-  if (state.entries.length > 0) {
-    const sorted = [...state.entries].sort(sortByTimeAsc);
-    state.oldestTimestamp = sorted[0].timestamp;
-    state.newestTimestamp = sorted[sorted.length - 1].timestamp;
-  }
+  updateTimelineBounds();
 }
 
 function buildEntryCard(entry) {
@@ -217,6 +216,7 @@ function buildEntryCard(entry) {
   const button = node.querySelector(".entry-card-button");
   const typeEl = node.querySelector(".entry-type");
   const timeEl = node.querySelector(".entry-time");
+  const actionsEl = node.querySelector(".entry-card-actions");
   const titleEl = node.querySelector(".entry-title");
   const contentEl = node.querySelector(".entry-content");
 
@@ -239,7 +239,7 @@ function buildEntryCard(entry) {
       e.stopPropagation();
       if (entry.type === "todo") completeTodo(entry.id);
     });
-    node.appendChild(checkbox);
+    actionsEl.appendChild(checkbox);
   }
 
   return node;
@@ -248,7 +248,7 @@ function buildEntryCard(entry) {
 async function completeTodo(entryId) {
   try {
     const now = new Date().toISOString();
-    const updated = await api(`/api/entries/${encodeURIComponent(entryId)}`, {
+    await api(`/api/entries/${encodeURIComponent(entryId)}`, {
       method: "PATCH",
       body: JSON.stringify({
         type: "todo_done",
@@ -256,9 +256,7 @@ async function completeTodo(entryId) {
         meta: { completed_at: now },
       }),
     });
-    const idx = state.entries.findIndex((e) => e.id === entryId);
-    if (idx !== -1) state.entries[idx] = updated;
-    renderTimeline();
+    await loadTimeline();
   } catch (err) {
     console.warn("completeTodo failed:", err);
   }
@@ -296,7 +294,7 @@ function renderDetail() {
   refs.detailType.textContent = state.selectedEntry.type;
   refs.detailTitle.textContent = state.selectedEntry.title || fallbackTitle(state.selectedEntry);
   refs.detailMeta.textContent = `${formatDateTime(state.selectedEntry.timestamp)} | ${state.selectedEntry.status}`;
-  refs.detailContent.textContent = state.selectedEntry.content;
+  refs.detailContent.innerHTML = DOMPurify.sanitize(marked.parse(state.selectedEntry.content || ""));
   refs.detailTitleInput.value = state.selectedEntry.title || "";
   refs.detailContentInput.value = state.selectedEntry.content;
   refs.detailStatusInput.value = state.selectedEntry.status;
@@ -358,7 +356,7 @@ async function submitChat(event) {
     });
     state.chatThreadId = response.thread_id;
     refs.chatInput.value = "";
-    refs.chatReplyText.textContent = response.reply;
+    refs.chatReplyText.innerHTML = DOMPurify.sanitize(marked.parse(response.reply || ""));
     renderCandidates(response.entry_candidates || []);
     refs.chatResponse.classList.remove("hidden");
     refs.chatStatus.textContent = "応答を保存しました";
@@ -441,11 +439,13 @@ async function loadMorePast() {
   try {
     const around = new Date(state.oldestTimestamp).toISOString();
     const res = await api(`/api/timeline?around=${encodeURIComponent(around)}&before=24&after=0`);
-    const incoming = (res.entries || []).filter(
-      (e) => !state.entries.some((ex) => ex.id === e.id)
+    const incoming = (res.past_entries || []).filter(
+      (e) => !state.pastEntries.some((ex) => ex.id === e.id)
     );
     if (incoming.length > 0) {
-      state.entries = [...incoming, ...state.entries];
+      state.pastEntries = [...incoming, ...state.pastEntries];
+      state.entries = [...state.pastEntries, ...state.todoEntries, ...state.futureEntries];
+      updateTimelineBounds();
       renderTimeline();
     } else {
       state.noMorePast = true;
@@ -463,11 +463,13 @@ async function loadMoreFuture() {
   try {
     const around = new Date(state.newestTimestamp).toISOString();
     const res = await api(`/api/timeline?around=${encodeURIComponent(around)}&before=0&after=24`);
-    const incoming = (res.entries || []).filter(
-      (e) => !state.entries.some((ex) => ex.id === e.id)
+    const incoming = (res.future_entries || []).filter(
+      (e) => !state.futureEntries.some((ex) => ex.id === e.id)
     );
     if (incoming.length > 0) {
-      state.entries = [...state.entries, ...incoming];
+      state.futureEntries = [...state.futureEntries, ...incoming];
+      state.entries = [...state.pastEntries, ...state.todoEntries, ...state.futureEntries];
+      updateTimelineBounds();
       renderTimeline();
     } else {
       state.noMoreFuture = true;
@@ -481,6 +483,29 @@ async function loadMoreFuture() {
 
 function sortByTimeAsc(a, b) {
   return new Date(a.timestamp) - new Date(b.timestamp);
+}
+
+function setTimelineState(response) {
+  state.pastEntries = response.past_entries || [];
+  state.todoEntries = response.todo_entries || [];
+  state.futureEntries = response.future_entries || [];
+  state.entries = response.entries || [
+    ...state.pastEntries,
+    ...state.todoEntries,
+    ...state.futureEntries,
+  ];
+  updateTimelineBounds();
+}
+
+function updateTimelineBounds() {
+  const timelineEntries = [...state.pastEntries, ...state.futureEntries].sort(sortByTimeAsc);
+  if (timelineEntries.length > 0) {
+    state.oldestTimestamp = timelineEntries[0].timestamp;
+    state.newestTimestamp = timelineEntries[timelineEntries.length - 1].timestamp;
+    return;
+  }
+  state.oldestTimestamp = null;
+  state.newestTimestamp = null;
 }
 
 function formatDateTime(value) {

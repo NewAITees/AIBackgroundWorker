@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 import yaml
 
@@ -17,6 +18,21 @@ def read_entry(workspace_path: str, articles_dir: str, entry_id: str) -> Entry:
     if not _SAFE_ENTRY_ID_RE.match(entry_id):
         raise FileNotFoundError(f"無効な entry_id: {entry_id}")
     path = article_path(workspace_path, articles_dir, entry_id)
+    return _read_entry_path(path, entry_id)
+
+
+def read_entries(workspace_path: str, articles_dir: str) -> list[Entry]:
+    articles_path = Path(workspace_path) / articles_dir
+    if not articles_path.exists():
+        return []
+
+    entries: list[Entry] = []
+    for path in sorted(articles_path.glob("*.md")):
+        entries.append(_read_entry_path(path, path.stem))
+    return entries
+
+
+def _read_entry_path(path: Path, entry_id: str) -> Entry:
     raw = path.read_text(encoding="utf-8")
     match = _FRONTMATTER_RE.match(raw)
     if not match:

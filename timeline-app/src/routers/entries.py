@@ -1,7 +1,7 @@
 """entry CRUD API。Markdown ファイルを正本として扱う。"""
 
 import uuid
-from datetime import datetime, time, timezone
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, HTTPException
 
 from ..config import config
@@ -11,6 +11,7 @@ from ..storage.entry_reader import read_entry
 from ..storage.persistence import persist_entry
 
 router = APIRouter()
+TODO_FUTURE_OFFSET = timedelta(minutes=5)
 
 
 @router.post("/entries", response_model=Entry, status_code=201)
@@ -24,7 +25,7 @@ async def create_entry(req: EntryCreate):
     if req.timestamp:
         timestamp = req.timestamp
     elif req.type.value == "todo":
-        timestamp = datetime.combine(now.date(), time(23, 59), tzinfo=timezone.utc)
+        timestamp = now + TODO_FUTURE_OFFSET
     else:
         timestamp = now
 
