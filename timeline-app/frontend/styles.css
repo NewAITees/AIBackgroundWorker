@@ -725,7 +725,8 @@ body[data-mobile-layout="false"] .layout[data-detail-open="false"] .detail-pane 
   color: var(--muted);
 }
 
-.settings-field input {
+.settings-field input,
+.settings-field textarea {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -733,6 +734,13 @@ body[data-mobile-layout="false"] .layout[data-detail-open="false"] .detail-pane 
   font-size: 0.9rem;
   background: white;
   color: var(--text);
+  box-sizing: border-box;
+}
+
+.settings-field textarea {
+  resize: vertical;
+  line-height: 1.5;
+  font-family: inherit;
 }
 
 .settings-actions {

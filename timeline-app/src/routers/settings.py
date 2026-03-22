@@ -28,6 +28,7 @@ class AISettingsUpdate(BaseModel):
     ollama_base_url: str | None = None
     ollama_model: str | None = None
     timeout_seconds: int | None = None
+    personality: str | None = None
 
 
 class WorkerStatesUpdate(BaseModel):
@@ -46,6 +47,7 @@ async def get_settings() -> dict[str, Any]:
             "ollama_base_url": config.ai.ollama_base_url,
             "ollama_model": config.ai.ollama_model,
             "timeout_seconds": config.ai.timeout_seconds,
+            "personality": config.ai.personality,
         },
         **worker_control_service.get_all(),
         "feeds": _read_feeds(),
@@ -66,12 +68,15 @@ async def update_ai_settings(req: AISettingsUpdate) -> dict[str, Any]:
         config.ai.ollama_model = req.ollama_model
     if req.timeout_seconds is not None:
         config.ai.timeout_seconds = req.timeout_seconds
+    if req.personality is not None:
+        config.ai.personality = req.personality
 
     _save_config()
     return {
         "ollama_base_url": config.ai.ollama_base_url,
         "ollama_model": config.ai.ollama_model,
         "timeout_seconds": config.ai.timeout_seconds,
+        "personality": config.ai.personality,
     }
 
 
@@ -166,6 +171,7 @@ def _save_config() -> None:
     raw["ai"]["ollama_base_url"] = config.ai.ollama_base_url
     raw["ai"]["ollama_model"] = config.ai.ollama_model
     raw["ai"]["timeout_seconds"] = config.ai.timeout_seconds
+    raw["ai"]["personality"] = config.ai.personality
 
     with open(_CONFIG_PATH, "w", encoding="utf-8") as f:
         yaml.dump(raw, f, allow_unicode=True, sort_keys=False)

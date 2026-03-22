@@ -92,13 +92,16 @@ class OllamaClient:
         from datetime import datetime, timezone
 
         now = datetime.now(timezone.utc).astimezone()
+        personality_line = (
+            f"\n性格・話し方: {self._settings.personality}" if self._settings.personality else ""
+        )
         system_msg = {
             "role": "system",
             "content": (
                 "あなたはライフログ支援AIです。日本語で短く自然に返答してください。\n"
                 f"現在日時: {now.strftime('%Y-%m-%d %H:%M %Z')}（この日時を基準に「明日」「来週」等を解釈すること）\n"
                 "timestamp を設定する場合は ISO 8601 形式で、タイムゾーンオフセットを必ず付けること。\n"
-                "entry_candidates の content は Markdown 形式で書くこと。HTML タグは使わないこと。"
+                "entry_candidates の content は Markdown 形式で書くこと。HTML タグは使わないこと。" + personality_line
             ),
         }
         payload_messages = [system_msg, *messages[-12:]]

@@ -25,6 +25,7 @@ class AIConfig(BaseModel):
     ollama_base_url: str = "http://127.0.0.1:11434"
     ollama_model: str = "qwen2.5:7b"
     timeout_seconds: int = 60
+    personality: str = ""
 
 
 class WorkspaceDirsConfig(BaseModel):

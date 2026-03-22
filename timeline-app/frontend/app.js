@@ -77,6 +77,9 @@ function cacheRefs() {
   refs.navSettings = document.getElementById("nav-settings");
   refs.settingsPanel = document.getElementById("settings-panel");
   refs.settingsClose = document.getElementById("settings-close");
+  refs.sPersonality = document.getElementById("s-personality");
+  refs.sPersonalityStatus = document.getElementById("s-personality-status");
+  refs.sPersonalitySave = document.getElementById("s-personality-save");
   refs.sOllamaUrl = document.getElementById("s-ollama-url");
   refs.sOllamaModel = document.getElementById("s-ollama-model");
   refs.sOllamaTimeout = document.getElementById("s-ollama-timeout");
@@ -107,6 +110,7 @@ function bindEvents() {
   refs.navSettings.addEventListener("click", openSettingsPanel);
   refs.navTimeline.addEventListener("click", closeSettingsPanel);
   refs.settingsClose.addEventListener("click", closeSettingsPanel);
+  refs.sPersonalitySave.addEventListener("click", savePersonality);
   refs.sAiSave.addEventListener("click", saveAiSettings);
   refs.sFeedAdd.addEventListener("click", addFeed);
   document.addEventListener("keydown", handleGlobalKeydown);
@@ -674,6 +678,7 @@ function closeSettingsPanel() {
 async function loadSettings() {
   try {
     const s = await api("/api/settings");
+    refs.sPersonality.value = s.ai.personality ?? "";
     refs.sOllamaUrl.value = s.ai.ollama_base_url;
     refs.sOllamaModel.value = s.ai.ollama_model;
     refs.sOllamaTimeout.value = s.ai.timeout_seconds;
@@ -740,6 +745,19 @@ function renderFeeds(feeds) {
     row.appendChild(label);
     row.appendChild(btn);
     refs.sFeeds.appendChild(row);
+  }
+}
+
+async function savePersonality() {
+  refs.sPersonalityStatus.textContent = "保存中...";
+  try {
+    await api("/api/settings/ai", {
+      method: "PATCH",
+      body: JSON.stringify({ personality: refs.sPersonality.value }),
+    });
+    refs.sPersonalityStatus.textContent = "保存しました";
+  } catch (e) {
+    refs.sPersonalityStatus.textContent = e.message;
   }
 }
 
