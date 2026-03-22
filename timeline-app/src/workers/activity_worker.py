@@ -115,31 +115,30 @@ class ActivityWorker:
     def _sync_once_blocking(self) -> int:
         db_path = self._status.db_path or str(resolve_lifelog_path(config.lifelog.db_path))
         self._status.db_path = db_path
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
 
-        last_seen = self._status.last_interval_id or 0
-        cursor.execute(
-            """
-            SELECT
-                i.id,
-                i.start_ts,
-                i.end_ts,
-                a.process_name,
-                i.domain,
-                i.is_idle,
-                i.duration_seconds
-            FROM activity_intervals i
-            JOIN apps a ON i.app_id = a.app_id
-            WHERE i.id > ?
-            ORDER BY i.id ASC
-            LIMIT 100
-            """,
-            (last_seen,),
-        )
-        rows = cursor.fetchall()
-        conn.close()
+            last_seen = self._status.last_interval_id or 0
+            cursor.execute(
+                """
+                SELECT
+                    i.id,
+                    i.start_ts,
+                    i.end_ts,
+                    a.process_name,
+                    i.domain,
+                    i.is_idle,
+                    i.duration_seconds
+                FROM activity_intervals i
+                JOIN apps a ON i.app_id = a.app_id
+                WHERE i.id > ?
+                ORDER BY i.id ASC
+                LIMIT 100
+                """,
+                (last_seen,),
+            )
+            rows = cursor.fetchall()
 
         if not rows:
             return 0

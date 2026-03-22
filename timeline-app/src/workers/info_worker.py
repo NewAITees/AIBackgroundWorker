@@ -103,22 +103,20 @@ class InfoWorker:
         return json.loads(stdout)
 
     def _fetch_new_info_rows(self, db_path: Path, last_info_id: int) -> list[sqlite3.Row]:
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT id, source_type, title, url, content, snippet, published_at, fetched_at, source_name
-            FROM collected_info
-            WHERE id > ?
-            ORDER BY id ASC
-            LIMIT 200
-            """,
-            (last_info_id,),
-        )
-        rows = cursor.fetchall()
-        conn.close()
-        return rows
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT id, source_type, title, url, content, snippet, published_at, fetched_at, source_name
+                FROM collected_info
+                WHERE id > ?
+                ORDER BY id ASC
+                LIMIT 200
+                """,
+                (last_info_id,),
+            )
+            return cursor.fetchall()
 
 
 info_worker = InfoWorker()

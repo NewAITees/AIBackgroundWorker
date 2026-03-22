@@ -210,33 +210,32 @@ class DailyReportDataAggregator:
             ブラウザ履歴データのリスト
         """
         # 直接SQLクエリで指定日の履歴を取得（DATE()関数を使用）
-        conn = sqlite3.connect(self.info_db_path_str)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.execute(
-            """
-            SELECT url, title, visit_time, visit_count, source_browser
-            FROM browser_history
-            WHERE DATE(visit_time) = ?
-            ORDER BY visit_time DESC
-            LIMIT 1000
-            """,
-            (date,),
-        )
-
-        history = []
-        for row in cursor.fetchall():
-            history.append(
-                {
-                    "visit_time": row["visit_time"],
-                    "title": row["title"],
-                    "url": row["url"],
-                    "visit_count": row["visit_count"],
-                    "source_browser": row["source_browser"],
-                }
+        with sqlite3.connect(self.info_db_path_str) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                """
+                SELECT url, title, visit_time, visit_count, source_browser
+                FROM browser_history
+                WHERE DATE(visit_time) = ?
+                ORDER BY visit_time DESC
+                LIMIT 1000
+                """,
+                (date,),
             )
 
-        conn.close()
-        return history
+            history = []
+            for row in cursor.fetchall():
+                history.append(
+                    {
+                        "visit_time": row["visit_time"],
+                        "title": row["title"],
+                        "url": row["url"],
+                        "visit_count": row["visit_count"],
+                        "source_browser": row["source_browser"],
+                    }
+                )
+
+            return history
 
     def _get_article_analyses(self, date: str) -> List[Dict[str, Any]]:
         """

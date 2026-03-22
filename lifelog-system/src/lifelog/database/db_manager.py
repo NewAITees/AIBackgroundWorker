@@ -5,16 +5,15 @@ Design: Thread-local connections with WAL mode optimization.
 See: doc/design/database_design.md
 """
 
+import logging
 import sqlite3
 import threading
-import logging
 import time
 from datetime import datetime, timedelta
-from typing import Any, Optional, List
 from pathlib import Path
+from typing import Any, List, Optional
 
 from .schema import CREATE_TABLES_SQL, MIGRATION_ADD_EVENTS_SQL, get_pragma_settings
-
 
 logger = logging.getLogger(__name__)
 
@@ -49,16 +48,14 @@ class DatabaseManager:
 
     def _init_database(self) -> None:
         """データベースの初期化とPRAGMA設定."""
-        conn = sqlite3.connect(self.db_path, timeout=30.0, check_same_thread=False)
+        with sqlite3.connect(self.db_path, timeout=30.0, check_same_thread=False) as conn:
+            # PRAGMA設定
+            for pragma in get_pragma_settings():
+                conn.execute(pragma)
 
-        # PRAGMA設定
-        for pragma in get_pragma_settings():
-            conn.execute(pragma)
-
-        # テーブル作成
-        conn.executescript(CREATE_TABLES_SQL)
-        conn.commit()
-        conn.close()
+            # テーブル作成
+            conn.executescript(CREATE_TABLES_SQL)
+            conn.commit()
 
         logger.info(f"Database initialized: {self.db_path}")
 
@@ -67,54 +64,52 @@ class DatabaseManager:
         既存DBへのマイグレーションを実行.
         system_eventsテーブルとビューが存在しない場合に追加する.
         """
-        conn = sqlite3.connect(self.db_path, timeout=30.0, check_same_thread=False)
-        for pragma in get_pragma_settings():
-            conn.execute(pragma)
-        cursor = conn.cursor()
+        with sqlite3.connect(self.db_path, timeout=30.0, check_same_thread=False) as conn:
+            for pragma in get_pragma_settings():
+                conn.execute(pragma)
+            cursor = conn.cursor()
 
-        try:
-            # system_eventsテーブルの存在確認
-            cursor.execute(
-                """
-                SELECT name FROM sqlite_master
-                WHERE type='table' AND name='system_events'
-                """
-            )
-            has_events_table = cursor.fetchone() is not None
+            try:
+                # system_eventsテーブルの存在確認
+                cursor.execute(
+                    """
+                    SELECT name FROM sqlite_master
+                    WHERE type='table' AND name='system_events'
+                    """
+                )
+                has_events_table = cursor.fetchone() is not None
 
-            # unified_timelineビューの存在確認
-            cursor.execute(
-                """
-                SELECT name FROM sqlite_master
-                WHERE type='view' AND name='unified_timeline'
-                """
-            )
-            has_unified_view = cursor.fetchone() is not None
+                # unified_timelineビューの存在確認
+                cursor.execute(
+                    """
+                    SELECT name FROM sqlite_master
+                    WHERE type='view' AND name='unified_timeline'
+                    """
+                )
+                has_unified_view = cursor.fetchone() is not None
 
-            # daily_event_summaryビューの存在確認
-            cursor.execute(
-                """
-                SELECT name FROM sqlite_master
-                WHERE type='view' AND name='daily_event_summary'
-                """
-            )
-            has_summary_view = cursor.fetchone() is not None
+                # daily_event_summaryビューの存在確認
+                cursor.execute(
+                    """
+                    SELECT name FROM sqlite_master
+                    WHERE type='view' AND name='daily_event_summary'
+                    """
+                )
+                has_summary_view = cursor.fetchone() is not None
 
-            # マイグレーションが必要な場合
-            if not has_events_table or not has_unified_view or not has_summary_view:
-                logger.info("Migrating database: adding system_events table and views")
-                conn.executescript(MIGRATION_ADD_EVENTS_SQL)
-                conn.commit()
-                logger.info("Database migration completed")
-            else:
-                logger.debug("Database is up to date, no migration needed")
+                # マイグレーションが必要な場合
+                if not has_events_table or not has_unified_view or not has_summary_view:
+                    logger.info("Migrating database: adding system_events table and views")
+                    conn.executescript(MIGRATION_ADD_EVENTS_SQL)
+                    conn.commit()
+                    logger.info("Database migration completed")
+                else:
+                    logger.debug("Database is up to date, no migration needed")
 
-        except Exception as e:
-            conn.rollback()
-            logger.error(f"Migration failed: {e}")
-            raise
-        finally:
-            conn.close()
+            except Exception as e:
+                conn.rollback()
+                logger.error(f"Migration failed: {e}")
+                raise
 
     def _get_connection(self) -> sqlite3.Connection:
         """
@@ -163,7 +158,9 @@ class DatabaseManager:
 
     @staticmethod
     def _is_lock_error(exc: Exception) -> bool:
-        return isinstance(exc, sqlite3.OperationalError) and "database is locked" in str(exc).lower()
+        return (
+            isinstance(exc, sqlite3.OperationalError) and "database is locked" in str(exc).lower()
+        )
 
     def _run_with_lock_retry(self, fn, retries: int = 5, base_sleep: float = 0.2):
         for attempt in range(retries + 1):
@@ -210,8 +207,7 @@ class DatabaseManager:
             for interval in intervals:
                 # app_id を取得または作成（同一トランザクション内）
                 app_id = self._get_or_create_app_in_tx(
-                    cursor,
-                    interval["process_name"], interval["process_path_hash"]
+                    cursor, interval["process_name"], interval["process_path_hash"]
                 )
 
                 records.append(
@@ -253,6 +249,7 @@ class DatabaseManager:
         Args:
             metrics: メトリクスデータ
         """
+
         def _op() -> None:
             conn = self._get_connection()
             cursor = conn.cursor()

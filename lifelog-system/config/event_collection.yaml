@@ -29,6 +29,8 @@ event_collection:
       - daemon
       - auth
     priority_min: "warning"  # warning以上を収集
+    ignored_processes:
+      - tee  # 運用用ラッパースクリプトの定常ログは system_events に入れない
   
   # イベント分類ルール
   classification:

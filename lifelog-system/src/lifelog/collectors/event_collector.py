@@ -98,6 +98,17 @@ class EventClassifierImpl(EventClassifier):
 
         # ログレベルベースの分類（Linux syslog）
         log_level = _safe_text(raw_event.get("level", "")).lower()
+        level_aliases = {
+            "0": "emerg",
+            "1": "alert",
+            "2": "crit",
+            "3": "err",
+            "4": "warning",
+            "5": "notice",
+            "6": "info",
+            "7": "debug",
+        }
+        log_level = level_aliases.get(log_level, log_level)
         if log_level in ["error", "err"]:
             event_type = "error"
             severity = 70
@@ -138,6 +149,7 @@ class WindowsEventLogCollectorImpl(WindowsEventLogCollector):
         classifier: EventClassifier = None,
         privacy_config: Optional[dict] = None,
     ):
+        classifier = classifier or EventClassifierImpl()
         super().__init__(log_names, classifier)
         self.privacy_config = privacy_config or {}
         self._check_windows()
@@ -294,9 +306,11 @@ class LinuxSyslogCollectorImpl(LinuxSyslogCollector):
         self,
         facility_filter: List[str] = None,
         priority_min: str = "warning",
+        ignored_processes: Optional[List[str]] = None,
         classifier: EventClassifier = None,
         privacy_config: Optional[dict] = None,
     ):
+        classifier = classifier or EventClassifierImpl()
         normalized_facility_filter = [
             _safe_text(v) for v in (facility_filter or ["kern", "user", "daemon"])
         ]
@@ -308,6 +322,15 @@ class LinuxSyslogCollectorImpl(LinuxSyslogCollector):
 
         super().__init__(normalized_facility_filter, normalized_priority_min, classifier)
         self.privacy_config = privacy_config or {}
+        self.ignored_processes = {
+            _safe_text(v).lower() for v in (ignored_processes or ["tee"]) if _safe_text(v)
+        }
+
+    def _should_skip_raw_event(self, raw_event: dict) -> bool:
+        process_name = _safe_text(raw_event.get("process_name", "")).lower()
+        if process_name and process_name in self.ignored_processes:
+            return True
+        return False
 
     def collect_events(
         self,
@@ -349,7 +372,7 @@ class LinuxSyslogCollectorImpl(LinuxSyslogCollector):
             }
             if self.priority_min in priority_map:
                 min_priority = priority_map[self.priority_min]
-                cmd.append(f"--priority={min_priority}..7")
+                cmd.append(f"--priority=0..{min_priority}")
 
             # facilityフィルタ
             if self.facility_filter:
@@ -392,6 +415,9 @@ class LinuxSyslogCollectorImpl(LinuxSyslogCollector):
                         "user_name": _safe_text(item.get("_UID")),
                         "machine_name": _safe_text(item.get("_HOSTNAME", "")),
                     }
+
+                    if self._should_skip_raw_event(raw_event):
+                        continue
 
                     # タイムスタンプ変換（マイクロ秒からdatetime）
                     if raw_event["timestamp"]:
@@ -458,6 +484,7 @@ def create_collector_for_platform_impl(
                 "facility_filter", ["kern", "user", "daemon"]
             ),
             priority_min=config.get("linux", {}).get("priority_min", "warning"),
+            ignored_processes=config.get("linux", {}).get("ignored_processes", ["tee"]),
             classifier=classifier,
             privacy_config=privacy_config,
         )

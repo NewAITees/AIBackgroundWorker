@@ -233,3 +233,4 @@ timeline-app/articles/
 
 # VRM・3Dモデルファイル
 models/
+.playwright-output/

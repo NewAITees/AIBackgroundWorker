@@ -299,7 +299,7 @@ class ActivityCollector:
 
                     # バルク挿入
                     self.db.bulk_insert_events(event_dicts)
-                    logger.info(f"Collected and saved {len(event_dicts)} events")
+                    logger.debug(f"Collected and saved {len(event_dicts)} events")
                     last_collection_time = datetime.now()
                 else:
                     logger.debug("No events collected in this cycle")

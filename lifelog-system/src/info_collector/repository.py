@@ -7,12 +7,12 @@
 - src/info_collector/collectors/ - データ収集器
 """
 
-import sqlite3
 import json
+import sqlite3
 import time
 from datetime import datetime, timedelta
-from typing import Optional, List, Any
 from pathlib import Path
+from typing import Any, List, Optional
 
 from .models import CollectedInfo, InfoSummary
 
@@ -42,7 +42,9 @@ class InfoCollectorRepository:
 
     @staticmethod
     def _is_lock_error(exc: Exception) -> bool:
-        return isinstance(exc, sqlite3.OperationalError) and "database is locked" in str(exc).lower()
+        return (
+            isinstance(exc, sqlite3.OperationalError) and "database is locked" in str(exc).lower()
+        )
 
     def _run_with_lock_retry(self, fn, retries: int = 5, base_sleep: float = 0.2):
         """
@@ -241,6 +243,7 @@ class InfoCollectorRepository:
         Returns:
             追加されたレコードのID（重複時はNone）
         """
+
         def _op() -> Optional[int]:
             with self._connect() as conn:
                 try:
@@ -260,7 +263,9 @@ class InfoCollectorRepository:
                             info.published_at.isoformat() if info.published_at else None,
                             info.fetched_at.isoformat(),
                             info.source_name,
-                            json.dumps(info.metadata, ensure_ascii=False) if info.metadata else None,
+                            json.dumps(info.metadata, ensure_ascii=False)
+                            if info.metadata
+                            else None,
                         ),
                     )
                     return cursor.lastrowid
@@ -442,22 +447,20 @@ class InfoCollectorRepository:
         Returns:
             collected_info行を含むRowリスト
         """
-        conn = self._connect()
-        conn.row_factory = sqlite3.Row
-        cursor = conn.execute(
-            """
-            SELECT c.*
-            FROM collected_info c
-            LEFT JOIN article_analysis a ON c.id = a.article_id
-            WHERE a.id IS NULL
-            ORDER BY c.fetched_at DESC
-            LIMIT ?
-            """,
-            (limit,),
-        )
-        rows = cursor.fetchall()
-        conn.close()
-        return rows
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                """
+                SELECT c.*
+                FROM collected_info c
+                LEFT JOIN article_analysis a ON c.id = a.article_id
+                WHERE a.id IS NULL
+                ORDER BY c.fetched_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            )
+            return cursor.fetchall()
 
     def save_analysis(
         self,
@@ -487,6 +490,7 @@ class InfoCollectorRepository:
             importance_reason: 重要度の判断理由（オプション）
             relevance_reason: 関連度の判断理由（オプション）
         """
+
         def _op() -> None:
             with self._connect() as conn:
                 conn.execute(
@@ -522,25 +526,23 @@ class InfoCollectorRepository:
             article_analysis と collected_info を結合したRowリスト
             （importance_reason と relevance_reason を含む）
         """
-        conn = self._connect()
-        conn.row_factory = sqlite3.Row
-        cursor = conn.execute(
-            """
-            SELECT a.*, c.title AS collected_title, c.content AS collected_content
-            FROM article_analysis a
-            JOIN collected_info c ON a.article_id = c.id
-            LEFT JOIN deep_research d ON a.article_id = d.article_id
-            WHERE a.importance_score >= ?
-              AND a.relevance_score >= ?
-              AND d.id IS NULL
-            ORDER BY a.importance_score DESC, a.relevance_score DESC
-            LIMIT ?
-            """,
-            (min_importance, min_relevance, limit),
-        )
-        rows = cursor.fetchall()
-        conn.close()
-        return rows
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                """
+                SELECT a.*, c.title AS collected_title, c.content AS collected_content
+                FROM article_analysis a
+                JOIN collected_info c ON a.article_id = c.id
+                LEFT JOIN deep_research d ON a.article_id = d.article_id
+                WHERE a.importance_score >= ?
+                  AND a.relevance_score >= ?
+                  AND d.id IS NULL
+                ORDER BY a.importance_score DESC, a.relevance_score DESC
+                LIMIT ?
+                """,
+                (min_importance, min_relevance, limit),
+            )
+            return cursor.fetchall()
 
     def save_deep_research(
         self,
@@ -552,6 +554,7 @@ class InfoCollectorRepository:
         researched_at: datetime,
     ) -> None:
         """深掘り結果を保存."""
+
         def _op() -> None:
             with self._connect() as conn:
                 conn.execute(
@@ -575,39 +578,35 @@ class InfoCollectorRepository:
 
     def fetch_recent_analysis(self, since_iso: str) -> list[dict[str, Any]]:
         """指定日時以降の分析結果を取得."""
-        conn = self._connect()
-        conn.row_factory = sqlite3.Row
-        cursor = conn.execute(
-            """
-            SELECT a.*, c.title, c.url
-            FROM article_analysis a
-            JOIN collected_info c ON a.article_id = c.id
-            WHERE a.analyzed_at >= ?
-            ORDER BY a.analyzed_at DESC
-            """,
-            (since_iso,),
-        )
-        rows = [dict(r) for r in cursor.fetchall()]
-        conn.close()
-        return rows
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                """
+                SELECT a.*, c.title, c.url
+                FROM article_analysis a
+                JOIN collected_info c ON a.article_id = c.id
+                WHERE a.analyzed_at >= ?
+                ORDER BY a.analyzed_at DESC
+                """,
+                (since_iso,),
+            )
+            return [dict(r) for r in cursor.fetchall()]
 
     def fetch_recent_deep_research(self, since_iso: str) -> list[dict[str, Any]]:
         """指定日時以降の深掘り結果を取得."""
-        conn = self._connect()
-        conn.row_factory = sqlite3.Row
-        cursor = conn.execute(
-            """
-            SELECT d.*, a.summary AS theme
-            FROM deep_research d
-            JOIN article_analysis a ON d.article_id = a.article_id
-            WHERE d.researched_at >= ?
-            ORDER BY d.researched_at DESC
-            """,
-            (since_iso,),
-        )
-        rows = [dict(r) for r in cursor.fetchall()]
-        conn.close()
-        return rows
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                """
+                SELECT d.*, a.summary AS theme
+                FROM deep_research d
+                JOIN article_analysis a ON d.article_id = a.article_id
+                WHERE d.researched_at >= ?
+                ORDER BY d.researched_at DESC
+                """,
+                (since_iso,),
+            )
+            return [dict(r) for r in cursor.fetchall()]
 
     def fetch_deep_research_by_theme(
         self, min_articles: int = 1
@@ -622,33 +621,32 @@ class InfoCollectorRepository:
             テーマ（summary）をキー、深掘り結果のリストを値とする辞書
             （importance_reason と relevance_reason を含む）
         """
-        conn = self._connect()
-        conn.row_factory = sqlite3.Row
-        cursor = conn.execute(
-            """
-            SELECT
-                d.*,
-                a.summary AS theme,
-                a.importance_score,
-                a.relevance_score,
-                a.importance_reason,
-                a.relevance_reason,
-                a.category,
-                a.keywords,
-                c.title AS article_title,
-                c.url AS article_url,
-                c.content AS article_content,
-                c.published_at AS article_published_at,
-                c.fetched_at AS article_fetched_at
-            FROM deep_research d
-            JOIN article_analysis a ON d.article_id = a.article_id
-            JOIN collected_info c ON d.article_id = c.id
-            WHERE a.summary IS NOT NULL AND a.summary != ''
-            ORDER BY d.researched_at DESC
-            """,
-        )
-        rows = [dict(r) for r in cursor.fetchall()]
-        conn.close()
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                """
+                SELECT
+                    d.*,
+                    a.summary AS theme,
+                    a.importance_score,
+                    a.relevance_score,
+                    a.importance_reason,
+                    a.relevance_reason,
+                    a.category,
+                    a.keywords,
+                    c.title AS article_title,
+                    c.url AS article_url,
+                    c.content AS article_content,
+                    c.published_at AS article_published_at,
+                    c.fetched_at AS article_fetched_at
+                FROM deep_research d
+                JOIN article_analysis a ON d.article_id = a.article_id
+                JOIN collected_info c ON d.article_id = c.id
+                WHERE a.summary IS NOT NULL AND a.summary != ''
+                ORDER BY d.researched_at DESC
+                """,
+            )
+            rows = [dict(r) for r in cursor.fetchall()]
 
         # テーマごとにグループ化
         theme_groups: dict[str, list[dict[str, Any]]] = {}
@@ -687,6 +685,7 @@ class InfoCollectorRepository:
             created_at: 作成日時
             article_ids_hash: 記事IDセットのハッシュ値（重複チェック用）
         """
+
         def _op() -> None:
             with self._connect() as conn:
                 conn.execute(
@@ -715,18 +714,16 @@ class InfoCollectorRepository:
         Returns:
             既存レポートのハッシュ値リスト（NULL値は除外）
         """
-        conn = self._connect()
-        conn.row_factory = sqlite3.Row
-        cursor = conn.execute(
-            """
-            SELECT DISTINCT article_ids_hash
-            FROM reports
-            WHERE article_ids_hash IS NOT NULL AND article_ids_hash != ''
-            """
-        )
-        hashes = [row["article_ids_hash"] for row in cursor.fetchall()]
-        conn.close()
-        return hashes
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                """
+                SELECT DISTINCT article_ids_hash
+                FROM reports
+                WHERE article_ids_hash IS NOT NULL AND article_ids_hash != ''
+                """
+            )
+            return [row["article_ids_hash"] for row in cursor.fetchall()]
 
     def fetch_reports_by_date(
         self,
@@ -743,17 +740,15 @@ class InfoCollectorRepository:
         Returns:
             レポートの辞書リスト（新しい順）
         """
-        conn = self._connect()
-        conn.row_factory = sqlite3.Row
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
 
-        query = "SELECT * FROM reports WHERE report_date = ?"
-        params: list[Any] = [report_date]
-        if category:
-            query += " AND category = ?"
-            params.append(category)
-        query += " ORDER BY created_at DESC"
+            query = "SELECT * FROM reports WHERE report_date = ?"
+            params: list[Any] = [report_date]
+            if category:
+                query += " AND category = ?"
+                params.append(category)
+            query += " ORDER BY created_at DESC"
 
-        cursor = conn.execute(query, params)
-        rows = [dict(r) for r in cursor.fetchall()]
-        conn.close()
-        return rows
+            cursor = conn.execute(query, params)
+            return [dict(r) for r in cursor.fetchall()]

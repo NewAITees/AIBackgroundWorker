@@ -289,39 +289,40 @@ def show_browser_stats(date: str = None) -> None:
         ORDER BY count DESC
         LIMIT 20
     """
-    cursor.execute(query, params)
-    domains = cursor.fetchall()
+    try:
+        cursor.execute(query, params)
+        domains = cursor.fetchall()
 
-    print(f"Total Visits: {total}")
-    print(f"\n{'Domain':<40} {'Visits':<10}")
-    print("-" * 50)
+        print(f"Total Visits: {total}")
+        print(f"\n{'Domain':<40} {'Visits':<10}")
+        print("-" * 50)
 
-    for domain, count in domains:
-        # ドメインがNoneまたは空の場合の処理
-        domain_clean = domain if domain and domain.strip() else "(unknown)"
-        print(f"{domain_clean:<40} {count:<10}")
+        for domain, count in domains:
+            # ドメインがNoneまたは空の場合の処理
+            domain_clean = domain if domain and domain.strip() else "(unknown)"
+            print(f"{domain_clean:<40} {count:<10}")
 
-    # 時間帯別集計
-    if date:
-        query = """
-            SELECT
-                strftime('%H', visit_time) as hour,
-                COUNT(*) as count
-            FROM browser_history
-            WHERE date(visit_time) = ?
-            GROUP BY hour
-            ORDER BY hour
-        """
-        cursor.execute(query, [date])
-        hourly = cursor.fetchall()
+        # 時間帯別集計
+        if date:
+            query = """
+                SELECT
+                    strftime('%H', visit_time) as hour,
+                    COUNT(*) as count
+                FROM browser_history
+                WHERE date(visit_time) = ?
+                GROUP BY hour
+                ORDER BY hour
+            """
+            cursor.execute(query, [date])
+            hourly = cursor.fetchall()
 
-        if hourly:
-            print(f"\n{'Hour':<8} {'Visits':<10}")
-            print("-" * 20)
-            for hour, count in hourly:
-                print(f"{hour}:00   {count:<10}")
-
-    conn.close()
+            if hourly:
+                print(f"\n{'Hour':<8} {'Visits':<10}")
+                print("-" * 20)
+                for hour, count in hourly:
+                    print(f"{hour}:00   {count:<10}")
+    finally:
+        conn.close()
 
 
 def show_reports(limit: int = 5) -> None:
@@ -336,22 +337,21 @@ def show_reports(limit: int = 5) -> None:
     # reportsテーブルから直接取得
     import sqlite3
 
-    conn = sqlite3.connect(f"file:{info_db_path}?mode=ro", uri=True)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
+    with sqlite3.connect(f"file:{info_db_path}?mode=ro", uri=True) as conn:
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
 
-    cursor.execute(
-        """
-        SELECT title, report_date, content, category, created_at
-        FROM reports
-        ORDER BY created_at DESC
-        LIMIT ?
-        """,
-        (limit,),
-    )
+        cursor.execute(
+            """
+            SELECT title, report_date, content, category, created_at
+            FROM reports
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
 
-    rows = cursor.fetchall()
-    conn.close()
+        rows = cursor.fetchall()
 
     if not rows:
         print("\nNo reports found")

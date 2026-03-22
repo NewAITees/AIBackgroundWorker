@@ -25,6 +25,9 @@
 - パターン: WSL の `PATH` に Windows 側 `pyenv-win` shim が混入すると、`python` が壊れていても `uv` や `python3` だけ見て気づきにくい。
 - 対策: WSL では `python` / `python3` / `command -v` をセットで確認し、必要なら Windows PATH 混入を抑制する。
 
+- パターン: 定期実行 worker の成功ログを `INFO` のまま流すと、APScheduler の `Running job` / `executed successfully` と収集成功ログが大量に出て、本当に見たい warning や異常が埋もれる。
+- 対策: 定常成功ログは `DEBUG` に落とし、APScheduler の executors ロガーは `WARNING` まで上げる。運用時は「毎回成功したこと」ではなく「失敗・遅延・例外」だけを主に見る。
+
 ## 2026-03-19
 - パターン: worker ごとに LLM 呼び出しが分散していると、サーバーログ上で「どの処理がどのモデルを使ったか」を追えず、運用時の原因切り分けが遅れる。
 - 対策: LLM 呼び出しログは各 worker に個別実装せず、共通クライアントで `caller / purpose / model / base_url` を `INFO` 出力する。旧 `lifelog-system` 側を in-process で呼ぶ worker は環境変数で caller を引き継ぐ。
@@ -158,3 +161,19 @@
 
 - パターン: `main_collector.py` のような旧スタンドアロン起動エントリが残っていると、「今でも直接起動できる」という誤解を招く。
 - 対策: worker 移行完了後は旧エントリポイントを削除し、起動経路を `timeline-app/scripts/start.sh` に一本化する。ドキュメントも同時に更新する。
+
+## 2026-03-22（Markdown描画・コンテンツルール）
+- パターン: entry の content が Markdown 形式で保存されていても、フロントで `textContent` を使うとタグが文字列のまま表示される。
+- 対策: 右ペインの閲覧エリアと AI 返答欄は `marked.parse()` + `DOMPurify.sanitize()` で `innerHTML` に流す。編集欄（textarea）は `textContent` のままにする。
+- パターン: LLM に content フォーマットを指定しないと、モデルによって HTML タグ・自由形式テキスト・Markdown が混在して出力される。
+- 対策: Ollama へのすべての system prompt に「content は Markdown 形式で書くこと。HTML タグは使わないこと。」を明示する。対象: `generate_chat_reply` / `summarize_import_source` / `daily_digest_worker`。
+
+## 2026-03-22
+- パターン: SQLite の read-only / fetch 系メソッドで `conn.close()` を末尾に直書きすると、`execute()` や `fetchall()` の例外経路で close が飛ばず、worker 実行中に `ResourceWarning: unclosed database` が遅れて出る。
+- 対策: `InfoCollectorRepository` や worker の read 経路でも `with sqlite3.connect(...)` / `with self._connect() as conn` を標準にし、読み取り専用でも手動 `close()` 前提にしない。
+- パターン: ログ上で `generate_theme_report` の直後に warning が見えても、原因がそのジョブ本体とは限らない。並行 worker の DB 参照や初期化経路の手動 `close()` 漏れが、GC のタイミングで後から同じ場所に見える。
+- 対策: warning の直前ログだけで犯人を決めず、同時実行 worker を含めて `sqlite3.connect` の全経路を洗う。特に worker 補助関数、DB 初期化、CLI の read-only 接続も `with` に統一する。
+- パターン: syslog の priority は数値が小さいほど重要なのに、`journalctl --priority={min}..7` としてしまうと `warning以上` のつもりが `warning以下` ではなく `warning+notice+info+debug` を大量に拾ってしまう。
+- 対策: `priority_min` を下限ではなく上限として扱い、`journalctl --priority=0..{min_priority}` にする。数値 priority (`"3"`, `"4"`) も分類器で明示的に `err` / `warning` 等へ変換する。
+- パターン: `tee` を使ったラッパースクリプトの定常ログは journald に流れ、syslog collector が拾うと `system_events` を急速に肥大化させる。
+- 対策: Linux event collector に `ignored_processes` を持たせ、少なくとも `tee` は既定で除外する。運用ログの保存先と system event 収集対象を分離する。

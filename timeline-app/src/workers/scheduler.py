@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+import logging
 from typing import Any
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -19,6 +20,11 @@ from .windows_foreground_worker import windows_foreground_worker
 _scheduler: AsyncIOScheduler | None = None
 
 
+def _configure_scheduler_logging() -> None:
+    """定常の job 実行ログを抑えて重要な警告だけ見えるようにする。"""
+    logging.getLogger("apscheduler.executors.default").setLevel(logging.WARNING)
+
+
 def get_scheduler() -> AsyncIOScheduler:
     """AsyncIOScheduler のシングルトンを返す。"""
     global _scheduler
@@ -29,6 +35,7 @@ def get_scheduler() -> AsyncIOScheduler:
 
 def start_scheduler() -> AsyncIOScheduler:
     """未起動なら scheduler を開始する。"""
+    _configure_scheduler_logging()
     scheduler = get_scheduler()
     if scheduler.get_job("activity-sync") is None:
         scheduler.add_job(
