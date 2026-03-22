@@ -24,7 +24,7 @@ class HealthMonitor:
     def __init__(self) -> None:
         """初期化."""
         self.collection_delays = deque(maxlen=1000)
-        self.write_times = deque(maxlen=1000)
+        self.write_times = deque(maxlen=100)  # 直近100サンプルに限定し古いスパイクが引きずられないようにする
         self.dropped_count = 0
 
     def record_collection_delay(self, delay_seconds: float) -> None:
