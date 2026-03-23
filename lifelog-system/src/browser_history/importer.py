@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import shutil
 import sqlite3
 from datetime import datetime
@@ -10,6 +11,19 @@ from typing import List, Optional
 
 from .models import BrowserHistoryEntry
 from .repository import BrowserHistoryRepository
+
+logger = logging.getLogger(__name__)
+
+
+# Cloudflare challenge・読み込み中ページ等のノイズタイトルパターン
+_NOISE_TITLE_PATTERNS = (
+    "しばらくお待ちください",
+    "Just a moment",
+    "Attention Required",
+    "Please wait",
+    "Checking your browser",
+    "DDoS protection",
+)
 
 
 class BraveHistoryImporter:
@@ -213,6 +227,10 @@ class BraveHistoryImporter:
 
             # since フィルタ
             if since and dt < since:
+                continue
+
+            # ノイズタイトルをスキップ（Cloudflare challenge / 読み込み中ページ等）
+            if title and any(p in title for p in _NOISE_TITLE_PATTERNS):
                 continue
 
             entry = BrowserHistoryEntry(

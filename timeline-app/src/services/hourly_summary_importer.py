@@ -265,7 +265,13 @@ def summarize_browser(
         FROM browser_history
         WHERE date(datetime(visit_time, 'localtime')) = ?
           AND strftime('%H', datetime(visit_time, 'localtime')) = ?
-        ORDER BY visit_time DESC
+          AND COALESCE(title, '') <> ''
+          AND COALESCE(title, '') NOT LIKE '%しばらくお待ちください%'
+          AND COALESCE(title, '') NOT LIKE '%Just a moment%'
+          AND COALESCE(title, '') NOT LIKE '%Attention Required%'
+          AND COALESCE(title, '') NOT LIKE '%Checking your browser%'
+        GROUP BY url
+        ORDER BY MAX(visit_time) DESC
         LIMIT 12
         """,
         (target_date.isoformat(), f"{hour:02d}"),
