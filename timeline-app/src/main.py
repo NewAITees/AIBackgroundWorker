@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from .routers import ai_control, health, workspace, timeline, entries, chat, settings
+from .routers import ai_control, health, workspace, timeline, entries, chat, settings, news
 from .workers.activity_worker import activity_worker
 from .workers.scheduler import shutdown_scheduler, start_scheduler
 
@@ -50,6 +50,7 @@ app.include_router(timeline.router, prefix="/api")
 app.include_router(entries.router, prefix="/api")
 app.include_router(chat.router, prefix="/api")
 app.include_router(settings.router, prefix="/api")
+app.include_router(news.router, prefix="/api")
 
 if _FRONTEND_DIR.exists():
     app.mount("/assets", StaticFiles(directory=_FRONTEND_DIR), name="assets")

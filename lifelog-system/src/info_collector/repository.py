@@ -193,6 +193,24 @@ class InfoCollectorRepository:
                 )
                 """
             )
+            # フィードバック
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS article_feedback (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    article_id INTEGER NOT NULL UNIQUE REFERENCES collected_info(id),
+                    feedback_type TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_feedback_article_id
+                ON article_feedback(article_id)
+                """
+            )
+
             # 既存DBへのマイグレーション（不足カラムを追加）
             self._migrate_schema(conn)
             conn.execute(
@@ -761,3 +779,72 @@ class InfoCollectorRepository:
 
             cursor = conn.execute(query, params)
             return [dict(r) for r in cursor.fetchall()]
+
+    # ------------------------------------------------------------------
+    # フィードバック
+    # ------------------------------------------------------------------
+
+    def add_feedback(self, article_id: int, feedback_type: str) -> None:
+        """フィードバックを記録する（同一記事への重複は上書き）。"""
+        now = datetime.now().isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO article_feedback (article_id, feedback_type, created_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(article_id) DO UPDATE SET
+                    feedback_type = excluded.feedback_type,
+                    created_at    = excluded.created_at
+                """,
+                (article_id, feedback_type, now),
+            )
+
+    def get_feedback_map(self, article_ids: list[int]) -> dict[int, str]:
+        """指定した記事IDのフィードバック状態をまとめて返す。"""
+        if not article_ids:
+            return {}
+        placeholders = ",".join("?" * len(article_ids))
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"SELECT article_id, feedback_type FROM article_feedback WHERE article_id IN ({placeholders})",
+                article_ids,
+            ).fetchall()
+        return {row[0]: row[1] for row in rows}
+
+    def get_articles_by_ids(self, article_ids: list[int]) -> list[dict]:
+        """指定した記事IDの詳細を返す。"""
+        if not article_ids:
+            return []
+        placeholders = ",".join("?" * len(article_ids))
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                f"""
+                SELECT id, title, url, source_name, snippet, source_type, published_at, fetched_at
+                FROM collected_info
+                WHERE id IN ({placeholders})
+                ORDER BY fetched_at DESC
+                """,
+                article_ids,
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def force_article_for_research(self, article_id: int) -> None:
+        """ユーザー要求によりレポート生成対象に強制追加する（importance=1.0に設定）。"""
+        now = datetime.now().isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO article_analysis
+                    (article_id, importance_score, relevance_score, category, keywords,
+                     summary, model, analyzed_at)
+                VALUES (?, 1.0, 1.0, 'user_requested', '', '', 'user', ?)
+                ON CONFLICT(article_id) DO UPDATE SET
+                    importance_score = 1.0,
+                    relevance_score  = 1.0,
+                    analyzed_at      = excluded.analyzed_at
+                """,
+                (article_id, now),
+            )
+            # deep_research が存在する場合は削除して再実行させる
+            conn.execute("DELETE FROM deep_research WHERE article_id = ?", (article_id,))

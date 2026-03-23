@@ -433,7 +433,139 @@ function buildEntryCard(entry) {
     actionsEl.appendChild(checkbox);
   }
 
+  if (entry.type === "news" && entry.related_ids && entry.related_ids.length > 0) {
+    const articleIds = entry.related_ids.filter((id) => id.startsWith("collected-info-"));
+    if (articleIds.length > 0) {
+      const panel = document.createElement("div");
+      panel.className = "news-articles-panel hidden";
+
+      const expandBtn = document.createElement("button");
+      expandBtn.className = "news-expand-btn";
+      expandBtn.type = "button";
+      expandBtn.textContent = `記事を見る (${articleIds.length})`;
+      expandBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const isOpen = !panel.classList.contains("hidden");
+        if (isOpen) {
+          panel.classList.add("hidden");
+          expandBtn.textContent = `記事を見る (${articleIds.length})`;
+        } else {
+          panel.classList.remove("hidden");
+          expandBtn.textContent = "閉じる";
+          if (!panel.dataset.loaded) {
+            loadNewsArticles(articleIds, panel);
+          }
+        }
+      });
+
+      node.appendChild(expandBtn);
+      node.appendChild(panel);
+    }
+  }
+
   return node;
+}
+
+async function loadNewsArticles(articleIds, panel) {
+  panel.dataset.loaded = "1";
+  panel.innerHTML = '<p class="news-articles-loading">読み込み中…</p>';
+
+  try {
+    const idsParam = encodeURIComponent(articleIds.join(","));
+    const articles = await api(`/api/news/articles?ids=${idsParam}`);
+    panel.innerHTML = "";
+
+    if (!articles || articles.length === 0) {
+      panel.innerHTML = '<p class="news-articles-empty">記事が見つかりませんでした</p>';
+      return;
+    }
+
+    for (const article of articles) {
+      panel.appendChild(buildArticleRow(article));
+    }
+  } catch (err) {
+    panel.innerHTML = `<p class="news-articles-error">読み込み失敗: ${err.message}</p>`;
+  }
+}
+
+function buildArticleRow(article) {
+  const row = document.createElement("div");
+  row.className = "news-article-row";
+  row.dataset.articleId = article.id;
+
+  const source = article.source_name ? `<span class="article-source">${article.source_name}</span>` : "";
+  const link = document.createElement("a");
+  link.href = article.url;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  link.className = "article-title-link";
+  link.textContent = article.title || article.url;
+
+  const meta = document.createElement("div");
+  meta.className = "article-meta";
+  meta.innerHTML = source;
+
+  const actions = document.createElement("div");
+  actions.className = "article-actions";
+
+  const reportBtn = document.createElement("button");
+  reportBtn.type = "button";
+  reportBtn.className = "article-btn report-btn";
+  reportBtn.textContent = "レポート生成";
+  reportBtn.addEventListener("click", () => handleGenerateReport(article.id, reportBtn, row));
+
+  const likeBtn = document.createElement("button");
+  likeBtn.type = "button";
+  likeBtn.className = "article-btn like-btn" + (article.feedback === "positive" ? " active" : "");
+  likeBtn.textContent = "👍";
+  likeBtn.addEventListener("click", () => handleFeedback(article.id, "positive", likeBtn, dislikeBtn));
+
+  const dislikeBtn = document.createElement("button");
+  dislikeBtn.type = "button";
+  dislikeBtn.className = "article-btn dislike-btn" + (article.feedback === "negative" ? " active" : "");
+  dislikeBtn.textContent = "👎";
+  dislikeBtn.addEventListener("click", () => handleFeedback(article.id, "negative", dislikeBtn, likeBtn));
+
+  if (article.feedback === "report_requested") {
+    reportBtn.textContent = "生成済み";
+    reportBtn.disabled = true;
+  }
+
+  actions.appendChild(reportBtn);
+  actions.appendChild(likeBtn);
+  actions.appendChild(dislikeBtn);
+
+  row.appendChild(link);
+  row.appendChild(meta);
+  row.appendChild(actions);
+  return row;
+}
+
+async function handleFeedback(articleId, type, activeBtn, oppositeBtn) {
+  try {
+    await api(`/api/news/articles/${articleId}/feedback`, {
+      method: "POST",
+      body: JSON.stringify({ type }),
+    });
+    activeBtn.classList.add("active");
+    oppositeBtn.classList.remove("active");
+  } catch (err) {
+    console.warn("feedback failed:", err);
+  }
+}
+
+async function handleGenerateReport(articleId, btn, row) {
+  btn.disabled = true;
+  btn.textContent = "生成中…";
+  try {
+    await api(`/api/news/articles/${articleId}/generate_report`, { method: "POST" });
+    btn.textContent = "生成済み";
+    row.querySelector(".like-btn")?.classList.add("active");
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = "レポート生成";
+    console.warn("generate_report failed:", err);
+  }
 }
 
 async function completeTodo(entryId) {
