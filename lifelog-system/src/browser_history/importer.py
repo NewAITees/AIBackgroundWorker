@@ -225,9 +225,13 @@ class BraveHistoryImporter:
             # タイムスタンプ変換
             dt = self.chromium_to_datetime(visit_time)
 
-            # since フィルタ
-            if since and dt < since:
-                continue
+            # since フィルタ（since が naive なら UTC-aware に統一して比較）
+            if since:
+                since_aware = (
+                    since if since.tzinfo is not None else since.replace(tzinfo=timezone.utc)
+                )
+                if dt < since_aware:
+                    continue
 
             # ノイズタイトルをスキップ（Cloudflare challenge / 読み込み中ページ等）
             if title and any(p in title for p in _NOISE_TITLE_PATTERNS):
