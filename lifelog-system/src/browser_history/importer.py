@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import shutil
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
@@ -57,7 +57,7 @@ class BraveHistoryImporter:
         """
         # マイクロ秒を秒に変換し、Unixエポックからのオフセットを引く
         unix_timestamp = (chromium_timestamp / 1_000_000) - BraveHistoryImporter.UNIX_EPOCH_OFFSET
-        return datetime.fromtimestamp(unix_timestamp)
+        return datetime.fromtimestamp(unix_timestamp, tz=timezone.utc)
 
     def find_brave_history_path(self) -> Optional[Path]:
         """

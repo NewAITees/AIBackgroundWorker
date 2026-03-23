@@ -10,7 +10,7 @@ import platform
 import subprocess
 import re
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from .event_collector_interface import (
@@ -424,7 +424,7 @@ class LinuxSyslogCollectorImpl(LinuxSyslogCollector):
                         try:
                             ts_microseconds = int(raw_event["timestamp"]) / 1_000_000
                             raw_event["timestamp"] = datetime.fromtimestamp(
-                                ts_microseconds
+                                ts_microseconds, tz=timezone.utc
                             ).isoformat()
                         except (ValueError, TypeError):
                             raw_event["timestamp"] = datetime.now().isoformat()

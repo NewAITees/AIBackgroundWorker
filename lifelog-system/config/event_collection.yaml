@@ -31,6 +31,7 @@ event_collection:
     priority_min: "warning"  # warning以上を収集
     ignored_processes:
       - tee  # 運用用ラッパースクリプトの定常ログは system_events に入れない
+      - brave-history-poller  # 廃止済みサービス（unit-file 削除済み）のエラーは除外
   
   # イベント分類ルール
   classification:

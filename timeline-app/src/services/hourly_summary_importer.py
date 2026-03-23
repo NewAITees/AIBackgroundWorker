@@ -33,6 +33,16 @@ def resolve_context(workspace_path: str | Path) -> ImportContext:
     )
 
 
+def get_local_timezone():
+    return datetime.now().astimezone().tzinfo or UTC
+
+
+def get_sqlite_localtime_modifier() -> str:
+    offset = datetime.now().astimezone().utcoffset() or timedelta(0)
+    total_minutes = int(offset.total_seconds() // 60)
+    return f"{total_minutes:+d} minutes"
+
+
 def import_range(ctx: ImportContext, start_date: date, end_date: date) -> int:
     total = 0
     client = OllamaClient(config.ai)
@@ -138,11 +148,16 @@ def summarize_activity(
         """
         SELECT COALESCE(process_name, '') AS process_name
         FROM unified_timeline
-        WHERE date(datetime(timestamp, 'localtime')) = ?
-          AND strftime('%H', datetime(timestamp, 'localtime')) = ?
+        WHERE date(datetime(timestamp, ?)) = ?
+          AND strftime('%H', datetime(timestamp, ?)) = ?
           AND event_source = 'activity'
         """,
-        (target_date.isoformat(), f"{hour:02d}"),
+        (
+            get_sqlite_localtime_modifier(),
+            target_date.isoformat(),
+            get_sqlite_localtime_modifier(),
+            f"{hour:02d}",
+        ),
     ).fetchall()
 
     if not rows:
@@ -199,11 +214,16 @@ def summarize_system(
                COALESCE(process_name, '') AS process_name,
                COALESCE(message, '') AS message
         FROM system_events
-        WHERE date(datetime(event_timestamp, 'localtime')) = ?
-          AND strftime('%H', datetime(event_timestamp, 'localtime')) = ?
+        WHERE date(datetime(event_timestamp, ?)) = ?
+          AND strftime('%H', datetime(event_timestamp, ?)) = ?
         ORDER BY event_timestamp DESC
         """,
-        (target_date.isoformat(), f"{hour:02d}"),
+        (
+            get_sqlite_localtime_modifier(),
+            target_date.isoformat(),
+            get_sqlite_localtime_modifier(),
+            f"{hour:02d}",
+        ),
     ).fetchall()
     important_rows = filter_important_system_rows(rows)
     if not important_rows:
@@ -263,8 +283,8 @@ def summarize_browser(
         """
         SELECT COALESCE(title, ''), url
         FROM browser_history
-        WHERE date(datetime(visit_time, 'localtime')) = ?
-          AND strftime('%H', datetime(visit_time, 'localtime')) = ?
+        WHERE date(datetime(visit_time, ?)) = ?
+          AND strftime('%H', datetime(visit_time, ?)) = ?
           AND COALESCE(title, '') <> ''
           AND COALESCE(title, '') NOT LIKE '%しばらくお待ちください%'
           AND COALESCE(title, '') NOT LIKE '%Just a moment%'
@@ -274,7 +294,12 @@ def summarize_browser(
         ORDER BY MAX(visit_time) DESC
         LIMIT 12
         """,
-        (target_date.isoformat(), f"{hour:02d}"),
+        (
+            get_sqlite_localtime_modifier(),
+            target_date.isoformat(),
+            get_sqlite_localtime_modifier(),
+            f"{hour:02d}",
+        ),
     ).fetchall()
     if not rows:
         return None
@@ -323,12 +348,17 @@ def summarize_reports(
         """
         SELECT id, title, content, category, created_at
         FROM reports
-        WHERE date(datetime(created_at, 'localtime')) = ?
-          AND strftime('%H', datetime(created_at, 'localtime')) = ?
+        WHERE date(datetime(created_at, ?)) = ?
+          AND strftime('%H', datetime(created_at, ?)) = ?
         ORDER BY created_at DESC
         LIMIT 6
         """,
-        (target_date.isoformat(), f"{hour:02d}"),
+        (
+            get_sqlite_localtime_modifier(),
+            target_date.isoformat(),
+            get_sqlite_localtime_modifier(),
+            f"{hour:02d}",
+        ),
     ).fetchall()
     if not rows:
         return []
@@ -368,12 +398,17 @@ def summarize_news(
         """
         SELECT id, COALESCE(title, ''), url, COALESCE(source_name, ''), COALESCE(snippet, '')
         FROM collected_info
-        WHERE date(datetime(fetched_at, 'localtime')) = ?
-          AND strftime('%H', datetime(fetched_at, 'localtime')) = ?
+        WHERE date(datetime(fetched_at, ?)) = ?
+          AND strftime('%H', datetime(fetched_at, ?)) = ?
         ORDER BY source_name, fetched_at DESC
         LIMIT 20
         """,
-        (target_date.isoformat(), f"{hour:02d}"),
+        (
+            get_sqlite_localtime_modifier(),
+            target_date.isoformat(),
+            get_sqlite_localtime_modifier(),
+            f"{hour:02d}",
+        ),
     ).fetchall()
     if not rows:
         return None
@@ -411,8 +446,7 @@ def summarize_news(
 
 
 def make_timestamp(target_date: date, hour: int) -> datetime:
-    local_tz = datetime.now().astimezone().tzinfo
-    return datetime.combine(target_date, time(hour=hour, minute=30), tzinfo=local_tz)
+    return datetime.combine(target_date, time(hour=hour, minute=30), tzinfo=get_local_timezone())
 
 
 def make_entry_id(target_date: date, hour: int, suffix: str) -> str:
@@ -469,6 +503,8 @@ def summarize_with_llm(
 def filter_important_system_rows(
     rows: list[tuple[str, int, str, str]],
 ) -> list[tuple[str, int, str, str]]:
+    # 廃止済み・既知ノイズサービス：severity に関わらず除外
+    noise_service_patterns = ("brave-history-poller",)  # 廃止済みサービス（unit-file 削除済み）
     important_keywords = (
         "failed",
         "error",
@@ -488,6 +524,8 @@ def filter_important_system_rows(
     kept: list[tuple[str, int, str, str]] = []
     for event_type, severity, process_name, message in rows:
         text = f"{event_type} {process_name} {message}".lower()
+        if any(noise in text for noise in noise_service_patterns):
+            continue
         if severity >= 70 or event_type.lower() in {"error", "critical"}:
             kept.append((event_type, severity, process_name, message))
             continue
