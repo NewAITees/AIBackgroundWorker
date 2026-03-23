@@ -492,6 +492,9 @@ function buildArticleRow(article) {
   const row = document.createElement("div");
   row.className = "news-article-row";
   row.dataset.articleId = article.id;
+  row.dataset.sentiment = article.feedback?.sentiment || "";
+  row.dataset.reportStatus = article.feedback?.report_status || "none";
+  row.dataset.reportEntryId = article.feedback?.report_entry_id || "";
 
   const source = article.source_name ? `<span class="article-source">${article.source_name}</span>` : "";
   const link = document.createElement("a");
@@ -511,25 +514,19 @@ function buildArticleRow(article) {
   const reportBtn = document.createElement("button");
   reportBtn.type = "button";
   reportBtn.className = "article-btn report-btn";
-  reportBtn.textContent = "レポート生成";
   reportBtn.addEventListener("click", () => handleGenerateReport(article.id, reportBtn, row));
 
   const likeBtn = document.createElement("button");
   likeBtn.type = "button";
-  likeBtn.className = "article-btn like-btn" + (article.feedback === "positive" ? " active" : "");
+  likeBtn.className = "article-btn like-btn";
   likeBtn.textContent = "👍";
   likeBtn.addEventListener("click", () => handleFeedback(article.id, "positive", likeBtn, dislikeBtn));
 
   const dislikeBtn = document.createElement("button");
   dislikeBtn.type = "button";
-  dislikeBtn.className = "article-btn dislike-btn" + (article.feedback === "negative" ? " active" : "");
+  dislikeBtn.className = "article-btn dislike-btn";
   dislikeBtn.textContent = "👎";
   dislikeBtn.addEventListener("click", () => handleFeedback(article.id, "negative", dislikeBtn, likeBtn));
-
-  if (article.feedback === "report_requested") {
-    reportBtn.textContent = "生成済み";
-    reportBtn.disabled = true;
-  }
 
   actions.appendChild(reportBtn);
   actions.appendChild(likeBtn);
@@ -538,32 +535,74 @@ function buildArticleRow(article) {
   row.appendChild(link);
   row.appendChild(meta);
   row.appendChild(actions);
+  syncArticleButtons(row, article.feedback || {});
   return row;
+}
+
+function syncArticleButtons(row, feedback) {
+  const sentiment = feedback?.sentiment || "";
+  const reportStatus = feedback?.report_status || "none";
+  const reportEntryId = feedback?.report_entry_id || "";
+  row.dataset.sentiment = sentiment;
+  row.dataset.reportStatus = reportStatus;
+  row.dataset.reportEntryId = reportEntryId;
+
+  const likeBtn = row.querySelector(".like-btn");
+  const dislikeBtn = row.querySelector(".dislike-btn");
+  const reportBtn = row.querySelector(".report-btn");
+
+  likeBtn?.classList.toggle("active", sentiment === "positive");
+  dislikeBtn?.classList.toggle("active", sentiment === "negative");
+
+  if (!reportBtn) return;
+
+  reportBtn.disabled = false;
+  reportBtn.classList.toggle("is-done", reportStatus === "done");
+  reportBtn.classList.toggle("is-busy", reportStatus === "requested" || reportStatus === "running");
+
+  if (reportStatus === "done") {
+    reportBtn.textContent = "生成済み";
+    reportBtn.disabled = true;
+  } else if (reportStatus === "requested") {
+    reportBtn.textContent = "生成待ち…";
+    reportBtn.disabled = true;
+  } else if (reportStatus === "running") {
+    reportBtn.textContent = "生成中…";
+    reportBtn.disabled = true;
+  } else if (reportStatus === "failed") {
+    reportBtn.textContent = "再生成";
+  } else {
+    reportBtn.textContent = "レポート生成";
+  }
 }
 
 async function handleFeedback(articleId, type, activeBtn, oppositeBtn) {
   try {
-    await api(`/api/news/articles/${articleId}/feedback`, {
+    const response = await api(`/api/news/articles/${articleId}/feedback`, {
       method: "POST",
       body: JSON.stringify({ type }),
     });
-    activeBtn.classList.add("active");
-    oppositeBtn.classList.remove("active");
+    syncArticleButtons(activeBtn.closest(".news-article-row"), response.feedback);
   } catch (err) {
     console.warn("feedback failed:", err);
   }
 }
 
 async function handleGenerateReport(articleId, btn, row) {
-  btn.disabled = true;
-  btn.textContent = "生成中…";
+  syncArticleButtons(row, {
+    sentiment: row.dataset.sentiment || null,
+    report_status: "requested",
+    report_entry_id: row.dataset.reportEntryId || null,
+  });
   try {
-    await api(`/api/news/articles/${articleId}/generate_report`, { method: "POST" });
-    btn.textContent = "生成済み";
-    row.querySelector(".like-btn")?.classList.add("active");
+    const response = await api(`/api/news/articles/${articleId}/generate_report`, { method: "POST" });
+    syncArticleButtons(row, response.feedback);
   } catch (err) {
-    btn.disabled = false;
-    btn.textContent = "レポート生成";
+    syncArticleButtons(row, {
+      sentiment: row.dataset.sentiment || null,
+      report_status: "failed",
+      report_entry_id: row.dataset.reportEntryId || null,
+    });
     console.warn("generate_report failed:", err);
   }
 }

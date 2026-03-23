@@ -1126,6 +1126,8 @@ body[data-mobile-layout="false"] .layout[data-detail-open="false"] .detail-pane 
 
 .report-btn { color: var(--event); border-color: var(--event); }
 .report-btn:hover:not(:disabled) { background: rgba(79,126,161,0.1); }
+.report-btn.is-busy { background: rgba(79,126,161,0.12); }
+.report-btn.is-done { background: rgba(79,126,161,0.18); }
 
 .like-btn.active    { background: rgba(72,199,116,0.15); border-color: #48c774; color: #2d8f52; }
 .dislike-btn.active { background: rgba(200,80,80,0.12);  border-color: #c85050; color: #9b2335; }
