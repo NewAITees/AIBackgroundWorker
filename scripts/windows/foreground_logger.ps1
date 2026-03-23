@@ -189,20 +189,28 @@ function Get-ActiveWindowInfo {
 
 $scriptDir = Split-Path $MyInvocation.MyCommand.Path -Parent
 
+function Resolve-ScriptPath([string]$BaseDir, [string]$RelativePath) {
+    return [System.IO.Path]::GetFullPath([System.IO.Path]::Combine($BaseDir, $RelativePath))
+}
+
 # Default privacy config path
 if (-not $PrivacyConfigPath) {
-    $PrivacyConfigPath = Join-Path $scriptDir "..\config\privacy_windows.yaml"
+    $PrivacyConfigPath = Resolve-ScriptPath $scriptDir "..\config\privacy_windows.yaml"
+} elseif (-not [System.IO.Path]::IsPathRooted($PrivacyConfigPath)) {
+    $PrivacyConfigPath = Resolve-ScriptPath $scriptDir $PrivacyConfigPath
 }
 
 # Default output path
 if (-not $OutputPath) {
-    $defaultDir = Join-Path $scriptDir "..\logs"
+    $defaultDir = Resolve-ScriptPath $scriptDir "..\logs"
     if (-not (Test-Path $defaultDir)) {
         New-Item -ItemType Directory -Path $defaultDir -Force | Out-Null
     }
-    $resolved = Resolve-Path $defaultDir
-    $OutputPath = Join-Path $resolved "windows_foreground.jsonl"
+    $OutputPath = Join-Path $defaultDir "windows_foreground.jsonl"
 } else {
+    if (-not [System.IO.Path]::IsPathRooted($OutputPath)) {
+        $OutputPath = Resolve-ScriptPath $scriptDir $OutputPath
+    }
     $outDir = Split-Path $OutputPath -Parent
     if (-not (Test-Path $outDir)) {
         New-Item -ItemType Directory -Path $outDir -Force | Out-Null
@@ -248,7 +256,7 @@ function Flush-Record($info, $fromTime, $toTime, $isIdle) {
         is_idle       = $isIdle
     }
     $json = $obj | ConvertTo-Json -Compress
-    Add-Content -Path $OutputPath -Value $json
+    Add-Content -Path $OutputPath -Value $json -Encoding utf8
 }
 
 $currentInfo = $null

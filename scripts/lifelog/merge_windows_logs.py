@@ -30,6 +30,16 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _decode_jsonl_line(raw_line: bytes) -> str:
+    """Windows foreground logger の混在エンコーディング行をできるだけ救済する。"""
+    for encoding in ("utf-8", "cp932"):
+        try:
+            return raw_line.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return raw_line.decode("utf-8", errors="replace")
+
+
 def parse_iso_datetime(dt_str: str) -> datetime:
     """
     ISO 8601形式の日時文字列をdatetimeに変換.
@@ -57,9 +67,7 @@ def run_db_with_retry(db: DatabaseManager, fn):
     return fn()
 
 
-def get_or_create_app(
-    db: DatabaseManager, process_name: str, process_path: str
-) -> int:
+def get_or_create_app(db: DatabaseManager, process_name: str, process_path: str) -> int:
     """
     アプリケーション情報を取得または作成.
 
@@ -152,14 +160,15 @@ def merge_windows_logs(
 
     try:
         line_num = last_processed_line
-        with open(source_file, "r", encoding="utf-8", errors="replace") as f:
-            for line_num, line in enumerate(f, start=1):
+        with open(source_file, "rb") as f:
+            for line_num, raw_line in enumerate(f, start=1):
                 # 処理済みの行はスキップ
                 if line_num <= last_processed_line:
                     skipped_count += 1
                     continue
 
                 try:
+                    line = _decode_jsonl_line(raw_line)
                     record = json.loads(line.strip())
 
                     # 必須フィールドチェック
