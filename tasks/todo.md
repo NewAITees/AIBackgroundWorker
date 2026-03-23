@@ -9,6 +9,10 @@
 
 - [ ] Windows 移行時: `WindowsForegroundWorker` に `powershell.exe foreground_logger.ps1` の起動管理を追加する
       → 現時点は foreground_logger.ps1 は別途起動する運用のまま
+- [x] `foreground_logger.ps1` を `\\wsl.localhost\...` から起動したとき `privacy_windows.yaml` が見つからない問題を整理する
+      → `Resolve-ScriptPath` で `scriptDir` 基準の絶対パス解決済み
+- [x] `windows_foreground.jsonl` の文字コード混在で `merge_windows_logs` が `Invalid \\escape` warning を出す問題を修正する
+      → PowerShell 出力を UTF-8 固定にし、マージ側でも既存の CP932 行を救済できるようにする
 
 ### 削除しない候補（保持）
 
@@ -32,9 +36,12 @@
 - [x] `しばらくお待ちください...` 系 entry が大量発生している原因を特定して修正する
       → `importer.py` にノイズタイトルスキップ（`_NOISE_TITLE_PATTERNS`）を追加
       → `summarize_browser()` の SQL に WHERE フィルタ + `GROUP BY url` で重複排除
+- [x] タイムライン上の時刻表示が誤っている問題を調査する
+      → entry の timestamp、表示上の時刻、元データの時刻のどこでずれているかを確認する
+      → hourly summary 生成時刻は実行環境のローカルタイムゾーンを自動検出、フロント表示はブラウザのローカルタイムゾーンを使う
 - [x] `system_log` の対象時刻とカード表示時刻のずれを修正する
-      → `make_timestamp()` が `hour:30` 固定（意図的仕様: 1時間の中点に配置）で「01時 → 01:30表示」は想定動作
-      → 「01時が10:30表示」という元の症状は再現しないことを確認済み（クローズ）
+      → 例: `2026-03-19 01時のシステムイベント` なのにカード表示が `03/19 10:30` になっている
+      → worker 集計時の時間帯判定・保存 timestamp は実行環境のローカルタイムゾーン、フロント表示はブラウザのローカルタイムゾーンへ揃えた
 - [ ] 画面に出ている結果が「現状の正しい仕様」か「仮実装由来」かの整理
       → browser 取り込み・要約・分類・UI 表示の各段で、意図した挙動と暫定挙動を明文化する
 
@@ -62,6 +69,106 @@
 
 ---
 
+## ニュースフィードバック機能（2本立て）
+
+> 背景: hourly news カードは現在 Markdown 文字列で記事を列挙するだけ。
+> ユーザーが個別記事に反応できる仕組みと、その反応を将来の記事選択に活かす仕組みを別タスクとして実装する。
+
+### N-1. 記事フィードバック UI（インタラクション層）
+
+> 目的: hourly news カード内の各記事に対してユーザーが反応を返せるようにする。
+> 既存の自動生成レポートは変更しない。
+
+#### 設計
+
+```
+hourly news カードの各記事行
+  ├── [レポート生成] ボタン
+  │     → POST /api/news/articles/{id}/generate_report
+  │     → Stage2（深掘り検索）+ Stage3（レポート生成）を即時実行
+  │     → 完了後、生成したレポート entry をタイムラインに追加
+  │     → feedback_type: "report_requested" として article_feedback に記録
+  ├── [👍] ボタン
+  │     → POST /api/news/articles/{id}/feedback  { type: "positive" }
+  │     → article_feedback に記録（レポートは生成しない）
+  └── [👎] ボタン
+        → POST /api/news/articles/{id}/feedback  { type: "negative" }
+        → article_feedback に記録
+```
+
+#### データ
+
+```sql
+CREATE TABLE article_feedback (
+    article_id INTEGER PRIMARY KEY REFERENCES collected_info(id),
+    sentiment TEXT, -- 'positive' | 'negative' | NULL
+    report_status TEXT NOT NULL DEFAULT 'none', -- 'none' | 'requested' | 'running' | 'done' | 'failed'
+    report_entry_id TEXT,
+    updated_at TEXT NOT NULL
+);
+```
+
+#### 実装ステップ
+
+- [x] `ai_secretary.db` に `article_feedback` テーブルを追加する
+      → 旧 `feedback_type / created_at` 形式から `sentiment / report_status / report_entry_id / updated_at` へ移行する
+- [x] `GET /api/news/articles` エンドポイントを新規作成する
+      → `related_ids` から `collected-info-{id}` を受け取り、記事詳細一覧を返す
+      → レスポンスに `feedback: { sentiment, report_status, report_entry_id }` を含める
+- [x] `POST /api/news/articles/{id}/feedback` エンドポイントを新規作成する
+      → `{ type: "positive" | "negative" }` を受け取りトグル処理する
+      → `positive` と `negative` は排他にする
+- [x] `POST /api/news/articles/{id}/generate_report` エンドポイントを新規作成する
+      → `sentiment = positive` と `report_status = requested` を保存する
+      → バックグラウンドで Stage2+Stage3 を実行（既存の jobs を呼び出す）
+      → `requested / running / done` では多重実行しない
+      → 完了後、`report_status = done` と `report_entry_id` を保存する
+- [x] フロントエンド: hourly news カードを展開すると記事リストが表示される UI を実装する
+      → `GET /api/news/articles` を叩いて記事を取得
+      → 各記事行に [レポート生成] / [👍] / [👎] ボタンを配置
+      → `👍/👎` はトグル、同時点灯しない
+      → レポート生成済み状態と進行状態をボタンに反映する
+
+---
+
+### N-2. フィードバックによる Stage1 スコアチューニング（学習層）
+
+> 目的: N-1 で蓄積されたフィードバックを Stage1 の importance/relevance 評価に反映し、
+> 将来の記事選択精度を上げる。N-1 の実装・運用後に着手する。
+
+#### 設計
+
+```
+Stage1 実行時（analyze_pending_articles）
+  ↓
+article_feedback から直近 N 件の positive / negative 記事を取得
+  ↓
+LLM プロンプトに注入:
+  「過去に良いと評価された記事の例: ...（タイトル・カテゴリ・ソース）」
+  「過去に不要と評価された記事の例: ...（タイトル・カテゴリ・ソース）」
+  ↓
+LLM がそれを参考に importance_score / relevance_score を付ける
+```
+
+#### フィードバック集計の補助指標（任意で追加）
+
+- ソース別 positive 率（`source_name` × feedback_type の集計）
+- カテゴリ別 positive 率（`category` × feedback_type の集計）
+- → Stage1 のシステムプロンプトで「このソースはユーザーが好む傾向あり」と補足する
+
+#### 実装ステップ
+
+- [ ] `article_feedback` からプロンプト用サマリーを生成する関数を作成する
+      → `lifelog-system/src/info_collector/repository.py` に `get_feedback_summary()` を追加
+      → 直近 30 件の positive / negative それぞれのタイトル・カテゴリ・ソースを取得
+- [ ] `analyze_pending.py` の Stage1 プロンプトにフィードバックサマリーを注入する
+      → `theme_extraction.py` のシステムプロンプトに feedback コンテキストを追加
+      → フィードバックが 0 件の場合はプロンプト変更なし（既存動作を維持）
+- [ ] ソース別・カテゴリ別の positive 率を `GET /api/health` または専用エンドポイントで確認できるようにする
+      → デバッグ・チューニング用
+
+---
+
 ## フェーズ5: M2 実用化
 
 > 参照: 要件書 §21.2
@@ -76,8 +183,8 @@
 
 ### 5-1. タイムライン実用強化
 
-- [ ] 右ペインの種別変更をボタン一覧からドロップダウン選択に変更する
-      → 現状は `detail-quick-types` に全種別ボタンが並ぶ。クリックでドロップダウンが開き、変更先を選択する形にする
+- [x] 右ペインの種別変更をボタン一覧からドロップダウン選択に変更する
+      → `detail-quick-type-select` としてドロップダウン実装済み（アンドゥ機能付き）
 - [x] フィルター UI をメニュー（折り畳みパネルやドロワー）に移動する
       → タイムライン上部のフィルター行をコンパクトにまとめ、メニューアイコンで開閉する
       → 今回はこのタスクを先に対応する
@@ -107,11 +214,11 @@
 
 ### 5-4. 設定ページ
 
-- [ ] AI 性格・System Prompt 設定（要件書 §15.4）
-- [ ] Ollama 接続設定（ベースURL・モデル名・タイムアウト）（要件書 §17.1）
-- [ ] RSS フィード登録（要件書 §17.1）
-- [ ] AI 処理 ON/OFF の設定ページ対応（要件書 §15.5）
-      → pause/resume API とトップバー切り替えは実装済み。設定画面からも操作できるようにする
+- [x] AI 性格・System Prompt 設定（要件書 §15.4）
+- [x] Ollama 接続設定（ベースURL・モデル名・タイムアウト）（要件書 §17.1）
+- [x] RSS フィード登録（要件書 §17.1）
+- [x] AI 処理 ON/OFF の設定ページ対応（要件書 §15.5）
+      → Worker 単位の ON/OFF チェックボックスとして設定ページに実装済み
 - [ ] Big Five フィードバックの有効/無効（要件書 §17.1）
 
 ### 5-5. カレンダービュー

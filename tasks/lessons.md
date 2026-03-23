@@ -213,3 +213,13 @@
 - 対策: `DatabaseManager` を保持するクラスには必ず `close()` を実装し、呼び出し側（worker の finally など）でその close を呼ぶ。`__del__` はフォールバックに留め、設計上の主経路にしない。
 - パターン: ResourceWarning 修正を「`sqlite3.connect` を直接呼んでいる行を直す」として進めると、接続が `_get_connection()` 経由でスレッド内に作られているケースを見落とす。症状（警告の件数・スタックの出所）から接続を作ったスレッドを逆引きしないと、修正対象がずれ続ける。
 - 対策: ResourceWarning が出たら「どのスレッドが接続を作ったか」を件数・スタックから特定してから修正箇所を決める。
+
+## 2026-03-23
+- パターン: Windows PowerShell から JSONL を追記するとき、`Add-Content` の既定エンコーディングに任せると CP932 系で書かれ、WSL 側で UTF-8 前提読込したときに日本語タイトル中の `0x5c` が JSON の `\` と誤解されて `Invalid \escape` warning になる。
+- 対策: Windows 側 JSONL 出力は `Add-Content -Encoding utf8` のように明示して UTF-8 固定にする。読み込み側も既存データ救済のため、少なくとも `utf-8` → `cp932` の順で行単位 decode fallback を持たせる。
+- パターン: `foreground_logger.ps1` を `\\wsl.localhost\Ubuntu\...` の UNC パスから直接起動すると、スクリプト本体は動いて JSONL 出力もできる一方、既定の相対 `PrivacyConfigPath`（`..\config\privacy_windows.yaml`）が期待どおりに見つからず、`Privacy config not found` で既定値運用になることがある。
+- 対策: UNC 経由で運用する場合は `-PrivacyConfigPath` を絶対指定するか、スクリプト側で `Join-Path $scriptDir "..\..."` のような未解決相対パスをそのまま使わず、`[System.IO.Path]::GetFullPath([System.IO.Path]::Combine(...))` で `scriptDir` 基準の絶対パスへ正規化する。起動できたことだけで privacy 設定読込成功とみなさない。
+- パターン: `system_log` や hourly summary の時刻を SQLite の `localtime` や実行環境任せで扱うと、WSL とブラウザでタイムゾーン解釈がずれたときに `01時のシステムイベント` が `10:30` 表示になる。
+- 対策: 個人用の単一PC運用では、worker の時間帯判定と entry 保存 timestamp は `datetime.now().astimezone()` で得たローカルタイムゾーンに揃え、フロント表示はブラウザのローカルタイムゾーンを使う。SQLite 側も `localtime` 依存を避け、検出したUTCオフセットを明示して集計する。
+- パターン: UI の `👍/👎` トグルと「レポート生成済み/進行中」状態を 1つの `feedback_type` 文字列で兼用すると、排他制御・多重実行防止・生成済み表示がすぐ破綻する。
+- 対策: 記事フィードバックは履歴1列ではなく、少なくとも `sentiment` と `report_status` を分けて持つ。個人用アプリでも `positive/negative` と `requested/running/done/failed` は別軸として扱う。
