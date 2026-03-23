@@ -10,7 +10,11 @@ from typing import Any
 from ..config import config
 from ..routers.workspace import resolve_workspace_path
 from ..services.ai_control import ai_control_service
-from ..services.hourly_summary_importer import import_missing_hours, resolve_context
+from ..services.hourly_summary_importer import (
+    get_local_timezone,
+    import_missing_hours,
+    resolve_context,
+)
 
 
 @dataclass
@@ -49,7 +53,7 @@ class HourlySummaryWorker:
             self._status.last_generated = 0
             return 0
 
-        end_hour = datetime.now().astimezone().replace(
+        end_hour = datetime.now(get_local_timezone()).replace(
             minute=0, second=0, microsecond=0
         ) - timedelta(hours=1)
         lookback_hours = max(config.lifelog.hourly_summary_lookback_hours, 1)

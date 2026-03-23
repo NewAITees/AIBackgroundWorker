@@ -6,6 +6,7 @@ from datetime import UTC, date, datetime, timedelta
 
 from src.config import config
 from src.models.entry import Entry, EntryMeta, EntrySource, EntryStatus, EntryType
+from src.services.hourly_summary_importer import get_local_timezone
 from src.workers.daily_digest_worker import DailyDigestWorker
 from src.workers.hourly_summary_worker import HourlySummaryWorker
 
@@ -65,11 +66,10 @@ def test_hourly_summary_worker_imports_missing_hours(monkeypatch, tmp_path):
         "src.workers.hourly_summary_worker.import_missing_hours", _import_missing_hours
     )
 
-    # コードと同じ方法で期待値を算出（ローカルタイムゾーンに依存しない比較）
-    naive_now = datetime(2026, 3, 19, 10, 15)
-    expected_end = naive_now.astimezone().replace(minute=0, second=0, microsecond=0) - timedelta(
-        hours=1
-    )
+    # コードと同じ方法で期待値を算出（ローカルタイムゾーン自動検出）
+    expected_end = fixed_now.astimezone(get_local_timezone()).replace(
+        minute=0, second=0, microsecond=0
+    ) - timedelta(hours=1)
     expected_start = expected_end - timedelta(hours=2)  # lookback_hours=3 → -2h
 
     assert worker._sync_once_blocking() == 4
