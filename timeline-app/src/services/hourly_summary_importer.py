@@ -370,7 +370,7 @@ def summarize_news(
         FROM collected_info
         WHERE date(datetime(fetched_at, 'localtime')) = ?
           AND strftime('%H', datetime(fetched_at, 'localtime')) = ?
-        ORDER BY fetched_at DESC
+        ORDER BY source_name, fetched_at DESC
         LIMIT 20
         """,
         (target_date.isoformat(), f"{hour:02d}"),
@@ -378,15 +378,23 @@ def summarize_news(
     if not rows:
         return None
 
+    # source_name でグループ分け
+    groups: dict[str, list[tuple]] = {}
+    for row in rows:
+        source_name = row[3] or "その他"
+        groups.setdefault(source_name, []).append(row)
+
     lines = [f"{hour:02d}時台に取得したニュース一覧 ({len(rows)}件)", ""]
     related_ids: list[str] = []
-    for row_id, title, url, source_name, snippet in rows:
-        label = str(title).strip() or str(url)
-        source = f" ({source_name})" if source_name else ""
-        lines.append(f"- [{label}]({url}){source}")
-        if snippet:
-            lines.append(f"  - {' '.join(str(snippet).split())[:180]}")
-        related_ids.append(f"collected-info-{row_id}")
+    for source_name, group_rows in groups.items():
+        lines.append(f"### {source_name}")
+        for row_id, title, url, _, snippet in group_rows:
+            label = str(title).strip() or str(url)
+            lines.append(f"- [{label}]({url})")
+            if snippet:
+                lines.append(f"  - {' '.join(str(snippet).split())[:180]}")
+            related_ids.append(f"collected-info-{row_id}")
+        lines.append("")
 
     return Entry(
         id=make_entry_id(target_date, hour, "news"),
