@@ -17,6 +17,9 @@ router = APIRouter()
 _RSS_PATH = (
     Path(__file__).resolve().parents[3] / "lifelog-system/config/info_collector/rss_feeds.txt"
 )
+_SEARCH_QUERIES_PATH = (
+    Path(__file__).resolve().parents[3] / "lifelog-system/config/info_collector/search_queries.txt"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -62,6 +65,7 @@ async def get_settings() -> dict[str, Any]:
         },
         **worker_control_service.get_all(),
         "feeds": _read_feeds(),
+        "search_queries": _read_search_queries(),
     }
 
 
@@ -130,6 +134,11 @@ async def list_feeds() -> dict[str, Any]:
     return {"feeds": _read_feeds()}
 
 
+@router.get("/settings/search-queries")
+async def list_search_queries() -> dict[str, Any]:
+    return {"search_queries": _read_search_queries()}
+
+
 # ---------------------------------------------------------------------------
 # POST /api/settings/feeds
 # ---------------------------------------------------------------------------
@@ -171,6 +180,37 @@ async def delete_feed(req: FeedDeleteRequest) -> dict[str, Any]:
     return {"feeds": updated}
 
 
+class SearchQueryAddRequest(BaseModel):
+    query: str
+
+
+@router.post("/settings/search-queries", status_code=201)
+async def add_search_query(req: SearchQueryAddRequest) -> dict[str, Any]:
+    query = req.query.strip()
+    if not query:
+        raise HTTPException(status_code=422, detail="検索クエリを入力してください")
+    queries = _read_search_queries()
+    if query in queries:
+        raise HTTPException(status_code=409, detail="既に登録済みです")
+    queries.append(query)
+    _write_search_queries(queries)
+    return {"search_queries": queries}
+
+
+class SearchQueryDeleteRequest(BaseModel):
+    query: str
+
+
+@router.delete("/settings/search-queries")
+async def delete_search_query(req: SearchQueryDeleteRequest) -> dict[str, Any]:
+    queries = _read_search_queries()
+    updated = [q for q in queries if q != req.query.strip()]
+    if len(updated) == len(queries):
+        raise HTTPException(status_code=404, detail="検索クエリが見つかりません")
+    _write_search_queries(updated)
+    return {"search_queries": updated}
+
+
 # ---------------------------------------------------------------------------
 # ヘルパー
 # ---------------------------------------------------------------------------
@@ -186,6 +226,18 @@ def _read_feeds() -> list[str]:
 def _write_feeds(feeds: list[str]) -> None:
     header = "# RSSフィードURLを1行ずつ記載してください（コメント行は無視されます）\n"
     _RSS_PATH.write_text(header + "\n".join(feeds) + "\n", encoding="utf-8")
+
+
+def _read_search_queries() -> list[str]:
+    if not _SEARCH_QUERIES_PATH.exists():
+        return []
+    lines = _SEARCH_QUERIES_PATH.read_text(encoding="utf-8").splitlines()
+    return [ln.strip() for ln in lines if ln.strip() and not ln.strip().startswith("#")]
+
+
+def _write_search_queries(queries: list[str]) -> None:
+    header = "# ベースとなる検索クエリを1行ずつ記載してください（コメント行は無視されます）\n"
+    _SEARCH_QUERIES_PATH.write_text(header + "\n".join(queries) + "\n", encoding="utf-8")
 
 
 def _save_config() -> None:

@@ -17,6 +17,7 @@ class EntryType(str, Enum):
     todo = "todo"
     todo_done = "todo_done"
     news = "news"
+    search = "search"
     system_log = "system_log"
     memo = "memo"
 

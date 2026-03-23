@@ -22,7 +22,7 @@ const state = {
   responsiveInitialized: false,
   filterMenuOpen: false,
   filters: {
-    types: ["chat", "diary", "event", "todo", "news", "memo", "system_log"],
+    types: ["chat", "diary", "event", "todo", "news", "search", "memo", "system_log"],
     search: "",
     todoOnly: false,
     showAi: true,
@@ -34,7 +34,7 @@ const refs = {};
 const CHAT_DRAFT_KEY_PREFIX = "timeline-chat-draft:";
 const INITIAL_TIMELINE_HOURS = 12;
 const PAGING_TIMELINE_HOURS = 24;
-const TIMELINE_FILTER_OPTIONS = ["chat", "diary", "event", "todo", "news", "memo", "system_log"];
+const TIMELINE_FILTER_OPTIONS = ["chat", "diary", "event", "todo", "news", "search", "memo", "system_log"];
 const DETAIL_TYPE_OPTIONS = [
   "chat_user",
   "chat_ai",
@@ -44,6 +44,7 @@ const DETAIL_TYPE_OPTIONS = [
   "todo_done",
   "memo",
   "news",
+  "search",
   "system_log",
 ];
 
@@ -133,6 +134,10 @@ function cacheRefs() {
   refs.sFeedUrl = document.getElementById("s-feed-url");
   refs.sFeedAdd = document.getElementById("s-feed-add");
   refs.sFeedStatus = document.getElementById("s-feed-status");
+  refs.sSearchQueries = document.getElementById("s-search-queries");
+  refs.sSearchQuery = document.getElementById("s-search-query");
+  refs.sSearchQueryAdd = document.getElementById("s-search-query-add");
+  refs.sSearchQueryStatus = document.getElementById("s-search-query-status");
 }
 
 function bindEvents() {
@@ -173,6 +178,7 @@ function bindEvents() {
   refs.sAiSave.addEventListener("click", saveAiSettings);
   refs.sPipelineSave.addEventListener("click", savePipelineSettings);
   refs.sFeedAdd.addEventListener("click", addFeed);
+  refs.sSearchQueryAdd.addEventListener("click", addSearchQuery);
   document.addEventListener("keydown", handleGlobalKeydown);
   document.addEventListener("click", handleDocumentClick);
   window.addEventListener("resize", syncResponsivePaneState);
@@ -439,7 +445,7 @@ function buildEntryCard(entry) {
     actionsEl.appendChild(checkbox);
   }
 
-  if (entry.type === "news" && entry.related_ids && entry.related_ids.length > 0) {
+  if (isCollectedInfoEntry(entry) && entry.related_ids && entry.related_ids.length > 0) {
     const articleIds = entry.related_ids.filter((id) => id.startsWith("collected-info-"));
     if (articleIds.length > 0) {
       const panel = document.createElement("div");
@@ -448,13 +454,13 @@ function buildEntryCard(entry) {
       const expandBtn = document.createElement("button");
       expandBtn.className = "news-expand-btn";
       expandBtn.type = "button";
-      expandBtn.textContent = `記事を見る (${articleIds.length})`;
+      expandBtn.textContent = `${entry.type === "search" ? "検索結果" : "記事"}を見る (${articleIds.length})`;
       expandBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         const isOpen = !panel.classList.contains("hidden");
         if (isOpen) {
           panel.classList.add("hidden");
-          expandBtn.textContent = `記事を見る (${articleIds.length})`;
+          expandBtn.textContent = `${entry.type === "search" ? "検索結果" : "記事"}を見る (${articleIds.length})`;
         } else {
           panel.classList.remove("hidden");
           expandBtn.textContent = "閉じる";
@@ -470,6 +476,10 @@ function buildEntryCard(entry) {
   }
 
   return node;
+}
+
+function isCollectedInfoEntry(entry) {
+  return (entry.type === "news" || entry.type === "search") && Array.isArray(entry.related_ids);
 }
 
 async function loadNewsArticles(articleIds, panel) {
@@ -1279,6 +1289,7 @@ async function loadSettings() {
     refs.sDeepLimit.value = s.pipeline.deep_limit;
     renderWorkers(s.workers);
     renderFeeds(s.feeds);
+    renderSearchQueries(s.search_queries ?? []);
   } catch (e) {
     refs.sAiStatus.textContent = e.message;
   }
@@ -1288,7 +1299,7 @@ function renderWorkers(workers) {
   const labels = {
     activity: "活動ログ収集",
     browser: "ブラウザ履歴",
-    info: "RSS / ニュース収集",
+    info: "RSS / ニュース / 検索収集",
     analysis: "RSS 分析パイプライン",
     hourly_summary: "1時間まとめ生成",
     daily_digest: "日次振り返り",
@@ -1340,6 +1351,29 @@ function renderFeeds(feeds) {
     row.appendChild(label);
     row.appendChild(btn);
     refs.sFeeds.appendChild(row);
+  }
+}
+
+function renderSearchQueries(queries) {
+  refs.sSearchQueries.innerHTML = "";
+  if (!queries.length) {
+    refs.sSearchQueries.textContent = "登録済み検索クエリなし";
+    return;
+  }
+  for (const query of queries) {
+    const row = document.createElement("div");
+    row.className = "settings-feed-row";
+    const label = document.createElement("span");
+    label.textContent = query;
+    label.title = query;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "ghost-button";
+    btn.textContent = "削除";
+    btn.addEventListener("click", () => deleteSearchQuery(query));
+    row.appendChild(label);
+    row.appendChild(btn);
+    refs.sSearchQueries.appendChild(row);
   }
 }
 
@@ -1418,6 +1452,37 @@ async function deleteFeed(url) {
     renderFeeds(res.feeds);
   } catch (e) {
     refs.sFeedStatus.textContent = e.message;
+  }
+}
+
+async function addSearchQuery() {
+  const query = refs.sSearchQuery.value.trim();
+  if (!query) return;
+  refs.sSearchQueryStatus.textContent = "追加中...";
+  try {
+    const res = await api("/api/settings/search-queries", {
+      method: "POST",
+      body: JSON.stringify({ query }),
+    });
+    refs.sSearchQuery.value = "";
+    refs.sSearchQueryStatus.textContent = "追加しました";
+    renderSearchQueries(res.search_queries);
+  } catch (e) {
+    refs.sSearchQueryStatus.textContent = e.message;
+  }
+}
+
+async function deleteSearchQuery(query) {
+  refs.sSearchQueryStatus.textContent = "削除中...";
+  try {
+    const res = await api("/api/settings/search-queries", {
+      method: "DELETE",
+      body: JSON.stringify({ query }),
+    });
+    refs.sSearchQueryStatus.textContent = "削除しました";
+    renderSearchQueries(res.search_queries);
+  } catch (e) {
+    refs.sSearchQueryStatus.textContent = e.message;
   }
 }
 

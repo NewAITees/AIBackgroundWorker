@@ -51,42 +51,48 @@ def test_sync_once_blocking_runs_pipeline_and_updates_status(monkeypatch, tmp_pa
     monkeypatch.setattr(config.ai, "ollama_model", "qwen3.5:9b")
     monkeypatch.setattr(config.ai, "timeout_seconds", 77)
     monkeypatch.setattr(config.lifelog, "analyze_batch_size", 12)
-    monkeypatch.setattr(config.lifelog, "deep_batch_size", 4)
+    monkeypatch.setattr(config.lifelog, "deep_limit", 2)
     monkeypatch.setattr(config.lifelog, "deep_min_importance", 0.55)
     monkeypatch.setattr(config.lifelog, "deep_min_relevance", 0.65)
     monkeypatch.setattr(config.lifelog, "theme_min_articles", 2)
     monkeypatch.setattr(config.lifelog, "theme_skip_existing", False)
 
-    calls: dict[str, object] = {}
+    calls: dict[str, list] = {"deep": [], "report": []}
 
     def _analyze_pending_articles(*, db_path, batch_size):
-        calls["analyze"] = {"db_path": db_path, "batch_size": batch_size}
         assert os.environ["OLLAMA_BASE_URL"] == "http://127.0.0.1:11436"
         assert os.environ["OLLAMA_MODEL"] == "qwen3.5:9b"
         assert os.environ["OLLAMA_TIMEOUT"] == "77"
+        assert batch_size == 12
         return 3
 
-    def _deep_research_articles(*, db_path, batch_size, min_importance, min_relevance):
-        calls["deep"] = {
-            "db_path": db_path,
-            "batch_size": batch_size,
-            "min_importance": min_importance,
-            "min_relevance": min_relevance,
-        }
-        return 2
+    def _deep_research_articles(*, db_path, article_id):
+        calls["deep"].append(article_id)
+        return 1
 
-    def _generate_theme_reports(*, db_path, output_dir, min_articles, skip_existing):
-        calls["report"] = {
-            "db_path": db_path,
-            "output_dir": output_dir,
-            "min_articles": min_articles,
-            "skip_existing": skip_existing,
-        }
-        return [output_dir / "r1.md", output_dir / "r2.md"]
+    def _generate_theme_reports(*, db_path, output_dir, min_articles, skip_existing, article_id):
+        calls["report"].append(article_id)
+        return [output_dir / f"r{article_id}.md"]
+
+    # InfoCollectorRepository モック: 2件の候補を返す
+    class _MockRepo:
+        def __init__(self, _db_path):
+            pass
+
+        def fetch_deep_research_targets(self, *, min_importance, min_relevance, limit):
+            assert min_importance == 0.55
+            assert min_relevance == 0.65
+            assert limit == 2
+            return [{"article_id": 10}, {"article_id": 20}]
 
     monkeypatch.setattr(
         "src.workers.analysis_pipeline_worker._load_pipeline_functions",
-        lambda: (_analyze_pending_articles, _deep_research_articles, _generate_theme_reports),
+        lambda: (
+            _analyze_pending_articles,
+            _deep_research_articles,
+            _generate_theme_reports,
+            _MockRepo,
+        ),
     )
 
     old_base_url = os.environ.get("OLLAMA_BASE_URL")
@@ -96,6 +102,7 @@ def test_sync_once_blocking_runs_pipeline_and_updates_status(monkeypatch, tmp_pa
 
     result = worker._sync_once_blocking()
 
+    # analyzed=3, deep=2 (1×2記事), reports=2 (1×2記事)
     assert result == 7
     status = worker.get_status()
     assert status["db_path"] == str(db_path)
@@ -106,19 +113,8 @@ def test_sync_once_blocking_runs_pipeline_and_updates_status(monkeypatch, tmp_pa
     assert status["last_run_at"] is not None
     assert status["last_error"] is None
 
-    assert calls["analyze"] == {"db_path": db_path, "batch_size": 12}
-    assert calls["deep"] == {
-        "db_path": db_path,
-        "batch_size": 4,
-        "min_importance": 0.55,
-        "min_relevance": 0.65,
-    }
-    assert calls["report"] == {
-        "db_path": db_path,
-        "output_dir": output_dir,
-        "min_articles": 2,
-        "skip_existing": False,
-    }
+    assert calls["deep"] == [10, 20]
+    assert calls["report"] == [10, 20]
 
     assert os.environ.get("OLLAMA_BASE_URL") == old_base_url
     assert os.environ.get("OLLAMA_MODEL") == old_model
@@ -145,9 +141,16 @@ def test_sync_once_blocking_records_error_and_reraises(monkeypatch, tmp_path):
     def _boom(*, db_path, batch_size):
         raise RuntimeError("analysis failed")
 
+    class _MockRepo:
+        def __init__(self, _db_path):
+            pass
+
+        def fetch_deep_research_targets(self, **_):
+            return []
+
     monkeypatch.setattr(
         "src.workers.analysis_pipeline_worker._load_pipeline_functions",
-        lambda: (_boom, lambda **_: 0, lambda **_: []),
+        lambda: (_boom, lambda **_: 0, lambda **_: [], _MockRepo),
     )
 
     try:

@@ -14,7 +14,8 @@ from ..models.entry import Entry, EntryMeta, EntrySource, EntryType
 from ..storage.daily_reader import read_daily_entries
 from ..storage.persistence import persist_entry
 
-HOURLY_SUFFIXES = ("activity", "browser", "news", "system")
+HOURLY_SUFFIXES = ("activity", "browser", "news", "search", "system")
+SOURCE_LIMIT_PER_GROUP = 5
 
 
 @dataclass
@@ -134,6 +135,10 @@ def build_entries_for_hour(
         news = summarize_news(info_conn, target_date, hour)
         if news:
             entries.append(news)
+    if _allow("search", allowed_suffixes):
+        search = summarize_search(info_conn, target_date, hour)
+        if search:
+            entries.append(search)
     entries.extend(summarize_reports(info_conn, target_date, hour, existing_ids=existing_ids))
     return entries
 
@@ -394,42 +399,20 @@ def summarize_news(
     target_date: date,
     hour: int,
 ) -> Entry | None:
-    rows = conn.execute(
-        """
-        SELECT id, COALESCE(title, ''), url, COALESCE(source_name, ''), COALESCE(snippet, '')
-        FROM collected_info
-        WHERE date(datetime(fetched_at, ?)) = ?
-          AND strftime('%H', datetime(fetched_at, ?)) = ?
-        ORDER BY source_name, fetched_at DESC
-        LIMIT 20
-        """,
-        (
-            get_sqlite_localtime_modifier(),
-            target_date.isoformat(),
-            get_sqlite_localtime_modifier(),
-            f"{hour:02d}",
-        ),
-    ).fetchall()
+    rows = _fetch_grouped_collected_info_rows(
+        conn,
+        target_date,
+        hour,
+        source_types=("rss", "news"),
+    )
     if not rows:
         return None
 
-    # source_name でグループ分け
-    groups: dict[str, list[tuple]] = {}
-    for row in rows:
-        source_name = row[3] or "その他"
-        groups.setdefault(source_name, []).append(row)
-
-    lines = [f"{hour:02d}時台に取得したニュース一覧 ({len(rows)}件)", ""]
-    related_ids: list[str] = []
-    for source_name, group_rows in groups.items():
-        lines.append(f"### {source_name}")
-        for row_id, title, url, _, snippet in group_rows:
-            label = str(title).strip() or str(url)
-            lines.append(f"- [{label}]({url})")
-            if snippet:
-                lines.append(f"  - {' '.join(str(snippet).split())[:180]}")
-            related_ids.append(f"collected-info-{row_id}")
-        lines.append("")
+    lines, related_ids = _build_collected_info_summary_lines(
+        hour=hour,
+        heading="ニュース",
+        rows=rows,
+    )
 
     return Entry(
         id=make_entry_id(target_date, hour, "news"),
@@ -443,6 +426,104 @@ def summarize_news(
         related_ids=related_ids,
         meta=EntryMeta(source_path="lifelog-system/data/ai_secretary.db"),
     )
+
+
+def summarize_search(
+    conn: sqlite3.Connection,
+    target_date: date,
+    hour: int,
+) -> Entry | None:
+    rows = _fetch_grouped_collected_info_rows(
+        conn,
+        target_date,
+        hour,
+        source_types=("search",),
+    )
+    if not rows:
+        return None
+
+    lines, related_ids = _build_collected_info_summary_lines(
+        hour=hour,
+        heading="検索結果",
+        rows=rows,
+    )
+
+    return Entry(
+        id=make_entry_id(target_date, hour, "search"),
+        type=EntryType.search,
+        title=f"{target_date.isoformat()} {hour:02d}時の検索結果",
+        summary=f"{hour:02d}時台に取得した検索結果 {len(rows)} 件",
+        content="\n".join(lines),
+        timestamp=make_timestamp(target_date, hour),
+        source=EntrySource.imported,
+        workspace_path=str(Path(to_local_path(config.workspace.default_path)).resolve()),
+        related_ids=related_ids,
+        meta=EntryMeta(source_path="lifelog-system/data/ai_secretary.db"),
+    )
+
+
+def _fetch_grouped_collected_info_rows(
+    conn: sqlite3.Connection,
+    target_date: date,
+    hour: int,
+    *,
+    source_types: tuple[str, ...],
+) -> list[tuple]:
+    placeholders = ", ".join("?" for _ in source_types)
+    rows = conn.execute(
+        f"""
+        SELECT id, COALESCE(title, ''), url, COALESCE(source_name, ''), COALESCE(snippet, '')
+        FROM collected_info
+        WHERE date(datetime(fetched_at, ?)) = ?
+          AND strftime('%H', datetime(fetched_at, ?)) = ?
+          AND source_type IN ({placeholders})
+        ORDER BY source_name, fetched_at DESC
+        """,
+        (
+            get_sqlite_localtime_modifier(),
+            target_date.isoformat(),
+            get_sqlite_localtime_modifier(),
+            f"{hour:02d}",
+            *source_types,
+        ),
+    ).fetchall()
+
+    groups: dict[str, list[tuple]] = {}
+    for row in rows:
+        source_name = row[3] or "その他"
+        group_rows = groups.setdefault(source_name, [])
+        if len(group_rows) < SOURCE_LIMIT_PER_GROUP:
+            group_rows.append(row)
+
+    grouped_rows: list[tuple] = []
+    for source_name in sorted(groups):
+        grouped_rows.extend(groups[source_name])
+    return grouped_rows
+
+
+def _build_collected_info_summary_lines(
+    *,
+    hour: int,
+    heading: str,
+    rows: list[tuple],
+) -> tuple[list[str], list[str]]:
+    groups: dict[str, list[tuple]] = {}
+    for row in rows:
+        source_name = row[3] or "その他"
+        groups.setdefault(source_name, []).append(row)
+
+    lines = [f"{hour:02d}時台に取得した{heading}一覧 ({len(rows)}件)", ""]
+    related_ids: list[str] = []
+    for source_name in sorted(groups):
+        lines.append(f"### {source_name}")
+        for row_id, title, url, _, snippet in groups[source_name]:
+            label = str(title).strip() or str(url)
+            lines.append(f"- [{label}]({url})")
+            if snippet:
+                lines.append(f"  - {' '.join(str(snippet).split())[:180]}")
+            related_ids.append(f"collected-info-{row_id}")
+        lines.append("")
+    return lines, related_ids
 
 
 def make_timestamp(target_date: date, hour: int) -> datetime:

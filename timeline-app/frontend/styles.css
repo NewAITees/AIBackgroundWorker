@@ -12,6 +12,7 @@
   --todo-done: #3a7d44;
   --chat: #7c7b74;
   --news: #5d8d86;
+  --search: #826a9a;
   --shadow: 0 20px 40px rgba(77, 59, 35, 0.12);
 }
 
@@ -482,6 +483,10 @@ body[data-mobile-layout="false"] .layout[data-detail-open="false"] .detail-pane 
   border-left-color: var(--news);
   background: rgba(93, 141, 134, 0.07);
 }
+.entry-card[data-type="search"] .entry-card-button   {
+  border-left-color: var(--search);
+  background: rgba(130, 106, 154, 0.08);
+}
 .entry-card[data-type="memo"] .entry-card-button,
 .entry-card[data-type="chat_ai"] .entry-card-button,
 .entry-card[data-type="chat_user"] .entry-card-button {
@@ -548,6 +553,7 @@ body[data-mobile-layout="false"] .layout[data-detail-open="false"] .detail-pane 
 .entry-type[data-type="todo"]::before      { background: var(--todo); }
 .entry-type[data-type="todo_done"]::before { background: var(--todo-done); }
 .entry-type[data-type="news"]::before { background: var(--news); }
+.entry-type[data-type="search"]::before { background: var(--search); }
 .entry-type[data-type="chat_ai"]::before,
 .entry-type[data-type="chat_user"]::before,
 .entry-type[data-type="memo"]::before { background: var(--chat); }

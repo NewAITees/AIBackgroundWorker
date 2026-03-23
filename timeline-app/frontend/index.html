@@ -93,6 +93,10 @@
                     <span>news</span>
                   </label>
                   <label class="timeline-check-item">
+                    <input type="checkbox" data-filter-type="search" checked />
+                    <span>search</span>
+                  </label>
+                  <label class="timeline-check-item">
                     <input type="checkbox" data-filter-type="memo" checked />
                     <span>memo</span>
                   </label>
@@ -199,6 +203,7 @@
                 <option value="todo_done">todo_done</option>
                 <option value="memo">memo</option>
                 <option value="news">news</option>
+                <option value="search">search</option>
                 <option value="system_log">system_log</option>
               </select>
             </label>
@@ -296,6 +301,16 @@
           <button id="s-feed-add" type="button">追加</button>
         </div>
         <span id="s-feed-status" class="settings-status"></span>
+      </section>
+
+      <section class="settings-section">
+        <h3>DuckDuckGo 検索クエリ</h3>
+        <div id="s-search-queries" class="settings-feeds"></div>
+        <div class="settings-feed-add">
+          <input id="s-search-query" type="text" placeholder="例: 生成AI 最新動向" />
+          <button id="s-search-query-add" type="button">追加</button>
+        </div>
+        <span id="s-search-query-status" class="settings-status"></span>
       </section>
     </div>
   </div>

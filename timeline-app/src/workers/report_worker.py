@@ -55,6 +55,7 @@ _RELEVANT_TYPES = {
     EntryType.system_log,
     EntryType.memo,
     EntryType.news,
+    EntryType.search,
     EntryType.diary,
     EntryType.event,
     EntryType.chat_user,

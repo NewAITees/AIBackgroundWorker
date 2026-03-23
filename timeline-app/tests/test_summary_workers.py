@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import sqlite3
 from datetime import UTC, date, datetime, timedelta
 
 from src.config import config
 from src.models.entry import Entry, EntryMeta, EntrySource, EntryStatus, EntryType
-from src.services.hourly_summary_importer import get_local_timezone
+from src.services.hourly_summary_importer import (
+    get_local_timezone,
+    summarize_news,
+    summarize_search,
+)
 from src.workers.daily_digest_worker import DailyDigestWorker
 from src.workers.hourly_summary_worker import HourlySummaryWorker
 
@@ -82,6 +87,133 @@ def test_hourly_summary_worker_imports_missing_hours(monkeypatch, tmp_path):
     assert status["last_range_start"] == expected_start.isoformat()
     assert status["last_range_end"] == expected_end.isoformat()
     assert status["last_sync_at"] is not None
+
+
+def test_summarize_news_filters_out_search_and_limits_per_source():
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        """
+        CREATE TABLE collected_info (
+            id INTEGER PRIMARY KEY,
+            source_type TEXT NOT NULL,
+            title TEXT NOT NULL,
+            url TEXT NOT NULL,
+            content TEXT,
+            snippet TEXT,
+            published_at TEXT,
+            fetched_at TEXT NOT NULL,
+            source_name TEXT,
+            metadata_json TEXT
+        )
+        """
+    )
+    rows = []
+    base_time = "2026-03-23T13:{minute:02d}:00"
+    for idx in range(6):
+        rows.append(
+            (
+                idx + 1,
+                "rss",
+                f"RSS {idx + 1}",
+                f"https://rss.example/{idx + 1}",
+                None,
+                f"rss snippet {idx + 1}",
+                None,
+                base_time.format(minute=idx),
+                "Feed A",
+                None,
+            )
+        )
+    rows.append(
+        (
+            100,
+            "search",
+            "Search result",
+            "https://search.example/1",
+            None,
+            "search snippet",
+            None,
+            "2026-03-23T13:30:00",
+            "DuckDuckGo",
+            None,
+        )
+    )
+    conn.executemany(
+        """
+        INSERT INTO collected_info
+        (id, source_type, title, url, content, snippet, published_at, fetched_at, source_name, metadata_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        rows,
+    )
+
+    entry = summarize_news(conn, date(2026, 3, 23), 22)
+    assert entry is not None
+    assert entry.type == EntryType.news
+    assert len(entry.related_ids) == 5
+    assert "### Feed A" in entry.content
+    assert "DuckDuckGo" not in entry.content
+    assert "RSS 1" not in entry.content
+
+
+def test_summarize_search_uses_search_rows_only():
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        """
+        CREATE TABLE collected_info (
+            id INTEGER PRIMARY KEY,
+            source_type TEXT NOT NULL,
+            title TEXT NOT NULL,
+            url TEXT NOT NULL,
+            content TEXT,
+            snippet TEXT,
+            published_at TEXT,
+            fetched_at TEXT NOT NULL,
+            source_name TEXT,
+            metadata_json TEXT
+        )
+        """
+    )
+    conn.executemany(
+        """
+        INSERT INTO collected_info
+        (id, source_type, title, url, content, snippet, published_at, fetched_at, source_name, metadata_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (
+                1,
+                "search",
+                "Search 1",
+                "https://search.example/1",
+                None,
+                "search snippet",
+                None,
+                "2026-03-23T13:00:00",
+                "DuckDuckGo",
+                None,
+            ),
+            (
+                2,
+                "rss",
+                "RSS 1",
+                "https://rss.example/1",
+                None,
+                "rss snippet",
+                None,
+                "2026-03-23T13:10:00",
+                "Feed A",
+                None,
+            ),
+        ],
+    )
+
+    entry = summarize_search(conn, date(2026, 3, 23), 22)
+    assert entry is not None
+    assert entry.type == EntryType.search
+    assert entry.related_ids == ["collected-info-1"]
+    assert "DuckDuckGo" in entry.content
+    assert "Feed A" not in entry.content
 
 
 def test_daily_digest_worker_target_dates_respects_lookback(monkeypatch):

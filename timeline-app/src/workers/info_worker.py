@@ -83,6 +83,7 @@ class InfoWorker:
             "src.info_collector.auto_runner",
             "--rss",
             "--news",
+            "--search",
             "--limit",
             str(config.lifelog.info_limit),
         ]

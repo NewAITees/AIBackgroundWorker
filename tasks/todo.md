@@ -45,6 +45,16 @@
 - [ ] 画面に出ている結果が「現状の正しい仕様」か「仮実装由来」かの整理
       → browser 取り込み・要約・分類・UI 表示の各段で、意図した挙動と暫定挙動を明文化する
 
+### news / search 箱分離と DuckDuckGo 検索設定
+
+- [x] hourly summary の `news` カードを RSS / news 系だけに限定し、`search` カードを別 entry type として追加する
+- [x] `news` / `search` の表示件数制御を全体 `LIMIT 20` ではなく「ソースごと上限」に変更する
+- [x] 設定画面に DuckDuckGo 定期検索クエリ管理 UI を追加し、`search_queries.txt` を編集できるようにする
+- [x] `timeline-app` の info worker から定期検索を明示的に実行し、検索設定の実行経路を UI 設定と一致させる
+- [x] `search|DuckDuckGo` の保存元調査結果を整理し、旧運用・別経路の痕跡があれば記録する
+      → リポジトリ内で `collected_info(source_type='search', source_name='DuckDuckGo')` を保存する経路は `src.info_collector.auto_runner --search/--all` と `scripts/info_collector/search_web.sh`
+      → 修正前の `timeline-app/src/workers/info_worker.py` は `--search` を呼んでいなかったため、既存の DuckDuckGo 行は手動実行または旧/別運用ジョブ由来の可能性が高い
+
 ---
 
 ## lifelog-system 移動タスク（§33）

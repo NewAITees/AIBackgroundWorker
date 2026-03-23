@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
 from src.config import config
+from src.routers import settings as settings_router
 from src.services.worker_control_service import _WORKER_DEFAULTS, worker_control_service
 
 
@@ -23,6 +26,17 @@ def reset_personality():
     original = config.ai.personality
     yield
     config.ai.personality = original
+
+
+@pytest.fixture(autouse=True)
+def temp_settings_files(monkeypatch, tmp_path):
+    rss_path = tmp_path / "rss_feeds.txt"
+    rss_path.write_text("# test feeds\nhttps://example.com/feed.xml\n", encoding="utf-8")
+    search_path = tmp_path / "search_queries.txt"
+    search_path.write_text("# test queries\n生成AI 最新動向\n", encoding="utf-8")
+    monkeypatch.setattr(settings_router, "_RSS_PATH", Path(rss_path))
+    monkeypatch.setattr(settings_router, "_SEARCH_QUERIES_PATH", Path(search_path))
+    yield
 
 
 class TestSettingsGet:
@@ -58,6 +72,8 @@ class TestSettingsGet:
         data = resp.json()
         assert "feeds" in data
         assert isinstance(data["feeds"], list)
+        assert "search_queries" in data
+        assert isinstance(data["search_queries"], list)
 
 
 class TestSettingsPatchAi:
@@ -114,3 +130,33 @@ class TestSettingsWorkers:
         client.patch("/api/settings/workers", json={"workers": {"windows": False}})
         resp = client.get("/api/settings")
         assert resp.json()["workers"]["windows"] is False
+
+
+class TestSettingsFeeds:
+    def test_add_feed(self, client: TestClient):
+        resp = client.post("/api/settings/feeds", json={"url": "https://example.com/new.rss"})
+        assert resp.status_code == 201
+        assert "https://example.com/new.rss" in resp.json()["feeds"]
+
+    def test_delete_feed(self, client: TestClient):
+        resp = client.request(
+            "DELETE", "/api/settings/feeds", json={"url": "https://example.com/feed.xml"}
+        )
+        assert resp.status_code == 200
+        assert "https://example.com/feed.xml" not in resp.json()["feeds"]
+
+
+class TestSettingsSearchQueries:
+    def test_add_search_query(self, client: TestClient):
+        resp = client.post("/api/settings/search-queries", json={"query": "AI エージェント 最新"})
+        assert resp.status_code == 201
+        assert "AI エージェント 最新" in resp.json()["search_queries"]
+
+    def test_delete_search_query(self, client: TestClient):
+        resp = client.request(
+            "DELETE",
+            "/api/settings/search-queries",
+            json={"query": "生成AI 最新動向"},
+        )
+        assert resp.status_code == 200
+        assert "生成AI 最新動向" not in resp.json()["search_queries"]

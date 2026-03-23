@@ -2,7 +2,7 @@
 全 entry type の CRUD（POST → GET → PATCH → timeline）テスト。
 
 対象:
-  chat_user / chat_ai / diary / event / todo / todo_done / news / system_log / memo
+  chat_user / chat_ai / diary / event / todo / todo_done / news / search / system_log / memo
 """
 
 from __future__ import annotations
@@ -188,6 +188,27 @@ class TestTodoDoneEntry:
 
 
 # ---------------------------------------------------------------------------
+# search
+# ---------------------------------------------------------------------------
+
+
+class TestSearchEntry:
+    def test_create(self, client: TestClient):
+        _, data = _create(client, "search", "検索結果の要約")
+        assert data["type"] == "search"
+
+    def test_get_roundtrip(self, client: TestClient):
+        eid, _ = _create(client, "search", "検索結果本文")
+        data = _get(client, eid)
+        assert data["type"] == "search"
+        assert data["content"] == "検索結果本文"
+
+    def test_appears_on_timeline(self, client: TestClient):
+        eid, _ = _create(client, "search", "タイムライン確認検索")
+        assert eid in _timeline_ids(client)
+
+
+# ---------------------------------------------------------------------------
 # memo
 # ---------------------------------------------------------------------------
 
@@ -333,6 +354,7 @@ ALL_TYPES = [
     ("todo_done", "user"),
     ("memo", "user"),
     ("news", "imported"),
+    ("search", "imported"),
     ("system_log", "system"),
     ("chat_user", "user"),
     ("chat_ai", "ai"),
