@@ -260,6 +260,52 @@ class InfoCollectorRepository:
             except sqlite3.OperationalError:
                 pass
 
+        # article_feedback の状態管理カラムを追加
+        if not has_column("article_feedback", "sentiment"):
+            try:
+                conn.execute("ALTER TABLE article_feedback ADD COLUMN sentiment TEXT")
+            except sqlite3.OperationalError:
+                pass
+        if not has_column("article_feedback", "report_status"):
+            try:
+                conn.execute(
+                    "ALTER TABLE article_feedback ADD COLUMN report_status TEXT NOT NULL DEFAULT 'none'"
+                )
+            except sqlite3.OperationalError:
+                pass
+        if not has_column("article_feedback", "report_entry_id"):
+            try:
+                conn.execute("ALTER TABLE article_feedback ADD COLUMN report_entry_id TEXT")
+            except sqlite3.OperationalError:
+                pass
+        if not has_column("article_feedback", "updated_at"):
+            try:
+                conn.execute("ALTER TABLE article_feedback ADD COLUMN updated_at TEXT")
+            except sqlite3.OperationalError:
+                pass
+
+        # 旧 feedback_type から新状態カラムへ移行
+        if has_column("article_feedback", "feedback_type"):
+            conn.execute(
+                """
+                UPDATE article_feedback
+                SET sentiment = CASE
+                        WHEN sentiment IS NOT NULL THEN sentiment
+                        WHEN feedback_type = 'positive' THEN 'positive'
+                        WHEN feedback_type = 'negative' THEN 'negative'
+                        WHEN feedback_type = 'report_requested' THEN 'positive'
+                        ELSE NULL
+                    END,
+                    report_status = CASE
+                        WHEN report_status IS NOT NULL AND report_status <> '' THEN report_status
+                        WHEN feedback_type = 'report_requested' THEN 'requested'
+                        ELSE 'none'
+                    END,
+                    updated_at = COALESCE(updated_at, created_at, ?)
+                """,
+                (datetime.now().isoformat(),),
+            )
+
     def add_info(self, info: CollectedInfo) -> Optional[int]:
         """
         情報を追加（重複時はスキップ）
@@ -784,32 +830,153 @@ class InfoCollectorRepository:
     # フィードバック
     # ------------------------------------------------------------------
 
-    def add_feedback(self, article_id: int, feedback_type: str) -> None:
-        """フィードバックを記録する（同一記事への重複は上書き）。"""
+    def _get_feedback_state(self, conn: sqlite3.Connection, article_id: int) -> dict[str, Any]:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            """
+            SELECT article_id, sentiment, report_status, report_entry_id, updated_at
+            FROM article_feedback
+            WHERE article_id = ?
+            """,
+            (article_id,),
+        ).fetchone()
+        if not row:
+            return {
+                "article_id": article_id,
+                "sentiment": None,
+                "report_status": "none",
+                "report_entry_id": None,
+                "updated_at": None,
+            }
+        return {
+            "article_id": row["article_id"],
+            "sentiment": row["sentiment"],
+            "report_status": row["report_status"] or "none",
+            "report_entry_id": row["report_entry_id"],
+            "updated_at": row["updated_at"],
+        }
+
+    def toggle_feedback(self, article_id: int, sentiment: str) -> dict[str, Any]:
+        """positive / negative を排他的トグルで保存する。"""
+        now = datetime.now().isoformat()
+        with self._connect() as conn:
+            current = self._get_feedback_state(conn, article_id)
+            next_sentiment = None if current["sentiment"] == sentiment else sentiment
+            conn.execute(
+                """
+                INSERT INTO article_feedback (
+                    article_id, feedback_type, created_at, sentiment, report_status, report_entry_id, updated_at
+                )
+                VALUES (?, ?, ?, ?, 'none', NULL, ?)
+                ON CONFLICT(article_id) DO UPDATE SET
+                    feedback_type = excluded.feedback_type,
+                    sentiment = excluded.sentiment,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    article_id,
+                    next_sentiment or "neutral",
+                    now,
+                    next_sentiment,
+                    now,
+                ),
+            )
+            return self._get_feedback_state(conn, article_id)
+
+    def request_report(self, article_id: int) -> tuple[bool, dict[str, Any]]:
+        """レポート生成要求を記録し、多重実行可否と現在状態を返す。"""
+        now = datetime.now().isoformat()
+        with self._connect() as conn:
+            current = self._get_feedback_state(conn, article_id)
+            if current["report_status"] in {"requested", "running", "done"}:
+                return False, current
+
+            conn.execute(
+                """
+                INSERT INTO article_feedback (
+                    article_id, feedback_type, created_at, sentiment, report_status, report_entry_id, updated_at
+                )
+                VALUES (?, 'report_requested', ?, 'positive', 'requested', NULL, ?)
+                ON CONFLICT(article_id) DO UPDATE SET
+                    feedback_type = 'report_requested',
+                    sentiment = 'positive',
+                    report_status = 'requested',
+                    report_entry_id = NULL,
+                    updated_at = excluded.updated_at
+                """,
+                (article_id, now, now),
+            )
+            return True, self._get_feedback_state(conn, article_id)
+
+    def mark_report_running(self, article_id: int) -> dict[str, Any]:
         now = datetime.now().isoformat()
         with self._connect() as conn:
             conn.execute(
                 """
-                INSERT INTO article_feedback (article_id, feedback_type, created_at)
-                VALUES (?, ?, ?)
-                ON CONFLICT(article_id) DO UPDATE SET
-                    feedback_type = excluded.feedback_type,
-                    created_at    = excluded.created_at
+                UPDATE article_feedback
+                SET report_status = 'running',
+                    updated_at = ?
+                WHERE article_id = ?
                 """,
-                (article_id, feedback_type, now),
+                (now, article_id),
             )
+            return self._get_feedback_state(conn, article_id)
 
-    def get_feedback_map(self, article_ids: list[int]) -> dict[int, str]:
+    def mark_report_done(self, article_id: int, report_entry_id: str | None) -> dict[str, Any]:
+        now = datetime.now().isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                UPDATE article_feedback
+                SET sentiment = 'positive',
+                    report_status = 'done',
+                    report_entry_id = ?,
+                    updated_at = ?
+                WHERE article_id = ?
+                """,
+                (report_entry_id, now, article_id),
+            )
+            return self._get_feedback_state(conn, article_id)
+
+    def mark_report_failed(self, article_id: int) -> dict[str, Any]:
+        now = datetime.now().isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                UPDATE article_feedback
+                SET report_status = 'failed',
+                    updated_at = ?
+                WHERE article_id = ?
+                """,
+                (now, article_id),
+            )
+            return self._get_feedback_state(conn, article_id)
+
+    def get_feedback_state_map(self, article_ids: list[int]) -> dict[int, dict[str, Any]]:
         """指定した記事IDのフィードバック状態をまとめて返す。"""
         if not article_ids:
             return {}
         placeholders = ",".join("?" * len(article_ids))
         with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
             rows = conn.execute(
-                f"SELECT article_id, feedback_type FROM article_feedback WHERE article_id IN ({placeholders})",
+                f"""
+                SELECT article_id, sentiment, report_status, report_entry_id, updated_at
+                FROM article_feedback
+                WHERE article_id IN ({placeholders})
+                """,
                 article_ids,
             ).fetchall()
-        return {row[0]: row[1] for row in rows}
+        return {
+            row["article_id"]: {
+                "article_id": row["article_id"],
+                "sentiment": row["sentiment"],
+                "report_status": row["report_status"] or "none",
+                "report_entry_id": row["report_entry_id"],
+                "updated_at": row["updated_at"],
+            }
+            for row in rows
+        }
 
     def get_articles_by_ids(self, article_ids: list[int]) -> list[dict]:
         """指定した記事IDの詳細を返す。"""
@@ -827,7 +994,29 @@ class InfoCollectorRepository:
                 """,
                 article_ids,
             ).fetchall()
-        return [dict(r) for r in rows]
+        order_map = {article_id: index for index, article_id in enumerate(article_ids)}
+        articles = [dict(r) for r in rows]
+        articles.sort(key=lambda article: order_map.get(article["id"], len(order_map)))
+        return articles
+
+    def get_latest_report_id(self) -> int:
+        with self._connect() as conn:
+            row = conn.execute("SELECT COALESCE(MAX(id), 0) FROM reports").fetchone()
+        return int(row[0] or 0)
+
+    def get_reports_after_id(self, last_report_id: int) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                """
+                SELECT id, title, content, category, created_at
+                FROM reports
+                WHERE id > ?
+                ORDER BY id ASC
+                """,
+                (last_report_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def force_article_for_research(self, article_id: int) -> None:
         """ユーザー要求によりレポート生成対象に強制追加する（importance=1.0に設定）。"""

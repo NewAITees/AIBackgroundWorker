@@ -277,3 +277,118 @@ class TestChat:
         ):
             resp = client.post("/api/chat", json={"content": "テスト"})
         assert resp.json()["entry_candidates"] == []
+
+
+class TestNewsFeedback:
+    def test_get_articles_includes_feedback_state(self, client: TestClient, monkeypatch):
+        class _Repo:
+            def get_articles_by_ids(self, article_ids):
+                assert article_ids == [101, 102]
+                return [
+                    {"id": 101, "title": "A", "url": "https://example.com/a", "source_name": "src"},
+                    {"id": 102, "title": "B", "url": "https://example.com/b", "source_name": "src"},
+                ]
+
+            def get_feedback_state_map(self, article_ids):
+                return {
+                    101: {
+                        "sentiment": "positive",
+                        "report_status": "done",
+                        "report_entry_id": "report-9",
+                    }
+                }
+
+        monkeypatch.setattr("src.routers.news._load_repo", lambda: _Repo())
+
+        resp = client.get("/api/news/articles?ids=collected-info-101,collected-info-102")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data[0]["feedback"] == {
+            "sentiment": "positive",
+            "report_status": "done",
+            "report_entry_id": "report-9",
+        }
+        assert data[1]["feedback"] == {
+            "sentiment": None,
+            "report_status": "none",
+            "report_entry_id": None,
+        }
+
+    def test_post_feedback_toggles_exclusive_state(self, client: TestClient, monkeypatch):
+        class _Repo:
+            def toggle_feedback(self, article_id, feedback_type):
+                assert article_id == 55
+                assert feedback_type == "positive"
+                return {
+                    "sentiment": "positive",
+                    "report_status": "none",
+                    "report_entry_id": None,
+                }
+
+        monkeypatch.setattr("src.routers.news._load_repo", lambda: _Repo())
+
+        resp = client.post("/api/news/articles/55/feedback", json={"type": "positive"})
+        assert resp.status_code == 200
+        assert resp.json()["feedback"] == {
+            "sentiment": "positive",
+            "report_status": "none",
+            "report_entry_id": None,
+        }
+
+    def test_generate_report_queues_once_and_marks_positive(self, client: TestClient, monkeypatch):
+        calls = {"forced": [], "task": None}
+
+        class _Repo:
+            def request_report(self, article_id):
+                assert article_id == 77
+                return True, {
+                    "sentiment": "positive",
+                    "report_status": "requested",
+                    "report_entry_id": None,
+                }
+
+            def force_article_for_research(self, article_id):
+                calls["forced"].append(article_id)
+
+            def get_latest_report_id(self):
+                return 12
+
+        def _capture_task(article_id, last_report_id):
+            calls["task"] = (article_id, last_report_id)
+
+        monkeypatch.setattr("src.routers.news._load_repo", lambda: _Repo())
+        monkeypatch.setattr("src.routers.news._run_pipeline_for_article", _capture_task)
+
+        resp = client.post("/api/news/articles/77/generate_report")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "queued"
+        assert resp.json()["feedback"] == {
+            "sentiment": "positive",
+            "report_status": "requested",
+            "report_entry_id": None,
+        }
+        assert calls["forced"] == [77]
+        assert calls["task"] == (77, 12)
+
+    def test_generate_report_skips_when_already_done(self, client: TestClient, monkeypatch):
+        class _Repo:
+            def request_report(self, article_id):
+                return False, {
+                    "sentiment": "positive",
+                    "report_status": "done",
+                    "report_entry_id": "report-44",
+                }
+
+        monkeypatch.setattr("src.routers.news._load_repo", lambda: _Repo())
+
+        resp = client.post("/api/news/articles/77/generate_report")
+        assert resp.status_code == 200
+        assert resp.json() == {
+            "status": "already_requested",
+            "article_id": 77,
+            "feedback": {
+                "sentiment": "positive",
+                "report_status": "done",
+                "report_entry_id": "report-44",
+            },
+        }

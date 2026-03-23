@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
@@ -11,6 +12,9 @@ from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel
 
 from ..config import config, to_local_path
+from ..models.entry import Entry, EntryMeta, EntrySource, EntryStatus, EntryType
+from ..routers.workspace import resolve_workspace_path
+from ..storage.persistence import persist_entry
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -71,6 +75,51 @@ class FeedbackRequest(BaseModel):
     type: FeedbackType
 
 
+def _feedback_payload(state: dict | None) -> dict:
+    state = state or {}
+    return {
+        "sentiment": state.get("sentiment"),
+        "report_status": state.get("report_status", "none"),
+        "report_entry_id": state.get("report_entry_id"),
+    }
+
+
+def _persist_report_entries(report_rows: list[dict]) -> list[str]:
+    workspace_path = resolve_workspace_path()
+    if not workspace_path:
+        logger.warning("workspace 未設定のため report entry の timeline 反映をスキップ")
+        return []
+
+    entry_ids: list[str] = []
+    for report in report_rows:
+        body = str(report.get("content") or "").strip()
+        if not body:
+            continue
+        created_at = datetime.fromisoformat(str(report["created_at"]))
+        if created_at.tzinfo is None:
+            created_at = created_at.astimezone(UTC)
+        else:
+            created_at = created_at.astimezone(UTC)
+        entry_id = f"report-{report['id']}"
+        persist_entry(
+            workspace_path,
+            Entry(
+                id=entry_id,
+                type=EntryType.news,
+                title=str(report.get("title") or "レポート")[:120],
+                summary=f"{str(report.get('category') or 'report').strip()} レポート",
+                content=body,
+                timestamp=created_at,
+                status=EntryStatus.active,
+                source=EntrySource.imported,
+                workspace_path=workspace_path,
+                meta=EntryMeta(source_path="lifelog-system/data/ai_secretary.db"),
+            ),
+        )
+        entry_ids.append(entry_id)
+    return entry_ids
+
+
 # ---------------------------------------------------------------------------
 # エンドポイント
 # ---------------------------------------------------------------------------
@@ -80,7 +129,7 @@ class FeedbackRequest(BaseModel):
 async def get_articles(ids: str = "") -> list[dict]:
     """
     `ids` に渡した `collected-info-{id}` 形式のカンマ区切りIDから記事詳細を返す。
-    各記事にフィードバック状態（feedback_type）を付与する。
+    各記事にフィードバック状態を付与する。
     """
     if not ids:
         return []
@@ -101,46 +150,56 @@ async def get_articles(ids: str = "") -> list[dict]:
 
     repo = _load_repo()
     articles = repo.get_articles_by_ids(article_ids)
-    feedback_map = repo.get_feedback_map(article_ids)
+    feedback_map = repo.get_feedback_state_map(article_ids)
 
     for article in articles:
-        article["feedback"] = feedback_map.get(article["id"])
+        article["feedback"] = _feedback_payload(feedback_map.get(article["id"]))
 
     return articles
 
 
 @router.post("/news/articles/{article_id}/feedback")
 async def post_feedback(article_id: int, body: FeedbackRequest) -> dict:
-    """記事に positive / negative フィードバックを記録する。"""
+    """記事に positive / negative フィードバックを排他的トグルで記録する。"""
     repo = _load_repo()
-    repo.add_feedback(article_id, body.type)
-    return {"status": "ok", "article_id": article_id, "feedback_type": body.type}
+    state = repo.toggle_feedback(article_id, body.type)
+    return {"status": "ok", "article_id": article_id, "feedback": _feedback_payload(state)}
 
 
 @router.post("/news/articles/{article_id}/generate_report")
 async def generate_report(article_id: int, background_tasks: BackgroundTasks) -> dict:
     """
     記事を強制的にレポート生成パイプラインに通す。
-    - article_feedback に report_requested を記録
+    - sentiment=positive / report_status=requested を記録
+    - requested/running/done は多重実行しない
     - article_analysis に importance=1.0 を設定（Stage1 閾値を通過させる）
     - バックグラウンドで Stage2（深掘り）+ Stage3（レポート生成）を実行
     """
     repo = _load_repo()
-    repo.add_feedback(article_id, "report_requested")
+    queued, state = repo.request_report(article_id)
+    if not queued:
+        return {
+            "status": "already_requested",
+            "article_id": article_id,
+            "feedback": _feedback_payload(state),
+        }
+
     repo.force_article_for_research(article_id)
+    last_report_id = repo.get_latest_report_id()
 
-    background_tasks.add_task(_run_pipeline_for_article, article_id)
+    background_tasks.add_task(_run_pipeline_for_article, article_id, last_report_id)
 
-    return {"status": "queued", "article_id": article_id}
+    return {"status": "queued", "article_id": article_id, "feedback": _feedback_payload(state)}
 
 
-def _run_pipeline_for_article(article_id: int) -> None:
+def _run_pipeline_for_article(article_id: int, last_report_id: int) -> None:
     """Stage2+Stage3 をバックグラウンドで実行する。"""
     db_path = _resolve_path(config.lifelog.info_db_path)
     output_dir = _resolve_path(config.lifelog.report_output_dir)
 
     # lifelog-system のパイプライン関数をロード
-    _load_repo()  # sys.path を通す
+    repo = _load_repo()  # sys.path を通す
+    repo.mark_report_running(article_id)
     _, deep_research_articles, generate_theme_reports = _load_pipeline_functions()
 
     previous_env = {
@@ -169,8 +228,12 @@ def _run_pipeline_for_article(article_id: int) -> None:
             min_articles=1,
             skip_existing=False,
         )
+        new_reports = repo.get_reports_after_id(last_report_id)
+        entry_ids = _persist_report_entries(new_reports)
+        repo.mark_report_done(article_id, entry_ids[0] if entry_ids else None)
         logger.info("Report generation completed for article_id=%d", article_id)
     except Exception:
+        repo.mark_report_failed(article_id)
         logger.exception("Report generation failed for article_id=%d", article_id)
     finally:
         for key, value in previous_env.items():
