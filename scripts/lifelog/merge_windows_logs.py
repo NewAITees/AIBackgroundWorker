@@ -182,9 +182,9 @@ def merge_windows_logs(
 
                     start_ts = parse_iso_datetime(record["start"])
                     end_ts = parse_iso_datetime(record["end"])
-                    process_name = record["process_name"]
-                    exe_path = record["exe_path"]
-                    window_title = record.get("window_title", "")
+                    process_name = record["process_name"] or ""
+                    exe_path = record.get("exe_path") or ""
+                    window_title = record.get("window_title") or ""
                     is_idle = record.get("is_idle", False)  # デフォルトはFalse
 
                     # アプリID取得または作成
