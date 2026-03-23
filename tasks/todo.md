@@ -169,6 +169,73 @@ LLM がそれを参考に importance_score / relevance_score を付ける
 
 ---
 
+## 分析パイプライン改善（P1）
+
+> 背景: analysis_pipeline_worker の処理構造に起因して、レポートがタイムラインに上がってこない・
+> AI サスペンドが即時反映されないという問題が確認された（2026-03-23）。
+
+### 問題1: 直列パイプラインによるレポート到達遅延
+
+**現状**:
+```
+_sync_once_blocking()
+  └─ analyze_pending_articles(batch_size=N)  # Stage1: 全N件LLMで分類 ← ここで長時間止まる
+  └─ deep_research_articles(...)             # Stage2: 通過したものを深掘り
+  └─ generate_theme_reports(...)             # Stage3: レポート生成
+```
+Stage1 が全バッチ消化するまで Stage2/3 に進まない。LLM 1件 ~20秒 × 50件 = 約17分。
+その間に次のスケジュール実行がスキップされ、Stage3 まで到達しないことがある。
+
+**根本原因**: `analyze_pending_articles` の batch_size が大きすぎる、または
+1回の invocation で全ステージを完走させる設計になっている。
+
+**修正方針**:
+- `analyze_batch_size` を小さく設定して1回の invocation を短くする（config 変更）
+  → 毎回の実行で Stage1 少量 → Stage2 → Stage3 まで必ず到達するようにする
+- あるいは invocation を Stage ごとに分けて、それぞれ独立したスケジュールにする
+
+- [ ] `config.lifelog.analyze_batch_size` の現在値を確認し、適切な値に調整する
+      → 目安: Stage1 の実行時間が 2〜3 分以内に収まる件数（例: 5〜10 件）
+- [ ] Stage1→2→3 の通過件数をログに残す仕組みを確認し、調整根拠にする
+
+---
+
+### 問題2: AI サスペンドが実行中の処理に即時反映されない
+
+**現状**:
+```python
+def _sync_once_blocking(self):
+    if ai_control_service.is_paused():  # ← 起動時の1回だけチェック
+        return 0
+    analyze_pending_articles(...)  # ← 内部はポーズを見ない（数十分かかる）
+    deep_research_articles(...)
+    generate_theme_reports(...)
+```
+サスペンドボタンを押しても現在実行中の invocation が終わるまで（最大数十分）止まらない。
+
+**修正方針（段階的）**:
+1. **Stage 間チェック（即時対応）**: 各 Stage の呼び出し間に `is_paused()` を挟む
+   → Stage1 完了後・Stage2 完了後にポーズ確認し、ON なら途中リターン
+   → 実装コスト低、効果は「次 Stage に進まない」レベル
+2. **Stage 内チェック（将来対応）**: `analyze_pending_articles` に `stop_fn` コールバックを渡す
+   → 各記事処理後に `stop_fn()` を呼んで中断判断できるようにする
+   → `lifelog-system` 側の変更が必要
+
+- [ ] `analysis_pipeline_worker._sync_once_blocking` に Stage 間 `is_paused()` チェックを追加する
+      ```python
+      analyzed = analyze_pending_articles(...)
+      if ai_control_service.is_paused():
+          return 0
+      deep = deep_research_articles(...)
+      if ai_control_service.is_paused():
+          return 0
+      reports = generate_theme_reports(...)
+      ```
+- [ ] （将来）`analyze_pending_articles` / `deep_research_articles` に `stop_fn` コールバック引数を追加する
+      → `lifelog-system/src/info_collector/jobs/analyze_pending.py` 等を修正
+
+---
+
 ## フェーズ5: M2 実用化
 
 > 参照: 要件書 §21.2
