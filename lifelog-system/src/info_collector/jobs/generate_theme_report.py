@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import logging
 import os
 import re
@@ -116,130 +115,100 @@ def generate_theme_reports(
     output_dir: Path = DEFAULT_REPORT_DIR,
     min_articles: int = 1,
     skip_existing: bool = True,
+    article_id: int | None = None,
 ) -> List[Path]:
     """
-    深掘り済み記事をテーマごとにグループ化し、テーマベースレポートを生成.
+    深掘り済み記事を記事単位でレポートを生成.
 
     Args:
         db_path: データベースパス
         output_dir: レポート出力ディレクトリ
-        min_articles: テーマごとの最小記事数
+        min_articles: 最小記事数（後方互換のため残す、現在は記事単位なので常に1）
         skip_existing: 既存のレポートをスキップするか
+        article_id: 指定した場合はその1記事のみ処理する（worker の記事単位ループ用）
 
     Returns:
         生成されたレポートファイルのパスリスト
     """
     repo = InfoCollectorRepository(str(db_path))
-    theme_groups = repo.fetch_deep_research_by_theme(min_articles=min_articles)
+    articles = repo.fetch_deep_research_per_article(article_id=article_id)
 
-    if not theme_groups:
-        logger.info("No theme groups found for report generation.")
+    if not articles:
+        logger.info("No deep-researched articles found for report generation.")
         return []
 
-    # レポート生成日（レポート内容には使用）
     report_date = datetime.now().strftime("%Y-%m-%d")
     ollama = OllamaClient()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # DBから既存のハッシュ値を取得（出力フォルダと照らし合わせるため）
-    existing_hashes = set(repo.get_existing_report_hashes()) if skip_existing else set()
+    existing_article_ids = repo.get_existing_report_article_ids() if skip_existing else set()
 
     generated_paths: List[Path] = []
 
-    for theme, articles in theme_groups.items():
-        # 記事IDのリストを取得してソート（同じ記事セットなら常に同じハッシュになる）
-        article_ids = sorted(
-            [article.get("article_id") for article in articles if article.get("article_id")]
-        )
-        if not article_ids:
-            logger.warning("No article IDs found for theme '%s', skipping", theme)
+    for article in articles:
+        src_article_id = article.get("article_id")
+        if src_article_id is None:
+            logger.warning("article_id が取得できない行をスキップ")
             continue
 
-        # 記事IDのセットをハッシュ化（同じ記事セットなら常に同じファイル名になる）
-        article_ids_str = ",".join(map(str, article_ids))
-        article_hash = hashlib.sha256(article_ids_str.encode()).hexdigest()[:12]  # 12文字のハッシュ
+        # 既存チェック: source_article_id が DB に既にあればスキップ
+        if skip_existing and src_article_id in existing_article_ids:
+            logger.debug("Skipping existing report for article_id=%s", src_article_id)
+            continue
 
-        # 記事の日付を取得（published_at を優先、なければ fetched_at を使用）
-        # 複数記事がある場合は最新の日付を使用
-        article_dates = []
-        for article in articles:
-            published_at = article.get("article_published_at")
-            fetched_at = article.get("article_fetched_at")
-            # published_at を優先、なければ fetched_at を使用
-            article_date_str = published_at if published_at else fetched_at
-            if article_date_str:
-                try:
-                    article_date = datetime.fromisoformat(article_date_str)
-                    article_dates.append(article_date)
-                except (ValueError, TypeError):
-                    # 日付パースに失敗した場合はスキップ
-                    pass
-
-        # 最新の日付を使用（なければ現在の日付をフォールバック）
-        if article_dates:
-            news_date = max(article_dates).strftime("%Y-%m-%d")
+        # 記事の日付を取得（published_at を優先、なければ fetched_at）
+        article_date_str = article.get("article_published_at") or article.get("article_fetched_at")
+        if article_date_str:
+            try:
+                news_date = datetime.fromisoformat(article_date_str).strftime("%Y-%m-%d")
+            except (ValueError, TypeError):
+                news_date = report_date
         else:
             news_date = report_date
 
-        # テーマ名をスラッグ化（可読性のため）
-        theme_slug = _slugify(theme)
+        # 記事タイトルをスラッグ化（可読性のため）
+        article_title = article.get("article_title") or article.get("theme") or "article"
+        title_slug = _slugify(article_title)
 
-        # ファイル名を生成（テーマ名とハッシュの両方を含める）
-        # article_日付_テーマ_ハッシュの形式で、可読性と一意性を両立
-        report_filename = f"article_{news_date}_{theme_slug}_{article_hash}.md"
+        # ファイル名: article_id で一意性を保証し、意図しない上書きを防ぐ
+        report_filename = f"article_{news_date}_{title_slug}_{src_article_id}.md"
         report_path = output_dir / report_filename
 
-        # 既存チェック: DB側のハッシュ値と出力フォルダ内のファイルを照らし合わせる
-        # （テーマ名が変わっても同じ記事セットならスキップ）
-        if skip_existing:
-            # DBに既存のハッシュ値があるかチェック
-            if article_hash in existing_hashes:
-                # DBに存在する場合、出力フォルダ内のファイルを検索
-                existing_files = list(output_dir.glob(f"article_*_{article_hash}.md"))
-                if existing_files:
-                    logger.debug(
-                        "Skipping existing report for article set (hash=%s): %s",
-                        article_hash,
-                        existing_files[0],
-                    )
-                    continue
-                else:
-                    # DBには存在するがファイルがない場合もスキップ（既に生成済みとみなす）
-                    logger.debug(
-                        "Skipping existing report in DB (hash=%s), but file not found in output dir",
-                        article_hash,
-                    )
-                    continue
+        theme = article.get("theme") or article_title
+        logger.info("Generating report for article_id=%s ('%s')", src_article_id, article_title)
 
-        logger.info("Generating theme report for '%s' (%d articles)", theme, len(articles))
-
-        # プロンプト構築
-        prompts = theme_report.build_prompt(theme=theme, articles=articles, report_date=report_date)
+        # プロンプト構築（単一記事をリストとして渡す）
+        prompts = theme_report.build_prompt(
+            theme=theme, articles=[article], report_date=report_date
+        )
 
         # LLMでレポート生成
         content = _generate_theme_text(ollama, prompts, theme)
         if not content or len(content.strip()) < MIN_THEME_REPORT_CHARS:
-            content = _build_theme_fallback(theme, articles, report_date)
+            content = _build_theme_fallback(theme, [article], report_date)
 
         from src.info_collector.jobs.obsidian_links import build_article_navigation_section
 
         content += build_article_navigation_section(news_date)
 
-        # DB保存（ハッシュ値も保存）
+        # DB保存（source_article_id で一意性を管理）
         repo.save_report(
-            title=f"{theme} - テーマレポート",
+            title=f"{article_title} - レポート",
             report_date=report_date,
             content=content,
-            article_count=len(articles),
+            article_count=1,
             category="theme",
-            article_ids_hash=article_hash,
+            source_article_id=src_article_id,
             created_at=datetime.now(),
         )
 
         # ファイル保存
         report_path.write_text(content, encoding="utf-8")
-        logger.info("Theme report written to %s", report_path)
+        logger.info("Report written to %s", report_path)
         generated_paths.append(report_path)
+
+        # 次のスキップ判定に反映
+        existing_article_ids.add(src_article_id)
 
     return generated_paths
 

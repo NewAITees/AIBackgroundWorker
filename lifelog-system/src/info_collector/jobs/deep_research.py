@@ -7,7 +7,7 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from src.ai_secretary.ollama_client import OllamaClient
 from src.info_collector.prompts import search_query_gen, result_synthesis
@@ -37,12 +37,26 @@ def deep_research_articles(
     batch_size: int = 5,
     min_importance: float = 0.7,
     min_relevance: float = 0.6,
+    article_id: Optional[int] = None,
 ) -> int:
-    """重要記事を深掘りし、deep_researchに保存."""
+    """重要記事を深掘りし、deep_researchに保存.
+
+    Args:
+        article_id: 指定した場合はその1記事のみ処理する（worker の記事単位ループ用）
+    """
     repo = InfoCollectorRepository(str(db_path))
-    targets = repo.fetch_deep_research_targets(
-        min_importance=min_importance, min_relevance=min_relevance, limit=batch_size
-    )
+
+    if article_id is not None:
+        row = repo.fetch_article_analysis_by_id(article_id)
+        if row is None:
+            logger.info("Article %s not found or not analyzed yet.", article_id)
+            return 0
+        targets = [row]
+    else:
+        targets = repo.fetch_deep_research_targets(
+            min_importance=min_importance, min_relevance=min_relevance, limit=batch_size
+        )
+
     if not targets:
         logger.info("No articles eligible for deep research.")
         return 0

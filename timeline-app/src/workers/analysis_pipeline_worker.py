@@ -49,8 +49,14 @@ def _load_pipeline_functions():
     from src.info_collector.jobs.analyze_pending import analyze_pending_articles
     from src.info_collector.jobs.deep_research import deep_research_articles
     from src.info_collector.jobs.generate_theme_report import generate_theme_reports
+    from src.info_collector.repository import InfoCollectorRepository
 
-    return analyze_pending_articles, deep_research_articles, generate_theme_reports
+    return (
+        analyze_pending_articles,
+        deep_research_articles,
+        generate_theme_reports,
+        InfoCollectorRepository,
+    )
 
 
 @dataclass
@@ -108,6 +114,7 @@ class AnalysisPipelineWorker:
             analyze_pending_articles,
             deep_research_articles,
             generate_theme_reports,
+            InfoCollectorRepository,
         ) = _load_pipeline_functions()
 
         previous_env = {
@@ -127,22 +134,52 @@ class AnalysisPipelineWorker:
         os.environ["TIMELINE_LLM_PURPOSE"] = "info_pipeline"
 
         try:
+            # Stage1: 未分析記事を全件処理
             analyzed = analyze_pending_articles(
                 db_path=db_path,
                 batch_size=config.lifelog.analyze_batch_size,
             )
-            deep = deep_research_articles(
-                db_path=db_path,
-                batch_size=config.lifelog.deep_batch_size,
+            self._status.last_analyzed = int(analyzed)
+
+            if ai_control_service.is_paused():
+                self._status.last_run_at = datetime.now(UTC).isoformat()
+                return int(analyzed)
+
+            # Stage2+3: 重要度上位 deep_limit 件を記事単位でループ
+            repo = InfoCollectorRepository(str(db_path))
+            candidates = repo.fetch_deep_research_targets(
                 min_importance=config.lifelog.deep_min_importance,
                 min_relevance=config.lifelog.deep_min_relevance,
+                limit=config.lifelog.deep_limit,
             )
-            reports = generate_theme_reports(
-                db_path=db_path,
-                output_dir=output_dir,
-                min_articles=config.lifelog.theme_min_articles,
-                skip_existing=config.lifelog.theme_skip_existing,
-            )
+
+            deep_count = 0
+            report_count = 0
+
+            for row in candidates:
+                article_id = row["article_id"]
+
+                # Stage2: この記事を深掘り
+                deep_count += int(
+                    deep_research_articles(
+                        db_path=db_path,
+                        article_id=article_id,
+                    )
+                )
+
+                # Stage3: この記事のレポートを生成
+                reports = generate_theme_reports(
+                    db_path=db_path,
+                    output_dir=output_dir,
+                    min_articles=config.lifelog.theme_min_articles,
+                    skip_existing=config.lifelog.theme_skip_existing,
+                    article_id=article_id,
+                )
+                report_count += len(reports)
+
+                if ai_control_service.is_paused():
+                    break
+
         except Exception as exc:  # noqa: BLE001
             self._status.last_error = str(exc)
             raise
@@ -153,11 +190,10 @@ class AnalysisPipelineWorker:
                 else:
                     os.environ[key] = value
 
-        self._status.last_analyzed = int(analyzed)
-        self._status.last_deep_researched = int(deep)
-        self._status.last_reports_generated = len(reports)
+        self._status.last_deep_researched = deep_count
+        self._status.last_reports_generated = report_count
         self._status.last_run_at = datetime.now(UTC).isoformat()
-        return int(analyzed) + int(deep) + len(reports)
+        return int(analyzed) + deep_count + report_count
 
 
 analysis_pipeline_worker = AnalysisPipelineWorker()

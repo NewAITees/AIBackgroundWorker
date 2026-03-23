@@ -248,6 +248,13 @@ class InfoCollectorRepository:
             except sqlite3.OperationalError:
                 pass
 
+        # reports.source_article_id がなければ追加（記事単位の重複チェック用）
+        if not has_column("reports", "source_article_id"):
+            try:
+                conn.execute("ALTER TABLE reports ADD COLUMN source_article_id INTEGER")
+            except sqlite3.OperationalError:
+                pass
+
         # article_analysis の判断理由カラムを追加
         if not has_column("article_analysis", "importance_reason"):
             try:
@@ -745,6 +752,7 @@ class InfoCollectorRepository:
         category: str,
         created_at: datetime,
         article_ids_hash: Optional[str] = None,
+        source_article_id: Optional[int] = None,
     ) -> None:
         """
         レポートを保存.
@@ -756,7 +764,8 @@ class InfoCollectorRepository:
             article_count: 記事数
             category: カテゴリ（daily, theme等）
             created_at: 作成日時
-            article_ids_hash: 記事IDセットのハッシュ値（重複チェック用）
+            article_ids_hash: 記事IDセットのハッシュ値（重複チェック用、旧方式）
+            source_article_id: 元記事のID（記事単位の重複チェック用、新方式）
         """
 
         def _op() -> None:
@@ -764,8 +773,9 @@ class InfoCollectorRepository:
                 conn.execute(
                     """
                     INSERT INTO reports
-                    (title, report_date, content, article_count, category, article_ids_hash, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    (title, report_date, content, article_count, category,
+                     article_ids_hash, source_article_id, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         title,
@@ -774,6 +784,7 @@ class InfoCollectorRepository:
                         article_count,
                         category,
                         article_ids_hash,
+                        source_article_id,
                         created_at.isoformat(),
                     ),
                 )
@@ -797,6 +808,77 @@ class InfoCollectorRepository:
                 """
             )
             return [row["article_ids_hash"] for row in cursor.fetchall()]
+
+    def get_existing_report_article_ids(self) -> set[int]:
+        """DBに保存されている既存レポートの source_article_id セットを取得."""
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                """
+                SELECT DISTINCT source_article_id
+                FROM reports
+                WHERE source_article_id IS NOT NULL
+                """
+            )
+            return {row["source_article_id"] for row in cursor.fetchall()}
+
+    def fetch_deep_research_per_article(
+        self, article_id: Optional[int] = None
+    ) -> list[dict[str, Any]]:
+        """深掘り済み記事を記事単位のフラットリストで取得.
+
+        Args:
+            article_id: 指定した場合はその記事のみ返す
+        """
+        params: list[Any] = []
+        where_extra = ""
+        if article_id is not None:
+            where_extra = "AND d.article_id = ?"
+            params.append(article_id)
+
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                f"""
+                SELECT
+                    d.*,
+                    a.summary AS theme,
+                    a.importance_score,
+                    a.relevance_score,
+                    a.importance_reason,
+                    a.relevance_reason,
+                    a.category,
+                    a.keywords,
+                    c.title AS article_title,
+                    c.url AS article_url,
+                    c.content AS article_content,
+                    c.published_at AS article_published_at,
+                    c.fetched_at AS article_fetched_at
+                FROM deep_research d
+                JOIN article_analysis a ON d.article_id = a.article_id
+                JOIN collected_info c ON d.article_id = c.id
+                WHERE a.summary IS NOT NULL AND a.summary != ''
+                {where_extra}
+                ORDER BY a.importance_score DESC, d.researched_at DESC
+                """,
+                params,
+            )
+            return [dict(r) for r in cursor.fetchall()]
+
+    def fetch_article_analysis_by_id(self, article_id: int) -> Optional[sqlite3.Row]:
+        """指定 article_id の分析結果を取得（deep_research 単体実行用）."""
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                """
+                SELECT a.*, c.title AS collected_title, c.content AS collected_content
+                FROM article_analysis a
+                JOIN collected_info c ON a.article_id = c.id
+                WHERE a.article_id = ?
+                """,
+                (article_id,),
+            )
+            return cursor.fetchone()
 
     def fetch_reports_by_date(
         self,

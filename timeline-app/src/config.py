@@ -53,6 +53,7 @@ class LifelogConfig(BaseModel):
     analysis_pipeline_seconds: int = 1800
     analyze_batch_size: int = 20
     deep_batch_size: int = 3
+    deep_limit: int = 5
     deep_min_importance: float = 0.5
     deep_min_relevance: float = 0.5
     theme_min_articles: int = 1
