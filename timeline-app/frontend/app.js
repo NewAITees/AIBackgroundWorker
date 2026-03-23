@@ -1,6 +1,7 @@
 const state = {
   workspace: null,
   entries: [],
+  rawEntries: [],
   pastEntries: [],
   todoEntries: [],
   futureEntries: [],
@@ -9,6 +10,7 @@ const state = {
   chatThreadId: null,
   editMode: false,
   initialScrollDone: false,
+  aroundTimestamp: null,
   oldestTimestamp: null,
   newestTimestamp: null,
   loadingMore: false,
@@ -18,9 +20,32 @@ const state = {
   leftPaneOpen: true,
   detailPaneOpen: true,
   responsiveInitialized: false,
+  filterMenuOpen: false,
+  filters: {
+    types: ["chat", "diary", "event", "todo", "news", "memo", "system_log"],
+    search: "",
+    todoOnly: false,
+    showAi: true,
+  },
+  lastUndoAction: null,
 };
 
 const refs = {};
+const CHAT_DRAFT_KEY_PREFIX = "timeline-chat-draft:";
+const INITIAL_TIMELINE_HOURS = 12;
+const PAGING_TIMELINE_HOURS = 24;
+const TIMELINE_FILTER_OPTIONS = ["chat", "diary", "event", "todo", "news", "memo", "system_log"];
+const DETAIL_TYPE_OPTIONS = [
+  "chat_user",
+  "chat_ai",
+  "diary",
+  "event",
+  "todo",
+  "todo_done",
+  "memo",
+  "news",
+  "system_log",
+];
 
 document.addEventListener("DOMContentLoaded", async () => {
   cacheRefs();
@@ -40,6 +65,15 @@ function cacheRefs() {
   refs.closeDetailPane = document.getElementById("close-detail-pane");
   refs.workspaceSummary = document.getElementById("workspace-summary");
   refs.timelineStatus = document.getElementById("timeline-status");
+  refs.filterMenuButton = document.getElementById("filter-menu-button");
+  refs.filterMenuPanel = document.getElementById("filter-menu-panel");
+  refs.filterSummary = document.getElementById("filter-summary");
+  refs.typeFilters = document.getElementById("type-filters");
+  refs.timelineSearch = document.getElementById("timeline-search");
+  refs.timelineDateJump = document.getElementById("timeline-date-jump");
+  refs.timelineDateLoad = document.getElementById("timeline-date-load");
+  refs.filterTodoOnly = document.getElementById("filter-todo-only");
+  refs.filterShowAi = document.getElementById("filter-show-ai");
   refs.workspaceEmpty = document.getElementById("workspace-empty");
   refs.layout = document.querySelector(".layout");
   refs.vrmPane = document.querySelector(".vrm-pane");
@@ -50,6 +84,7 @@ function cacheRefs() {
   refs.futureList = document.getElementById("future-list");
   refs.chatForm = document.getElementById("chat-form");
   refs.chatInput = document.getElementById("chat-input");
+  refs.chatDraftClear = document.getElementById("chat-draft-clear");
   refs.chatStatus = document.getElementById("chat-status");
   refs.chatResponse = document.getElementById("chat-response");
   refs.chatReplyText = document.getElementById("chat-reply-text");
@@ -60,15 +95,18 @@ function cacheRefs() {
   refs.detailPane = document.querySelector(".detail-pane");
   refs.detailTitle = document.getElementById("detail-title");
   refs.detailMeta = document.getElementById("detail-meta");
+  refs.detailQuickTypeSelect = document.getElementById("detail-quick-type-select");
   refs.detailContent = document.getElementById("detail-content");
   refs.detailForm = document.getElementById("detail-form");
   refs.detailTitleInput = document.getElementById("detail-title-input");
   refs.detailContentInput = document.getElementById("detail-content-input");
+  refs.detailTypeInput = document.getElementById("detail-type-input");
   refs.detailTimestampInput = document.getElementById("detail-timestamp-input");
   refs.detailStatusInput = document.getElementById("detail-status-input");
   refs.detailEditToggle = document.getElementById("detail-edit-toggle");
   refs.detailReadonly = document.getElementById("detail-readonly");
   refs.detailStatusMessage = document.getElementById("detail-status-message");
+  refs.detailUndo = document.getElementById("detail-undo");
   refs.detailFormSubmit = document.getElementById("detail-form");
   refs.jumpNow = document.getElementById("jump-now");
   refs.nowAnchor = document.getElementById("now-anchor");
@@ -94,6 +132,19 @@ function cacheRefs() {
 
 function bindEvents() {
   refs.workspaceOpen.addEventListener("click", openWorkspace);
+  refs.filterMenuButton.addEventListener("click", toggleFilterMenu);
+  refs.typeFilters.addEventListener("change", handleTypeFilterChange);
+  refs.timelineSearch.addEventListener("input", handleTimelineSearch);
+  refs.timelineDateLoad.addEventListener("click", jumpToDate);
+  refs.timelineDateJump.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      jumpToDate();
+    }
+  });
+  refs.filterTodoOnly.addEventListener("change", handleTodoOnlyToggle);
+  refs.filterShowAi.addEventListener("change", handleShowAiToggle);
+  refs.detailQuickTypeSelect.addEventListener("change", handleQuickTypeSelect);
   refs.showVrmPane.addEventListener("click", () => setLeftPaneOpen(true));
   refs.showDetailPane.addEventListener("click", () => setDetailPaneOpen(true));
   refs.showTimelinePane.addEventListener("click", () => {
@@ -104,8 +155,11 @@ function bindEvents() {
   refs.closeDetailPane.addEventListener("click", () => setDetailPaneOpen(false));
   refs.aiToggle.addEventListener("click", toggleAI);
   refs.chatForm.addEventListener("submit", submitChat);
+  refs.chatInput.addEventListener("input", persistChatDraft);
+  refs.chatDraftClear.addEventListener("click", clearChatDraft);
   refs.detailEditToggle.addEventListener("click", toggleDetailEdit);
   refs.detailForm.addEventListener("submit", saveDetail);
+  refs.detailUndo.addEventListener("click", undoLastAction);
   refs.jumpNow.addEventListener("click", () => scrollToNow("smooth"));
   refs.navSettings.addEventListener("click", openSettingsPanel);
   refs.navTimeline.addEventListener("click", closeSettingsPanel);
@@ -114,6 +168,7 @@ function bindEvents() {
   refs.sAiSave.addEventListener("click", saveAiSettings);
   refs.sFeedAdd.addEventListener("click", addFeed);
   document.addEventListener("keydown", handleGlobalKeydown);
+  document.addEventListener("click", handleDocumentClick);
   window.addEventListener("resize", syncResponsivePaneState);
   syncResponsivePaneState();
   setupInfiniteScroll();
@@ -223,6 +278,7 @@ function renderWorkspace() {
   refs.workspaceEmpty.classList.add("hidden");
   refs.timelineRoot.classList.remove("hidden");
   refs.workspaceSummary.textContent = `${state.workspace.mode}\n${state.workspace.path}`;
+  restoreChatDraft();
 }
 
 async function openWorkspace() {
@@ -250,10 +306,11 @@ async function loadTimeline() {
   state.noMorePast = false;
   state.noMoreFuture = false;
   try {
-    const response = await api("/api/timeline");
+    const response = await api(
+      `/api/timeline?before=${INITIAL_TIMELINE_HOURS}&after=${INITIAL_TIMELINE_HOURS}`
+    );
     setTimelineState(response);
     renderTimeline();
-    refs.timelineStatus.textContent = `${state.entries.length} 件を表示`;
     if (!state.initialScrollDone) {
       state.initialScrollDone = true;
       scrollToNow("instant");
@@ -297,6 +354,10 @@ function handleGlobalKeydown(event) {
   if (event.key === "n" || event.key === "N") {
     event.preventDefault();
     scrollToNow();
+    return;
+  }
+  if (event.key === "Escape" && state.filterMenuOpen) {
+    closeFilterMenu();
   }
 }
 
@@ -318,13 +379,17 @@ function renderTimeline() {
   refs.todoList.innerHTML = "";
   refs.pastList.innerHTML = "";
 
-  for (const entry of state.futureEntries.sort(sortByTimeDesc)) {
+  const visibleFutureEntries = getVisibleEntries(state.futureEntries).sort(sortByTimeDesc);
+  const visibleTodoEntries = getVisibleEntries(state.todoEntries).sort(sortByTimeDesc);
+  const visiblePastEntries = getVisibleEntries(state.pastEntries).sort(sortByTimeDesc);
+
+  for (const entry of visibleFutureEntries) {
     refs.futureList.appendChild(buildEntryCard(entry));
   }
-  for (const entry of state.todoEntries.sort(sortByTimeDesc)) {
+  for (const entry of visibleTodoEntries) {
     refs.todoList.appendChild(buildEntryCard(entry));
   }
-  for (const entry of state.pastEntries.sort(sortByTimeDesc)) {
+  for (const entry of visiblePastEntries) {
     refs.pastList.appendChild(buildEntryCard(entry));
   }
 
@@ -332,6 +397,8 @@ function renderTimeline() {
   if (topSentinel) refs.futureList.prepend(topSentinel);
   if (bottomSentinel) refs.pastList.append(bottomSentinel);
   updateTimelineBounds();
+  renderTimelineStatus();
+  renderFilterState();
 }
 
 function buildEntryCard(entry) {
@@ -371,6 +438,7 @@ function buildEntryCard(entry) {
 
 async function completeTodo(entryId) {
   try {
+    const current = findEntryById(entryId);
     const now = new Date().toISOString();
     await api(`/api/entries/${encodeURIComponent(entryId)}`, {
       method: "PATCH",
@@ -380,6 +448,17 @@ async function completeTodo(entryId) {
         meta: { completed_at: now },
       }),
     });
+    if (current) {
+      setUndoAction({
+        entryId,
+        label: "TODO完了を戻す",
+        payload: {
+          type: current.type,
+          status: current.status,
+          timestamp: current.timestamp,
+        },
+      });
+    }
     await loadTimeline();
   } catch (err) {
     console.warn("completeTodo failed:", err);
@@ -411,6 +490,8 @@ function renderDetail() {
   if (!state.selectedEntry) {
     refs.detailEmpty.classList.remove("hidden");
     refs.detailView.classList.add("hidden");
+    renderQuickTypeOptions();
+    renderUndoState();
     return;
   }
 
@@ -422,8 +503,11 @@ function renderDetail() {
   refs.detailContent.innerHTML = DOMPurify.sanitize(marked.parse(state.selectedEntry.content || ""));
   refs.detailTitleInput.value = state.selectedEntry.title || "";
   refs.detailContentInput.value = state.selectedEntry.content;
+  refs.detailTypeInput.value = state.selectedEntry.type;
   refs.detailTimestampInput.value = toDatetimeLocal(state.selectedEntry.timestamp);
   refs.detailStatusInput.value = state.selectedEntry.status;
+  renderQuickTypeOptions();
+  renderUndoState();
   applyDetailMode();
 }
 
@@ -445,16 +529,23 @@ async function saveDetail(event) {
 
   refs.detailStatusMessage.textContent = "保存中...";
   try {
+    const previous = snapshotEntry(state.selectedEntry);
     state.selectedEntry = await api(`/api/entries/${encodeURIComponent(state.selectedEntryId)}`, {
       method: "PATCH",
       body: JSON.stringify({
         title: refs.detailTitleInput.value.trim() || null,
         content: refs.detailContentInput.value,
+        type: refs.detailTypeInput.value,
         timestamp: refs.detailTimestampInput.value
           ? new Date(refs.detailTimestampInput.value).toISOString()
           : undefined,
         status: refs.detailStatusInput.value,
       }),
+    });
+    setUndoAction({
+      entryId: state.selectedEntryId,
+      label: "保存前に戻す",
+      payload: previous,
     });
     state.editMode = false;
     refs.detailStatusMessage.textContent = "保存しました";
@@ -534,6 +625,7 @@ async function createCandidateEntry(candidate) {
     }
     await api("/api/entries", { method: "POST", body: JSON.stringify(body) });
     refs.chatStatus.textContent = `${candidate.type} を保存しました`;
+    clearChatDraft({ preserveStatus: true });
     if (isMobileLayout()) {
       setLeftPaneOpen(false);
       setDetailPaneOpen(false);
@@ -575,14 +667,10 @@ async function loadMorePast() {
   state.loadingMore = true;
   try {
     const around = new Date(state.oldestTimestamp).toISOString();
-    const res = await api(`/api/timeline?around=${encodeURIComponent(around)}&before=24&after=0`);
-    const incoming = (res.past_entries || []).filter(
-      (e) => !state.pastEntries.some((ex) => ex.id === e.id)
+    const res = await api(
+      `/api/timeline?around=${encodeURIComponent(around)}&before=${PAGING_TIMELINE_HOURS}&after=0`
     );
-    if (incoming.length > 0) {
-      state.pastEntries = [...state.pastEntries, ...incoming];
-      state.entries = [...state.pastEntries, ...state.todoEntries, ...state.futureEntries];
-      updateTimelineBounds();
+    if (mergeTimelineEntries(res.entries || []) > 0) {
       renderTimeline();
     } else {
       state.noMorePast = true;
@@ -599,14 +687,10 @@ async function loadMoreFuture() {
   state.loadingMore = true;
   try {
     const around = new Date(state.newestTimestamp).toISOString();
-    const res = await api(`/api/timeline?around=${encodeURIComponent(around)}&before=0&after=24`);
-    const incoming = (res.future_entries || []).filter(
-      (e) => !state.futureEntries.some((ex) => ex.id === e.id)
+    const res = await api(
+      `/api/timeline?around=${encodeURIComponent(around)}&before=0&after=${PAGING_TIMELINE_HOURS}`
     );
-    if (incoming.length > 0) {
-      state.futureEntries = [...incoming, ...state.futureEntries];
-      state.entries = [...state.pastEntries, ...state.todoEntries, ...state.futureEntries];
-      updateTimelineBounds();
+    if (mergeTimelineEntries(res.entries || []) > 0) {
       renderTimeline();
     } else {
       state.noMoreFuture = true;
@@ -627,15 +711,58 @@ function sortByTimeDesc(a, b) {
 }
 
 function setTimelineState(response) {
-  state.pastEntries = response.past_entries || [];
-  state.todoEntries = response.todo_entries || [];
-  state.futureEntries = response.future_entries || [];
-  state.entries = response.entries || [
-    ...state.pastEntries,
-    ...state.todoEntries,
-    ...state.futureEntries,
+  state.aroundTimestamp = response.around || state.aroundTimestamp || new Date().toISOString();
+  state.rawEntries = response.entries || [
+    ...(response.past_entries || []),
+    ...(response.todo_entries || []),
+    ...(response.future_entries || []),
   ];
+  normalizeTimelineBuckets();
   updateTimelineBounds();
+  renderFilterState();
+  renderTimelineStatus();
+}
+
+function mergeTimelineEntries(incomingEntries) {
+  const byId = new Map(state.rawEntries.map((entry) => [entry.id, entry]));
+  let mergedCount = 0;
+  for (const entry of incomingEntries) {
+    if (!byId.has(entry.id)) {
+      mergedCount += 1;
+    }
+    byId.set(entry.id, entry);
+  }
+  state.rawEntries = Array.from(byId.values());
+  normalizeTimelineBuckets();
+  updateTimelineBounds();
+  return mergedCount;
+}
+
+function normalizeTimelineBuckets() {
+  const byId = new Map(state.rawEntries.map((entry) => [entry.id, entry]));
+  state.rawEntries = Array.from(byId.values());
+
+  const aroundMs = new Date(state.aroundTimestamp || new Date().toISOString()).getTime();
+  const pastEntries = [];
+  const todoEntries = [];
+  const futureEntries = [];
+
+  for (const entry of state.rawEntries) {
+    if (entry.type === "todo" && entry.status === "active") {
+      todoEntries.push(entry);
+      continue;
+    }
+    if (new Date(entry.timestamp).getTime() <= aroundMs) {
+      pastEntries.push(entry);
+    } else {
+      futureEntries.push(entry);
+    }
+  }
+
+  state.pastEntries = pastEntries;
+  state.todoEntries = todoEntries;
+  state.futureEntries = futureEntries;
+  state.entries = [...state.rawEntries];
 }
 
 function updateTimelineBounds() {
@@ -656,6 +783,294 @@ function formatDateTime(value) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function renderTimelineStatus() {
+  const visibleCount =
+    getVisibleEntries(state.pastEntries).length +
+    getVisibleEntries(state.todoEntries).length +
+    getVisibleEntries(state.futureEntries).length;
+  refs.timelineStatus.textContent = `${visibleCount} / ${state.entries.length} 件を表示`;
+}
+
+function renderFilterState() {
+  refs.filterMenuButton.setAttribute("aria-expanded", String(state.filterMenuOpen));
+  refs.filterMenuPanel.classList.toggle("hidden", !state.filterMenuOpen);
+  refs.filterTodoOnly.checked = state.filters.todoOnly;
+  refs.filterShowAi.checked = state.filters.showAi;
+  for (const input of refs.typeFilters.querySelectorAll("[data-filter-type]")) {
+    input.checked = state.filters.types.includes(input.dataset.filterType);
+  }
+  refs.filterSummary.textContent = buildFilterSummary();
+}
+
+function buildFilterSummary() {
+  const typeCount = state.filters.types.length;
+  const typeLabel =
+    typeCount === TIMELINE_FILTER_OPTIONS.length
+      ? "すべて表示"
+      : `${typeCount}種別を表示`;
+  const chips = [];
+  if (state.filters.todoOnly) chips.push("未完了TODO");
+  if (!state.filters.showAi) chips.push("AI非表示");
+  return chips.length ? `${typeLabel} / ${chips.join(" / ")}` : typeLabel;
+}
+
+function toggleFilterMenu() {
+  state.filterMenuOpen = !state.filterMenuOpen;
+  renderFilterState();
+}
+
+function closeFilterMenu() {
+  if (!state.filterMenuOpen) return;
+  state.filterMenuOpen = false;
+  renderFilterState();
+}
+
+function handleDocumentClick(event) {
+  const target = event.target;
+  if (!(target instanceof Node)) return;
+  if (
+    state.filterMenuOpen &&
+    !refs.filterMenuPanel.contains(target) &&
+    !refs.filterMenuButton.contains(target)
+  ) {
+    closeFilterMenu();
+  }
+}
+
+function handleTypeFilterChange(event) {
+  const input = event.target.closest("[data-filter-type]");
+  if (!(input instanceof HTMLInputElement)) return;
+  const type = input.dataset.filterType;
+  if (!type) return;
+  if (input.checked) {
+    if (!state.filters.types.includes(type)) {
+      state.filters.types = [...state.filters.types, type];
+    }
+  } else {
+    if (state.filters.types.length === 1) {
+      input.checked = true;
+      return;
+    }
+    state.filters.types = state.filters.types.filter((value) => value !== type);
+  }
+  renderTimeline();
+}
+
+function handleTimelineSearch(event) {
+  state.filters.search = event.target.value.trim().toLowerCase();
+  renderTimeline();
+}
+
+function handleTodoOnlyToggle(event) {
+  state.filters.todoOnly = !!event.target.checked;
+  renderTimeline();
+}
+
+function handleShowAiToggle(event) {
+  state.filters.showAi = !!event.target.checked;
+  renderTimeline();
+}
+
+async function jumpToDate() {
+  const value = refs.timelineDateJump.value;
+  if (!value) return;
+  refs.timelineStatus.textContent = "指定日を読込中...";
+  try {
+    const around = new Date(`${value}T12:00:00`).toISOString();
+    const response = await api(
+      `/api/timeline?around=${encodeURIComponent(around)}&before=${INITIAL_TIMELINE_HOURS}&after=${INITIAL_TIMELINE_HOURS}`
+    );
+    state.initialScrollDone = true;
+    state.noMorePast = false;
+    state.noMoreFuture = false;
+    setTimelineState(response);
+    renderTimeline();
+    scrollToNow("instant");
+  } catch (error) {
+    refs.timelineStatus.textContent = error.message;
+  }
+}
+
+function getVisibleEntries(entries) {
+  return entries.filter(matchesEntryFilter);
+}
+
+function matchesEntryFilter(entry) {
+  if (state.filters.todoOnly && !(entry.type === "todo" && entry.status === "active")) {
+    return false;
+  }
+  if (!state.filters.showAi && entry.source === "ai") {
+    return false;
+  }
+  if (!matchesTypeFilter(entry)) {
+    return false;
+  }
+  if (!matchesSearchFilter(entry)) {
+    return false;
+  }
+  return true;
+}
+
+function matchesTypeFilter(entry) {
+  return state.filters.types.some((type) => matchesEntryTypeGroup(entry, type));
+}
+
+function matchesEntryTypeGroup(entry, type) {
+  if (type === "chat") {
+    return entry.type === "chat_ai" || entry.type === "chat_user";
+  }
+  if (type === "todo") {
+    return entry.type === "todo" || entry.type === "todo_done";
+  }
+  return entry.type === type;
+}
+
+function matchesSearchFilter(entry) {
+  if (!state.filters.search) return true;
+  const haystack = [entry.type, entry.title, entry.summary, entry.content]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return haystack.includes(state.filters.search);
+}
+
+function renderQuickTypeOptions() {
+  refs.detailQuickTypeSelect.innerHTML = "";
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "変更先を選択";
+  refs.detailQuickTypeSelect.appendChild(placeholder);
+  if (!state.selectedEntry) return;
+  for (const type of DETAIL_TYPE_OPTIONS) {
+    if (type === state.selectedEntry.type) continue;
+    const option = document.createElement("option");
+    option.value = type;
+    option.textContent = type;
+    refs.detailQuickTypeSelect.appendChild(option);
+  }
+  refs.detailQuickTypeSelect.value = "";
+}
+
+async function handleQuickTypeSelect(event) {
+  const { value } = event.target;
+  if (!value) return;
+  await quickChangeEntryType(value);
+  refs.detailQuickTypeSelect.value = "";
+}
+
+async function quickChangeEntryType(type) {
+  if (!state.selectedEntryId || !state.selectedEntry) return;
+  refs.detailStatusMessage.textContent = `${type} に変更中...`;
+  try {
+    const previous = snapshotEntry(state.selectedEntry);
+    const body = { type };
+    if (type === "todo") body.status = "active";
+    if (type === "todo_done") body.status = "done";
+    state.selectedEntry = await api(`/api/entries/${encodeURIComponent(state.selectedEntryId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+    setUndoAction({
+      entryId: state.selectedEntryId,
+      label: "種別変更を戻す",
+      payload: previous,
+    });
+    refs.detailStatusMessage.textContent = `${type} に変更しました`;
+    renderDetail();
+    await loadTimeline();
+  } catch (error) {
+    refs.detailStatusMessage.textContent = error.message;
+  }
+}
+
+function snapshotEntry(entry) {
+  return {
+    type: entry.type,
+    title: entry.title,
+    content: entry.content,
+    timestamp: entry.timestamp,
+    status: entry.status,
+  };
+}
+
+function setUndoAction(action) {
+  state.lastUndoAction = action;
+  renderUndoState();
+}
+
+function renderUndoState() {
+  if (!state.lastUndoAction) {
+    refs.detailUndo.classList.add("hidden");
+    return;
+  }
+  refs.detailUndo.classList.remove("hidden");
+  refs.detailUndo.textContent = state.lastUndoAction.label || "直前を戻す";
+}
+
+async function undoLastAction() {
+  if (!state.lastUndoAction) return;
+  const action = state.lastUndoAction;
+  refs.detailStatusMessage.textContent = "巻き戻し中...";
+  try {
+    await api(`/api/entries/${encodeURIComponent(action.entryId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(action.payload),
+    });
+    state.lastUndoAction = null;
+    refs.detailStatusMessage.textContent = "元に戻しました";
+    if (state.selectedEntryId === action.entryId) {
+      await selectEntry(state.selectedEntryId);
+    }
+    await loadTimeline();
+    renderUndoState();
+  } catch (error) {
+    refs.detailStatusMessage.textContent = error.message;
+  }
+}
+
+function findEntryById(entryId) {
+  return state.entries.find((entry) => entry.id === entryId) || null;
+}
+
+function chatDraftKey() {
+  return `${CHAT_DRAFT_KEY_PREFIX}${state.workspace?.path || "default"}`;
+}
+
+function persistChatDraft() {
+  try {
+    localStorage.setItem(chatDraftKey(), refs.chatInput.value);
+    if (refs.chatInput.value.trim()) {
+      refs.chatStatus.textContent = "下書きを保存中";
+    }
+  } catch (error) {
+    console.warn("persistChatDraft failed:", error);
+  }
+}
+
+function restoreChatDraft() {
+  try {
+    const draft = localStorage.getItem(chatDraftKey()) || "";
+    if (draft && !refs.chatInput.value) {
+      refs.chatInput.value = draft;
+      refs.chatStatus.textContent = "下書きを復元しました";
+    }
+  } catch (error) {
+    console.warn("restoreChatDraft failed:", error);
+  }
+}
+
+function clearChatDraft(options = {}) {
+  refs.chatInput.value = "";
+  try {
+    localStorage.removeItem(chatDraftKey());
+    if (!options.preserveStatus) {
+      refs.chatStatus.textContent = "下書きを破棄しました";
+    }
+  } catch (error) {
+    console.warn("clearChatDraft failed:", error);
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -47,6 +47,73 @@
       <section class="timeline-pane" data-pane="timeline">
         <div class="timeline-header">
           <div id="timeline-status" class="timeline-status">読み込み中...</div>
+          <div class="timeline-toolbar">
+            <div class="timeline-filter-bar">
+              <button
+                id="filter-menu-button"
+                class="ghost-button timeline-filter-menu-button"
+                type="button"
+                aria-expanded="false"
+                aria-controls="filter-menu-panel"
+              >
+                フィルター
+              </button>
+              <div id="filter-summary" class="timeline-filter-summary">すべて表示</div>
+            </div>
+            <div id="filter-menu-panel" class="timeline-filter-panel hidden" aria-label="フィルターメニュー">
+              <div class="timeline-filter-panel-section">
+                <div class="timeline-filter-panel-title">検索と移動</div>
+                <div class="timeline-search-row">
+                  <input id="timeline-search" type="search" placeholder="キーワード検索" />
+                  <input id="timeline-date-jump" type="date" />
+                  <button id="timeline-date-load" class="ghost-button" type="button">日付へ</button>
+                </div>
+              </div>
+              <div class="timeline-filter-panel-section">
+                <div class="timeline-filter-panel-title">種別</div>
+                <div id="type-filters" class="timeline-type-filter-list" aria-label="種別フィルタ">
+                  <label class="timeline-check-item">
+                    <input type="checkbox" data-filter-type="chat" checked />
+                    <span>chat</span>
+                  </label>
+                  <label class="timeline-check-item">
+                    <input type="checkbox" data-filter-type="diary" checked />
+                    <span>diary</span>
+                  </label>
+                  <label class="timeline-check-item">
+                    <input type="checkbox" data-filter-type="event" checked />
+                    <span>event</span>
+                  </label>
+                  <label class="timeline-check-item">
+                    <input type="checkbox" data-filter-type="todo" checked />
+                    <span>todo</span>
+                  </label>
+                  <label class="timeline-check-item">
+                    <input type="checkbox" data-filter-type="news" checked />
+                    <span>news</span>
+                  </label>
+                  <label class="timeline-check-item">
+                    <input type="checkbox" data-filter-type="memo" checked />
+                    <span>memo</span>
+                  </label>
+                  <label class="timeline-check-item">
+                    <input type="checkbox" data-filter-type="system_log" checked />
+                    <span>system</span>
+                  </label>
+                </div>
+              </div>
+              <div class="timeline-filter-panel-section timeline-toggle-list">
+                <label class="timeline-toggle">
+                  <input id="filter-todo-only" type="checkbox" />
+                  <span>未完了TODOのみ</span>
+                </label>
+                <label class="timeline-toggle">
+                  <input id="filter-show-ai" type="checkbox" checked />
+                  <span>AI自動記録を表示</span>
+                </label>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div id="workspace-empty" class="empty-state hidden">
@@ -68,7 +135,10 @@
               <textarea id="chat-input" rows="4" placeholder="いま考えていること、やること、出来事を書く"></textarea>
               <div class="chat-actions">
                 <span id="chat-status" class="chat-status"></span>
-                <button type="submit">AIに送る</button>
+                <div class="chat-action-buttons">
+                  <button id="chat-draft-clear" class="ghost-button" type="button">下書き破棄</button>
+                  <button type="submit">AIに送る</button>
+                </div>
               </div>
             </form>
             <div id="chat-response" class="chat-response hidden">
@@ -105,6 +175,12 @@
           </div>
 
           <div id="detail-meta" class="detail-meta"></div>
+          <div class="detail-type-change">
+            <label class="detail-field-label" for="detail-quick-type-select">種別変更</label>
+            <select id="detail-quick-type-select" class="detail-quick-type-select">
+              <option value="">変更先を選択</option>
+            </select>
+          </div>
 
           <div id="detail-readonly" class="detail-readonly">
             <div id="detail-content" class="md-body"></div>
@@ -113,6 +189,19 @@
           <form id="detail-form" class="detail-form hidden">
             <input id="detail-title-input" type="text" placeholder="タイトル" />
             <textarea id="detail-content-input" rows="14"></textarea>
+            <label class="detail-field-label">種別
+              <select id="detail-type-input">
+                <option value="chat_user">chat_user</option>
+                <option value="chat_ai">chat_ai</option>
+                <option value="diary">diary</option>
+                <option value="event">event</option>
+                <option value="todo">todo</option>
+                <option value="todo_done">todo_done</option>
+                <option value="memo">memo</option>
+                <option value="news">news</option>
+                <option value="system_log">system_log</option>
+              </select>
+            </label>
             <label class="detail-field-label">日時
               <input id="detail-timestamp-input" type="datetime-local" step="60" />
             </label>
@@ -123,7 +212,10 @@
             </select>
             <div class="detail-actions">
               <span id="detail-status-message"></span>
-              <button type="submit">保存</button>
+              <div class="detail-action-buttons">
+                <button id="detail-undo" class="ghost-button hidden" type="button">直前を戻す</button>
+                <button type="submit">保存</button>
+              </div>
             </div>
           </form>
         </div>
