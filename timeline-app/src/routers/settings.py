@@ -35,6 +35,12 @@ class WorkerStatesUpdate(BaseModel):
     workers: dict[str, bool]
 
 
+class PipelineSettingsUpdate(BaseModel):
+    info_limit: int | None = None
+    analyze_batch_size: int | None = None
+    deep_limit: int | None = None
+
+
 # ---------------------------------------------------------------------------
 # GET /api/settings
 # ---------------------------------------------------------------------------
@@ -48,6 +54,11 @@ async def get_settings() -> dict[str, Any]:
             "ollama_model": config.ai.ollama_model,
             "timeout_seconds": config.ai.timeout_seconds,
             "personality": config.ai.personality,
+        },
+        "pipeline": {
+            "info_limit": config.lifelog.info_limit,
+            "analyze_batch_size": config.lifelog.analyze_batch_size,
+            "deep_limit": config.lifelog.deep_limit,
         },
         **worker_control_service.get_all(),
         "feeds": _read_feeds(),
@@ -83,6 +94,24 @@ async def update_ai_settings(req: AISettingsUpdate) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # PATCH /api/settings/workers
 # ---------------------------------------------------------------------------
+
+
+@router.patch("/settings/pipeline")
+async def update_pipeline_settings(req: PipelineSettingsUpdate) -> dict[str, Any]:
+    """パイプライン設定を更新して config.yaml に永続化する。"""
+    if req.info_limit is not None:
+        config.lifelog.info_limit = req.info_limit
+    if req.analyze_batch_size is not None:
+        config.lifelog.analyze_batch_size = req.analyze_batch_size
+    if req.deep_limit is not None:
+        config.lifelog.deep_limit = req.deep_limit
+
+    _save_config()
+    return {
+        "info_limit": config.lifelog.info_limit,
+        "analyze_batch_size": config.lifelog.analyze_batch_size,
+        "deep_limit": config.lifelog.deep_limit,
+    }
 
 
 @router.patch("/settings/workers")
@@ -172,6 +201,11 @@ def _save_config() -> None:
     raw["ai"]["ollama_model"] = config.ai.ollama_model
     raw["ai"]["timeout_seconds"] = config.ai.timeout_seconds
     raw["ai"]["personality"] = config.ai.personality
+
+    raw.setdefault("lifelog", {})
+    raw["lifelog"]["info_limit"] = config.lifelog.info_limit
+    raw["lifelog"]["analyze_batch_size"] = config.lifelog.analyze_batch_size
+    raw["lifelog"]["deep_limit"] = config.lifelog.deep_limit
 
     with open(_CONFIG_PATH, "w", encoding="utf-8") as f:
         yaml.dump(raw, f, allow_unicode=True, sort_keys=False)

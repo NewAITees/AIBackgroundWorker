@@ -124,6 +124,11 @@ function cacheRefs() {
   refs.sAiStatus = document.getElementById("s-ai-status");
   refs.sAiSave = document.getElementById("s-ai-save");
   refs.sWorkers = document.getElementById("s-workers");
+  refs.sInfoLimit = document.getElementById("s-info-limit");
+  refs.sAnalyzeBatch = document.getElementById("s-analyze-batch");
+  refs.sDeepLimit = document.getElementById("s-deep-limit");
+  refs.sPipelineStatus = document.getElementById("s-pipeline-status");
+  refs.sPipelineSave = document.getElementById("s-pipeline-save");
   refs.sFeeds = document.getElementById("s-feeds");
   refs.sFeedUrl = document.getElementById("s-feed-url");
   refs.sFeedAdd = document.getElementById("s-feed-add");
@@ -166,6 +171,7 @@ function bindEvents() {
   refs.settingsClose.addEventListener("click", closeSettingsPanel);
   refs.sPersonalitySave.addEventListener("click", savePersonality);
   refs.sAiSave.addEventListener("click", saveAiSettings);
+  refs.sPipelineSave.addEventListener("click", savePipelineSettings);
   refs.sFeedAdd.addEventListener("click", addFeed);
   document.addEventListener("keydown", handleGlobalKeydown);
   document.addEventListener("click", handleDocumentClick);
@@ -1268,6 +1274,9 @@ async function loadSettings() {
     refs.sOllamaUrl.value = s.ai.ollama_base_url;
     refs.sOllamaModel.value = s.ai.ollama_model;
     refs.sOllamaTimeout.value = s.ai.timeout_seconds;
+    refs.sInfoLimit.value = s.pipeline.info_limit;
+    refs.sAnalyzeBatch.value = s.pipeline.analyze_batch_size;
+    refs.sDeepLimit.value = s.pipeline.deep_limit;
     renderWorkers(s.workers);
     renderFeeds(s.feeds);
   } catch (e) {
@@ -1361,6 +1370,23 @@ async function saveAiSettings() {
     refs.sAiStatus.textContent = "保存しました";
   } catch (e) {
     refs.sAiStatus.textContent = e.message;
+  }
+}
+
+async function savePipelineSettings() {
+  refs.sPipelineStatus.textContent = "保存中...";
+  try {
+    await api("/api/settings/pipeline", {
+      method: "PATCH",
+      body: JSON.stringify({
+        info_limit: parseInt(refs.sInfoLimit.value, 10),
+        analyze_batch_size: parseInt(refs.sAnalyzeBatch.value, 10),
+        deep_limit: parseInt(refs.sDeepLimit.value, 10),
+      }),
+    });
+    refs.sPipelineStatus.textContent = "保存しました";
+  } catch (e) {
+    refs.sPipelineStatus.textContent = e.message;
   }
 }
 
