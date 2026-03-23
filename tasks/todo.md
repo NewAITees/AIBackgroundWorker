@@ -173,66 +173,64 @@ LLM がそれを参考に importance_score / relevance_score を付ける
 
 > 背景: analysis_pipeline_worker の処理構造に起因して、レポートがタイムラインに上がってこない・
 > AI サスペンドが即時反映されないという問題が確認された（2026-03-23）。
+>
+> ログ計測結果（2026-03-19）:
+> - Stage1: 1件 ~10〜30秒（全件走らせる必要あり）
+> - Stage2: 1件 ~2〜3分（DDG検索 + LLM合成、件数を limit で制御できる）
+> - Stage3: 1件 ~20〜25秒（軽い）
+> - Stage1 がボトルネックになるのは未処理が大量に溜まっているときだけ（通常運用では数分）
 
-### 問題1: 直列パイプラインによるレポート到達遅延
+### 設計方針（確定）
 
-**現状**:
 ```
-_sync_once_blocking()
-  └─ analyze_pending_articles(batch_size=N)  # Stage1: 全N件LLMで分類 ← ここで長時間止まる
-  └─ deep_research_articles(...)             # Stage2: 通過したものを深掘り
-  └─ generate_theme_reports(...)             # Stage3: レポート生成
+_sync_once_blocking():
+    # Stage1: 全件スコアリング（全件必須、通常は短時間）
+    analyzed_articles = analyze_pending_articles(batch_size=N)
+
+    if is_paused(): return  # ポーズチェック①
+
+    # Stage2+3: 重要度上位 deep_limit 件だけ処理、記事ごとにループ
+    top_articles = sort_by_importance(analyzed_articles)[:deep_limit]
+    for article in top_articles:
+        deep_research(article)          # Stage2: 1件ずつ深掘り
+        generate_report(article)        # Stage3: 1件ずつレポート化（article_id で重複防止）
+        if is_paused(): break           # 記事単位でポーズチェック②
 ```
-Stage1 が全バッチ消化するまで Stage2/3 に進まない。LLM 1件 ~20秒 × 50件 = 約17分。
-その間に次のスケジュール実行がスキップされ、Stage3 まで到達しないことがある。
 
-**根本原因**: `analyze_pending_articles` の batch_size が大きすぎる、または
-1回の invocation で全ステージを完走させる設計になっている。
+- Stage1 は全件（`analyze_batch_size` で上限設定可）
+- Stage2/3 は `deep_limit` 件（重要度上位から処理、デフォルト 5 件程度）
+- ポーズは Stage1 完了後 と 各記事処理後 の2段階で効く
+- レポートは article_id で一意性を保証（上書き・重複なし）
 
-**修正方針**:
-- `analyze_batch_size` を小さく設定して1回の invocation を短くする（config 変更）
-  → 毎回の実行で Stage1 少量 → Stage2 → Stage3 まで必ず到達するようにする
-- あるいは invocation を Stage ごとに分けて、それぞれ独立したスケジュールにする
+### 実装タスク
 
-- [ ] `config.lifelog.analyze_batch_size` の現在値を確認し、適切な値に調整する
-      → 目安: Stage1 の実行時間が 2〜3 分以内に収まる件数（例: 5〜10 件）
-- [ ] Stage1→2→3 の通過件数をログに残す仕組みを確認し、調整根拠にする
+#### Step A: `generate_theme_reports` を記事単位に変更（`repository.py` + `generate_theme_report.py`）
 
----
+- [ ] `reports` テーブルに `source_article_id INTEGER` カラムを追加（マイグレーション）
+- [ ] `repository.py` に `fetch_deep_research_per_article()` を追加
+      → `fetch_deep_research_by_theme` の代替。記事ごとのフラットなリストを返す
+- [ ] `repository.py` に `get_existing_report_article_ids() -> set[int]` を追加
+      → article_id ベースの重複チェック用
+- [ ] `repository.py` の `save_report()` に `source_article_id` 引数を追加
+- [ ] `generate_theme_report.py` の `generate_theme_reports()` を記事ごとループに変更
+      → ファイル名: `article_{date}_{title_slug}_{article_id}.md`（article_id で一意性保証）
+      → skip チェック: `article_id in existing_report_article_ids`
 
-### 問題2: AI サスペンドが実行中の処理に即時反映されない
+#### Step B: `analysis_pipeline_worker` を記事単位ループに変更
 
-**現状**:
-```python
-def _sync_once_blocking(self):
-    if ai_control_service.is_paused():  # ← 起動時の1回だけチェック
-        return 0
-    analyze_pending_articles(...)  # ← 内部はポーズを見ない（数十分かかる）
-    deep_research_articles(...)
-    generate_theme_reports(...)
-```
-サスペンドボタンを押しても現在実行中の invocation が終わるまで（最大数十分）止まらない。
+- [ ] `_sync_once_blocking` を以下の構造に変更:
+      1. Stage1 全件実行 → `is_paused()` チェック
+      2. 重要度上位 `deep_limit` 件をループ
+         - Stage2（1件）→ Stage3（1件）→ `is_paused()` チェック
+- [ ] config に `deep_limit`（Stage2/3 の最大処理件数、デフォルト 5）を追加
+- [ ] `analyze_pending_articles` の戻り値から article_id + importance_score のリストを取得できるか確認
+      → 取れない場合は DB から直接 SELECT する
 
-**修正方針（段階的）**:
-1. **Stage 間チェック（即時対応）**: 各 Stage の呼び出し間に `is_paused()` を挟む
-   → Stage1 完了後・Stage2 完了後にポーズ確認し、ON なら途中リターン
-   → 実装コスト低、効果は「次 Stage に進まない」レベル
-2. **Stage 内チェック（将来対応）**: `analyze_pending_articles` に `stop_fn` コールバックを渡す
-   → 各記事処理後に `stop_fn()` を呼んで中断判断できるようにする
-   → `lifelog-system` 側の変更が必要
+#### Step C: `deep_research_articles` / `generate_theme_reports` の単体呼び出し対応
 
-- [ ] `analysis_pipeline_worker._sync_once_blocking` に Stage 間 `is_paused()` チェックを追加する
-      ```python
-      analyzed = analyze_pending_articles(...)
-      if ai_control_service.is_paused():
-          return 0
-      deep = deep_research_articles(...)
-      if ai_control_service.is_paused():
-          return 0
-      reports = generate_theme_reports(...)
-      ```
-- [ ] （将来）`analyze_pending_articles` / `deep_research_articles` に `stop_fn` コールバック引数を追加する
-      → `lifelog-system/src/info_collector/jobs/analyze_pending.py` 等を修正
+- [ ] `deep_research_articles(article_ids=[id])` のように単体 ID 指定で呼べるか確認
+      → 対応していなければ引数を追加
+- [ ] `generate_theme_reports(article_ids=[id])` 同様に確認・対応
 
 ---
 
