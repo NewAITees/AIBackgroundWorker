@@ -72,13 +72,17 @@ class TestHealthMonitor:
 
         # collection_delayも記録しないとget_metrics()がスキップする
         monitor.record_collection_delay(0.1)
-        monitor.record_write_time(10.0)
-        monitor.record_write_time(20.0)
-        monitor.record_write_time(30.0)
+        monitor.record_write_time(10.0, batch_size=1, trigger="timeout", queue_depth=0)
+        monitor.record_write_time(20.0, batch_size=2, trigger="batch_size", queue_depth=3)
+        monitor.record_write_time(30.0, batch_size=3, trigger="queue_empty", queue_depth=0)
 
         metrics = monitor.get_metrics()
+        samples = monitor.get_recent_write_samples(limit=2, min_time_ms=15.0)
 
         assert metrics["db_write_time_p95"] > 0
+        assert len(samples) == 2
+        assert samples[0]["time_ms"] == 30.0
+        assert samples[0]["batch_size"] == 3
 
     def test_record_drop(self):
         """ドロップイベントの記録テスト."""

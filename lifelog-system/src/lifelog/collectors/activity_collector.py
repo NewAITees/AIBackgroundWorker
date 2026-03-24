@@ -204,16 +204,24 @@ class ActivityCollector:
                 batch.append(interval)
 
                 # 書き込み条件
-                should_write = (
-                    len(batch) >= batch_size
-                    or (datetime.now() - last_write).total_seconds() > timeout
-                )
+                write_reason = None
+                if len(batch) >= batch_size:
+                    write_reason = "batch_size"
+                elif (datetime.now() - last_write).total_seconds() > timeout:
+                    write_reason = "timeout"
 
-                if should_write:
+                if write_reason:
+                    batch_len = len(batch)
+                    queue_depth = self.queue.qsize()
                     write_start = time.time()
                     self.db.bulk_insert_intervals(batch)
                     write_time_ms = (time.time() - write_start) * 1000
-                    self.health_monitor.record_write_time(write_time_ms)
+                    self.health_monitor.record_write_time(
+                        write_time_ms,
+                        batch_size=batch_len,
+                        trigger=write_reason,
+                        queue_depth=queue_depth,
+                    )
 
                     # キュー投入→DB書込完了の遅延を記録
                     now = datetime.now()
@@ -230,10 +238,17 @@ class ActivityCollector:
             except queue.Empty:
                 # キューが空でもバッチがあれば書き込み
                 if batch:
+                    batch_len = len(batch)
+                    queue_depth = self.queue.qsize()
                     write_start = time.time()
                     self.db.bulk_insert_intervals(batch)
                     write_time_ms = (time.time() - write_start) * 1000
-                    self.health_monitor.record_write_time(write_time_ms)
+                    self.health_monitor.record_write_time(
+                        write_time_ms,
+                        batch_size=batch_len,
+                        trigger="queue_empty",
+                        queue_depth=queue_depth,
+                    )
 
                     now = datetime.now()
                     for item in batch:
@@ -269,7 +284,24 @@ class ActivityCollector:
                 slo_check = self.health_monitor.check_slo(slo_config)
 
                 if not slo_check["healthy"]:
-                    logger.warning(f"SLO violations detected: {slo_check['violations']}")
+                    metrics = slo_check["metrics"]
+                    slow_writes = self.health_monitor.get_recent_write_samples(
+                        limit=5,
+                        min_time_ms=slo_config.get("db_write_time_p95", 0),
+                    )
+                    logger.warning(
+                        "SLO violations detected: %s | metrics=%s | slow_writes=%s",
+                        slo_check["violations"],
+                        {
+                            "collection_delay_p95": round(
+                                metrics.get("collection_delay_p95", 0.0), 3
+                            ),
+                            "db_write_time_p95": round(metrics.get("db_write_time_p95", 0.0), 1),
+                            "dropped_events": metrics.get("dropped_events", 0),
+                            "mem_mb": round(metrics.get("mem_mb", 0.0), 1),
+                        },
+                        slow_writes,
+                    )
 
             except Exception as e:
                 logger.error(f"Health monitoring error: {e}", exc_info=True)

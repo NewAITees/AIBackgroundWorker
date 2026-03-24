@@ -25,6 +25,7 @@ class HealthMonitor:
         """初期化."""
         self.collection_delays = deque(maxlen=1000)
         self.write_times = deque(maxlen=100)  # 直近100サンプルに限定し古いスパイクが引きずられないようにする
+        self.recent_write_samples = deque(maxlen=20)
         self.dropped_count = 0
 
     def record_collection_delay(self, delay_seconds: float) -> None:
@@ -36,7 +37,14 @@ class HealthMonitor:
         """
         self.collection_delays.append(delay_seconds)
 
-    def record_write_time(self, time_ms: float) -> None:
+    def record_write_time(
+        self,
+        time_ms: float,
+        *,
+        batch_size: int | None = None,
+        trigger: str | None = None,
+        queue_depth: int | None = None,
+    ) -> None:
         """
         DB書込時間を記録.
 
@@ -44,10 +52,31 @@ class HealthMonitor:
             time_ms: 書込時間（ミリ秒）
         """
         self.write_times.append(time_ms)
+        self.recent_write_samples.append(
+            {
+                "timestamp": datetime.now(),
+                "time_ms": round(time_ms, 1),
+                "batch_size": batch_size,
+                "trigger": trigger,
+                "queue_depth": queue_depth,
+            }
+        )
 
     def record_drop(self) -> None:
         """ドロップイベントをカウント."""
         self.dropped_count += 1
+
+    def get_recent_write_samples(
+        self, *, limit: int = 5, min_time_ms: float = 0.0
+    ) -> list[dict[str, Any]]:
+        """直近の書き込みサンプルを遅い順で返す。"""
+        samples = [
+            sample
+            for sample in self.recent_write_samples
+            if sample.get("time_ms", 0.0) >= min_time_ms
+        ]
+        samples.sort(key=lambda sample: sample.get("time_ms", 0.0), reverse=True)
+        return samples[:limit]
 
     def get_metrics(self) -> dict[str, Any]:
         """

@@ -178,6 +178,12 @@ class DatabaseManager:
             except Exception as exc:  # noqa: BLE001
                 if not self._is_lock_error(exc) or attempt >= retries:
                     raise
+                logger.warning(
+                    "Database lock detected, retrying (%s/%s): %s",
+                    attempt + 1,
+                    retries,
+                    exc,
+                )
                 time.sleep(base_sleep * (2**attempt))
 
     def get_or_create_app(self, process_name: str, process_path_hash: str) -> int:
