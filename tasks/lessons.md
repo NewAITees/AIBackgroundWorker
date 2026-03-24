@@ -28,6 +28,17 @@
 - パターン: 定期実行 worker の成功ログを `INFO` のまま流すと、APScheduler の `Running job` / `executed successfully` と収集成功ログが大量に出て、本当に見たい warning や異常が埋もれる。
 - 対策: 定常成功ログは `DEBUG` に落とし、APScheduler の executors ロガーは `WARNING` まで上げる。運用時は「毎回成功したこと」ではなく「失敗・遅延・例外」だけを主に見る。
 
+## 2026-03-24
+- パターン: `filter_by_relevance`（LLMによる検索結果の関連性再評価）は Stage2 の +30〜60秒/件を生む一方、search_query_gen でテーマ特化クエリを生成した後の DDG 結果は既に関連性が高く、二重評価の効果が薄い。
+- 対策: 2026-03-24 時点でスキップに変更（`deep_research.py` 内にコメントアウトで復元手順を残す）。レポートの品質低下（無関係ソースの混入増）が目立つ場合は復活させること。
+- 変更箇所: `lifelog-system/src/info_collector/jobs/deep_research.py`（2-1 ブロック）
+
+- パターン: `deep_min_importance: 0.5` が低すぎると分析済み記事の30%超が deep_research 対象になり、GPU 稼働が1日1.5時間超になる。
+- 対策: `deep_min_importance: 0.8` に引き上げ（`timeline-app/config.yaml`）。品質面で必要な記事が漏れる場合は 0.75 程度に戻す。
+
+- パターン: DuckDuckGo search の収集が `info_limit` 以上に溜まりやすく（1日 300〜1000件超）、Stage1 の未分析バックログが膨大になる。
+- 対策: `info_limit: 5` に減らし（旧: 10）、`search_queries.txt` のクエリ数も 3 件に整理済み。
+
 ## 2026-03-19
 - パターン: worker ごとに LLM 呼び出しが分散していると、サーバーログ上で「どの処理がどのモデルを使ったか」を追えず、運用時の原因切り分けが遅れる。
 - 対策: LLM 呼び出しログは各 worker に個別実装せず、共通クライアントで `caller / purpose / model / base_url` を `INFO` 出力する。旧 `lifelog-system` 側を in-process で呼ぶ worker は環境変数で caller を引き継ぐ。
@@ -218,8 +229,16 @@
 - パターン: Windows PowerShell から JSONL を追記するとき、`Add-Content` の既定エンコーディングに任せると CP932 系で書かれ、WSL 側で UTF-8 前提読込したときに日本語タイトル中の `0x5c` が JSON の `\` と誤解されて `Invalid \escape` warning になる。
 - 対策: Windows 側 JSONL 出力は `Add-Content -Encoding utf8` のように明示して UTF-8 固定にする。読み込み側も既存データ救済のため、少なくとも `utf-8` → `cp932` の順で行単位 decode fallback を持たせる。
 - パターン: `foreground_logger.ps1` を `\\wsl.localhost\Ubuntu\...` の UNC パスから直接起動すると、スクリプト本体は動いて JSONL 出力もできる一方、既定の相対 `PrivacyConfigPath`（`..\config\privacy_windows.yaml`）が期待どおりに見つからず、`Privacy config not found` で既定値運用になることがある。
+- パターン: chat entry を「1メッセージ1本文」のまま持つと、右ペインでの会話継続表示と append 保存の整合が崩れやすい。
+- 対策: chat entry 本文は transcript Markdown として扱い、`<!-- chat-message:user|assistant -->` マーカー付きで保存・追記・描画を統一する。
+- パターン: AI 編集のプレビュー生成前に元本文の退避先が曖昧だと、保存/キャンセル時の後始末が UI 実装ごとにぶれやすい。
+- 対策: `articles/{id}.bak.md` を唯一の一時バックアップとし、生成は `ai_edit` 開始時、削除は `PATCH /entries/{id}` 成功時または明示キャンセル時に一本化する。
 - パターン: `collected_info` の時間帯サマリーを `source_type` 無視 + 全体 `LIMIT` で組むと、DuckDuckGo 検索結果が RSS を押し出して「ニュース箱」が実質 search 箱になる。
 - 対策: hourly summary は `news` と `search` を entry type ごとに分離し、表示件数は全体件数ではなく「ソースごと上限」で切る。定期検索の設定は `search_queries.txt` を UI から編集可能にし、収集 worker 側も `--search` を明示して実行経路を隠さない。
+- パターン: 旧 systemd timer を「置き換え済み」と認識していても、user unit が有効化されたまま残っていると、削除済みスクリプトを永続的に叩き続けて失敗ログや誤調査の原因になる。
+- 対策: worker を `timeline-app` 側へ移行したら、対応する旧 timer/service は同ターンで `disable --now` まで行う。コード移行だけで終えず、user systemd の `Loaded/Active/Trigger` を実機確認してから完了扱いにする。
+- パターン: 旧 `info-collector.service` のように systemd unit が `--use-ollama` 付きで動いていた場合、単純に `timeline-app` worker へ置き換えただけでは挙動差が残る。特に検索クエリ生成の有無は収集結果に直結する。
+- 対策: systemd 非依存化では unit の `ExecStart` 引数まで比較し、`limit` や `--use-ollama` のような実行オプション差分を設定項目として現行 worker に移植してから timer を止める。
 - 対策: UNC 経由で運用する場合は `-PrivacyConfigPath` を絶対指定するか、スクリプト側で `Join-Path $scriptDir "..\..."` のような未解決相対パスをそのまま使わず、`[System.IO.Path]::GetFullPath([System.IO.Path]::Combine(...))` で `scriptDir` 基準の絶対パスへ正規化する。起動できたことだけで privacy 設定読込成功とみなさない。
 - パターン: `system_log` や hourly summary の時刻を SQLite の `localtime` や実行環境任せで扱うと、WSL とブラウザでタイムゾーン解釈がずれたときに `01時のシステムイベント` が `10:30` 表示になる。
 - 対策: 個人用の単一PC運用では、worker の時間帯判定と entry 保存 timestamp は `datetime.now().astimezone()` で得たローカルタイムゾーンに揃え、フロント表示はブラウザのローカルタイムゾーンを使う。SQLite 側も `localtime` 依存を避け、検出したUTCオフセットを明示して集計する。

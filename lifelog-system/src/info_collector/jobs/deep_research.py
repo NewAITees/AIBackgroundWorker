@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional
 from src.ai_secretary.ollama_client import OllamaClient
 from src.info_collector.prompts import search_query_gen, result_synthesis
 from src.info_collector.repository import InfoCollectorRepository
-from src.info_collector.search import DDGSearchClient, filter_search_results, filter_by_relevance
+from src.info_collector.search import DDGSearchClient, filter_search_results
 
 logger = logging.getLogger(__name__)
 
@@ -115,32 +115,34 @@ def deep_research_articles(
             logger.warning("No search results for article_id=%s", article_id)
             continue
 
-        # 2-1) 関連性フィルタリング（LLM使用）
-        # 元の記事との関連性が高い検索結果のみを保持
+        # 2-1) 関連性フィルタリング（LLM使用）- 現在スキップ中
+        # NOTE: search_query_gen でテーマ特化クエリを生成しているため、
+        # DDG 検索結果はすでにテーマに関連している。
+        # LLM による二重評価はコスト増（Stage2 の +30〜60秒/件）に対して効果が薄いため、
+        # 2026-03-24 時点でスキップに変更。
+        # 品質低下が顕著な場合は以下の filter_by_relevance 呼び出しを復活させること:
+        #
+        # article_content = (
+        #     row["collected_content"] if "collected_content" in row.keys() else ""
+        # ) or ""
+        # article_summary_for_filtering = article_content[:500] if article_content else summary
+        # relevant_results = filter_by_relevance(
+        #     results=combined_results,
+        #     article_theme=summary,
+        #     article_summary=article_summary_for_filtering,
+        #     keywords=[str(k) for k in keywords],
+        #     ollama_client=ollama,
+        #     min_relevance_score=0.5,
+        # )
+        # if len(relevant_results) < 3:
+        #     combined_results = combined_results[:10]
+        # else:
+        #     combined_results = relevant_results[:10]
         article_content = (
             row["collected_content"] if "collected_content" in row.keys() else ""
         ) or ""
         article_summary_for_filtering = article_content[:500] if article_content else summary
-
-        relevant_results = filter_by_relevance(
-            results=combined_results,
-            article_theme=summary,
-            article_summary=article_summary_for_filtering,
-            keywords=[str(k) for k in keywords],
-            ollama_client=ollama,
-            min_relevance_score=0.5,  # 関連性スコア0.5以上を保持
-        )
-
-        # 関連性フィルタリング後の結果が少ない場合は、元の結果を使用（安全策）
-        if len(relevant_results) < 3:
-            logger.warning(
-                "Too few relevant results (%d) for article_id=%s, using all results",
-                len(relevant_results),
-                article_id,
-            )
-            combined_results = combined_results[:10]  # 最大10件に制限
-        else:
-            combined_results = relevant_results[:10]  # 関連性の高い上位10件
+        combined_results = combined_results[:10]
 
         # 3) 検索結果統合
         # 元の分析結果を取得
