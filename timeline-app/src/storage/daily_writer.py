@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 from ..models.entry import Entry
@@ -44,6 +44,26 @@ def ensure_daily_file(workspace_path: str, daily_dir: str, target_date: date) ->
     if not path.exists():
         path.write_text(build_daily_content(target_date), encoding="utf-8")
     return path
+
+
+def ensure_future_daily_files(
+    workspace_path: str,
+    daily_dir: str,
+    days_ahead: int,
+    *,
+    start_date: date | None = None,
+) -> list[Path]:
+    """今日から指定日数先までの daily ファイルを不足分だけ補充する。"""
+    base_date = start_date or date.today()
+    horizon = max(days_ahead, 0)
+    created: list[Path] = []
+    for offset in range(horizon + 1):
+        target_date = base_date + timedelta(days=offset)
+        path = daily_path(workspace_path, daily_dir, target_date)
+        if path.exists():
+            continue
+        created.append(ensure_daily_file(workspace_path, daily_dir, target_date))
+    return created
 
 
 def _section_marker(entry: Entry) -> str:

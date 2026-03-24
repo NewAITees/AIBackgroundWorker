@@ -218,6 +218,7 @@ scripts/logs/*.processed
 lifelog-system/data/
 lifelog-system/logs/
 lifelog-system/lifelog-system/
+models/animation/
 lifelog-system/lifelog.pid
 lifelog-system/windows_logger.pid
 

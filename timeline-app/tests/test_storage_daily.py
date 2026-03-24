@@ -7,6 +7,7 @@ from src.storage.daily_reader import read_daily_entries, read_timeline_entries
 from src.storage.daily_writer import (
     build_daily_content,
     ensure_daily_file,
+    ensure_future_daily_files,
     normalize_daily_file,
     remove_entry_from_daily,
     upsert_entry_in_daily,
@@ -69,6 +70,40 @@ class TestEnsureDailyFile:
         target.write_text("既存の内容", encoding="utf-8")
         ensure_daily_file(str(tmp_path), "daily", date(2026, 3, 18))
         assert target.read_text(encoding="utf-8") == "既存の内容"
+
+
+class TestEnsureFutureDailyFiles:
+    def test_creates_until_horizon(self, tmp_path):
+        from datetime import date
+
+        created = ensure_future_daily_files(
+            str(tmp_path),
+            "daily",
+            2,
+            start_date=date(2026, 3, 18),
+        )
+
+        assert [path.name for path in created] == [
+            "2026-03-18.md",
+            "2026-03-19.md",
+            "2026-03-20.md",
+        ]
+
+    def test_skips_existing_files(self, tmp_path):
+        from datetime import date
+
+        ensure_daily_file(str(tmp_path), "daily", date(2026, 3, 19))
+        created = ensure_future_daily_files(
+            str(tmp_path),
+            "daily",
+            2,
+            start_date=date(2026, 3, 18),
+        )
+
+        assert [path.name for path in created] == [
+            "2026-03-18.md",
+            "2026-03-20.md",
+        ]
 
 
 class TestUpsertEntryInDaily:
