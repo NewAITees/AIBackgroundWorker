@@ -239,3 +239,6 @@ timeline-app/.playwright-cli/*.log
 # VRM・3Dモデルファイル
 /models/
 .playwright-output/
+
+# vendor-src/node_modules（必要最小限ファイルのみ git add -f で管理）
+timeline-app/vendor-src/node_modules/
