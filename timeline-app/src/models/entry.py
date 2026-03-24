@@ -41,6 +41,20 @@ class EntryMeta(BaseModel):
     source_path: Optional[str] = None
     confidence: Optional[float] = None
     completed_at: Optional[datetime] = None
+    recurring_enabled: Optional[bool] = None
+    recurring_rule: Optional[str] = None
+    recurring_interval: Optional[int] = None
+    recurring_count: Optional[int] = None
+    recurring_weekdays: list[int] = []
+    recurring_series_id: Optional[str] = None
+    recurring_sequence: Optional[int] = None
+    recurring_scheduled_for: Optional[str] = None
+    traits: dict[str, float] = {}
+    trait_evidence: list[str] = []
+    review_kind: Optional[str] = None
+    review_scope: Optional[str] = None
+    review_date: Optional[str] = None
+    review_week_start: Optional[str] = None
 
 
 class Entry(BaseModel):

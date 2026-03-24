@@ -37,6 +37,40 @@ def reset_vrm_model():
 
 
 @pytest.fixture(autouse=True)
+def reset_future_daily_days():
+    original = config.lifelog.future_daily_days_ahead
+    yield
+    config.lifelog.future_daily_days_ahead = original
+
+
+@pytest.fixture(autouse=True)
+def reset_behavior_settings():
+    original_review_enabled = config.behavior.review_enabled
+    original_big_five_enabled = config.behavior.big_five_enabled
+    original_daily_review_hour = config.behavior.daily_review_hour
+    original_daily_review_minute = config.behavior.daily_review_minute
+    original_weekly_review_weekday = config.behavior.weekly_review_weekday
+    original_weekly_review_hour = config.behavior.weekly_review_hour
+    original_weekly_review_minute = config.behavior.weekly_review_minute
+    original_review_perspectives = list(config.behavior.review_perspectives)
+    original_big_five_perspectives = list(config.behavior.big_five_perspectives)
+    original_focus_traits = list(config.behavior.big_five_focus_traits)
+    original_trait_targets = dict(config.behavior.big_five_trait_targets)
+    yield
+    config.behavior.review_enabled = original_review_enabled
+    config.behavior.big_five_enabled = original_big_five_enabled
+    config.behavior.daily_review_hour = original_daily_review_hour
+    config.behavior.daily_review_minute = original_daily_review_minute
+    config.behavior.weekly_review_weekday = original_weekly_review_weekday
+    config.behavior.weekly_review_hour = original_weekly_review_hour
+    config.behavior.weekly_review_minute = original_weekly_review_minute
+    config.behavior.review_perspectives = original_review_perspectives
+    config.behavior.big_five_perspectives = original_big_five_perspectives
+    config.behavior.big_five_focus_traits = original_focus_traits
+    config.behavior.big_five_trait_targets = original_trait_targets
+
+
+@pytest.fixture(autouse=True)
 def temp_settings_files(monkeypatch, tmp_path):
     rss_path = tmp_path / "rss_feeds.txt"
     rss_path.write_text("# test feeds\nhttps://example.com/feed.xml\n", encoding="utf-8")
@@ -89,6 +123,24 @@ class TestSettingsGet:
         assert "model_filename" in vrm
         assert "available_models" in vrm
         assert isinstance(vrm["available_models"], list)
+
+    def test_returns_behavior_section(self, client: TestClient):
+        resp = client.get("/api/settings")
+        behavior = resp.json()["behavior"]
+        for key in (
+            "review_enabled",
+            "big_five_enabled",
+            "daily_review_hour",
+            "daily_review_minute",
+            "weekly_review_weekday",
+            "weekly_review_hour",
+            "weekly_review_minute",
+            "review_perspectives",
+            "big_five_perspectives",
+            "big_five_focus_traits",
+            "big_five_trait_targets",
+        ):
+            assert key in behavior
 
 
 class TestSettingsPatchAi:
@@ -181,12 +233,59 @@ class TestSettingsPipeline:
     def test_pipeline_includes_info_use_ollama(self, client: TestClient):
         resp = client.get("/api/settings")
         assert "info_use_ollama" in resp.json()["pipeline"]
+        assert "future_daily_days_ahead" in resp.json()["pipeline"]
 
     def test_update_info_use_ollama(self, client: TestClient):
         resp = client.patch("/api/settings/pipeline", json={"info_use_ollama": False})
         assert resp.status_code == 200
         assert resp.json()["info_use_ollama"] is False
         assert config.lifelog.info_use_ollama is False
+
+    def test_update_future_daily_days_ahead(self, client: TestClient):
+        resp = client.patch("/api/settings/pipeline", json={"future_daily_days_ahead": 14})
+        assert resp.status_code == 200
+        assert resp.json()["future_daily_days_ahead"] == 14
+        assert config.lifelog.future_daily_days_ahead == 14
+
+
+class TestSettingsBehavior:
+    def test_update_behavior_settings(self, client: TestClient):
+        resp = client.patch(
+            "/api/settings/behavior",
+            json={
+                "review_enabled": True,
+                "big_five_enabled": True,
+                "daily_review_hour": 6,
+                "daily_review_minute": 45,
+                "weekly_review_weekday": 5,
+                "weekly_review_hour": 10,
+                "weekly_review_minute": 15,
+                "review_perspectives": ["今日の前進", "集中と段取り"],
+                "big_five_perspectives": ["どの行動がどの特性に出ていたか"],
+                "big_five_focus_traits": ["conscientiousness", "extraversion", "invalid"],
+                "big_five_trait_targets": {
+                    "conscientiousness": "up",
+                    "neuroticism": "down",
+                    "bad": "up",
+                },
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["big_five_enabled"] is True
+        assert data["daily_review_hour"] == 6
+        assert data["daily_review_minute"] == 45
+        assert data["weekly_review_weekday"] == 5
+        assert data["weekly_review_hour"] == 10
+        assert data["weekly_review_minute"] == 15
+        assert data["review_perspectives"] == ["今日の前進", "集中と段取り"]
+        assert data["big_five_focus_traits"] == ["conscientiousness", "extraversion"]
+        assert data["big_five_trait_targets"] == {"conscientiousness": "up", "neuroticism": "down"}
+
+    def test_behavior_reflected_in_get(self, client: TestClient):
+        client.patch("/api/settings/behavior", json={"big_five_enabled": True})
+        resp = client.get("/api/settings")
+        assert resp.json()["behavior"]["big_five_enabled"] is True
 
 
 class TestSettingsVrm:

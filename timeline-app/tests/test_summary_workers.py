@@ -7,6 +7,11 @@ from datetime import UTC, date, datetime, timedelta
 
 from src.config import config
 from src.models.entry import Entry, EntryMeta, EntrySource, EntryStatus, EntryType
+from src.services.behavior_review import (
+    build_daily_review_bundle,
+    build_weekly_review_bundle,
+    estimate_entry_traits,
+)
 from src.services.hourly_summary_importer import (
     get_local_timezone,
     summarize_news,
@@ -237,20 +242,26 @@ def test_daily_digest_worker_target_dates_respects_lookback(monkeypatch):
 
 def test_daily_digest_worker_skips_when_paused(monkeypatch):
     worker = DailyDigestWorker()
+    monkeypatch.setattr(worker, "_ensure_future_daily_files", lambda workspace_path: 3)
+    monkeypatch.setattr(worker, "_ensure_recurring_todos", lambda workspace_path: 2)
     monkeypatch.setattr(
         "src.workers.daily_digest_worker.ai_control_service.is_paused", lambda: True
     )
     monkeypatch.setattr(
         "src.workers.daily_digest_worker.resolve_workspace_path",
-        lambda: (_ for _ in ()).throw(AssertionError("workspace 解決は呼ばれない")),
+        lambda: "/tmp/workspace",
     )
 
     assert worker._sync_once_blocking() == 0
     assert worker.get_status()["last_saved"] == 0
+    assert worker.get_status()["last_future_daily_created"] == 3
+    assert worker.get_status()["last_recurring_todo_created"] == 2
 
 
 def test_daily_digest_worker_generates_for_unprocessed_dates(monkeypatch):
     worker = DailyDigestWorker()
+    monkeypatch.setattr(worker, "_ensure_future_daily_files", lambda workspace_path: 2)
+    monkeypatch.setattr(worker, "_ensure_recurring_todos", lambda workspace_path: 4)
     monkeypatch.setattr(
         "src.workers.daily_digest_worker.ai_control_service.is_paused", lambda: False
     )
@@ -279,6 +290,173 @@ def test_daily_digest_worker_generates_for_unprocessed_dates(monkeypatch):
     assert all(item[1] == "/tmp/workspace" for item in generated)
     assert worker.get_status()["last_target_date"] == "2026-03-18"
     assert worker.get_status()["last_saved"] == 1
+    assert worker.get_status()["last_future_daily_created"] == 2
+    assert worker.get_status()["last_recurring_todo_created"] == 4
+
+
+def test_daily_digest_worker_ensures_future_daily_files(monkeypatch):
+    worker = DailyDigestWorker()
+    monkeypatch.setattr(config.lifelog, "future_daily_days_ahead", 2)
+
+    fixed_now = datetime(2026, 3, 19, 12, 0, tzinfo=UTC)
+
+    class _FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return fixed_now.replace(tzinfo=None)
+            return fixed_now.astimezone(tz)
+
+    captured = {}
+
+    def _ensure_future_daily_files(workspace_path, daily_dir, days_ahead, *, start_date=None):
+        captured["workspace_path"] = workspace_path
+        captured["daily_dir"] = daily_dir
+        captured["days_ahead"] = days_ahead
+        captured["start_date"] = start_date
+        return ["a", "b"]
+
+    monkeypatch.setattr("src.workers.daily_digest_worker.datetime", _FixedDatetime)
+    monkeypatch.setattr(
+        "src.workers.daily_digest_worker.ensure_future_daily_files", _ensure_future_daily_files
+    )
+
+    created = worker._ensure_future_daily_files("/tmp/workspace")
+    assert created == 2
+    assert captured == {
+        "workspace_path": "/tmp/workspace",
+        "daily_dir": config.workspace.dirs.daily,
+        "days_ahead": 2,
+        "start_date": date(2026, 3, 19),
+    }
+    assert worker.get_status()["last_future_daily_end_date"] == "2026-03-21"
+
+
+def test_daily_digest_worker_ensures_recurring_todos(monkeypatch):
+    worker = DailyDigestWorker()
+    fixed_now = datetime(2026, 3, 19, 12, 0, tzinfo=UTC)
+
+    class _FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return fixed_now.replace(tzinfo=None)
+            return fixed_now.astimezone(tz)
+
+    source_entry = Entry(
+        id="todo-1",
+        type=EntryType.todo,
+        title="薬を飲む",
+        content="薬を飲む",
+        timestamp=datetime(2026, 3, 18, 9, 0, tzinfo=UTC),
+        status=EntryStatus.active,
+        source=EntrySource.user,
+        workspace_path="/tmp/workspace",
+        meta=EntryMeta(
+            recurring_enabled=True,
+            recurring_rule="daily",
+            recurring_interval=1,
+            recurring_count=3,
+            recurring_series_id="series-todo-1",
+            recurring_sequence=1,
+            recurring_scheduled_for="2026-03-18",
+        ),
+    )
+
+    persisted = []
+
+    def _persist_entry(workspace_path, entry):
+        persisted.append(entry)
+
+    monkeypatch.setattr("src.workers.daily_digest_worker.datetime", _FixedDatetime)
+    monkeypatch.setattr(
+        "src.workers.daily_digest_worker.read_entries", lambda *args, **kwargs: [source_entry]
+    )
+    monkeypatch.setattr("src.workers.daily_digest_worker.persist_entry", _persist_entry)
+
+    created = worker._ensure_recurring_todos("/tmp/workspace")
+    assert created == 1
+    assert len(persisted) == 1
+    assert [entry.meta.recurring_sequence for entry in persisted] == [2]
+    assert [entry.meta.recurring_scheduled_for for entry in persisted] == ["2026-03-19"]
+    assert all(entry.type == EntryType.todo for entry in persisted)
+    assert all(entry.source == EntrySource.user for entry in persisted)
+
+
+def test_daily_digest_worker_recurring_todos_skip_existing(monkeypatch):
+    worker = DailyDigestWorker()
+    fixed_now = datetime(2026, 3, 19, 12, 0, tzinfo=UTC)
+
+    class _FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return fixed_now.replace(tzinfo=None)
+            return fixed_now.astimezone(tz)
+
+    source_entry = Entry(
+        id="todo-1",
+        type=EntryType.todo,
+        title="薬を飲む",
+        content="薬を飲む",
+        timestamp=datetime(2026, 3, 18, 9, 0, tzinfo=UTC),
+        status=EntryStatus.active,
+        source=EntrySource.user,
+        workspace_path="/tmp/workspace",
+        meta=EntryMeta(
+            recurring_enabled=True,
+            recurring_rule="daily",
+            recurring_interval=1,
+            recurring_count=3,
+            recurring_series_id="series-todo-1",
+            recurring_sequence=1,
+            recurring_scheduled_for="2026-03-18",
+        ),
+    )
+    existing_next = Entry(
+        id="todo-2",
+        type=EntryType.todo,
+        title="薬を飲む",
+        content="薬を飲む",
+        timestamp=datetime(2026, 3, 19, 9, 0, tzinfo=UTC),
+        status=EntryStatus.active,
+        source=EntrySource.user,
+        workspace_path="/tmp/workspace",
+        meta=EntryMeta(
+            recurring_enabled=True,
+            recurring_rule="daily",
+            recurring_interval=1,
+            recurring_count=3,
+            recurring_series_id="series-todo-1",
+            recurring_sequence=2,
+            recurring_scheduled_for="2026-03-19",
+        ),
+    )
+
+    monkeypatch.setattr("src.workers.daily_digest_worker.datetime", _FixedDatetime)
+    monkeypatch.setattr(
+        "src.workers.daily_digest_worker.read_entries",
+        lambda *args, **kwargs: [source_entry, existing_next],
+    )
+    monkeypatch.setattr(
+        "src.workers.daily_digest_worker.persist_entry",
+        lambda workspace_path, entry: (_ for _ in ()).throw(
+            AssertionError("persist_entry should not run")
+        ),
+    )
+
+    assert worker._ensure_recurring_todos("/tmp/workspace") == 0
+
+
+def test_daily_digest_worker_next_recurring_date_for_custom_weekdays():
+    worker = DailyDigestWorker()
+    meta = EntryMeta(
+        recurring_enabled=True,
+        recurring_rule="custom_weekdays",
+        recurring_interval=1,
+        recurring_weekdays=[0, 2, 4],
+    )
+    assert worker._next_recurring_date(date(2026, 3, 18), meta) == date(2026, 3, 20)
 
 
 def test_daily_digest_worker_generate_for_date_skips_if_entry_exists(monkeypatch):
@@ -340,3 +518,111 @@ def test_daily_digest_worker_generate_for_date_persists_entry(monkeypatch):
     assert entry.title == "振り返り"
     assert entry.content == "よく進めた。次もこの調子。"
     assert entry.timestamp == datetime(2026, 3, 18, 23, 50, tzinfo=UTC)
+
+
+def test_estimate_entry_traits_returns_conscientiousness_signal():
+    entry = Entry(
+        id="todo-done-1",
+        type=EntryType.todo_done,
+        title="TODOを完了して整理した",
+        content="計画どおりに進めてレビューを完了",
+        timestamp=datetime(2026, 3, 18, 9, 0, tzinfo=UTC),
+        status=EntryStatus.done,
+        source=EntrySource.user,
+        workspace_path="/tmp/workspace",
+        meta=EntryMeta(),
+    )
+
+    traits, evidence = estimate_entry_traits(entry)
+    assert traits["conscientiousness"] > 0
+    assert evidence
+
+
+def test_build_daily_review_bundle_separates_review_and_big_five():
+    config.behavior.review_enabled = True
+    config.behavior.big_five_enabled = True
+    config.behavior.review_perspectives = ["今日の前進"]
+    config.behavior.big_five_focus_traits = ["conscientiousness"]
+    entry = Entry(
+        id="diary-1",
+        type=EntryType.diary,
+        title="進捗を書いた",
+        content="TODOを整理して完了した。少し不安もあった。",
+        timestamp=datetime(2026, 3, 18, 20, 0, tzinfo=UTC),
+        status=EntryStatus.active,
+        source=EntrySource.user,
+        workspace_path="/tmp/workspace",
+        meta=EntryMeta(),
+    )
+
+    bundle = build_daily_review_bundle(
+        "/tmp/workspace", date(2026, 3, 18), [entry], config.behavior
+    )
+    assert bundle.review_entry is not None
+    assert bundle.action_entry is not None
+    assert bundle.review_entry.meta.review_kind == "daily_review"
+    assert bundle.action_entry.meta.review_kind == "improvement_action"
+    assert bundle.tagged_entries[0].meta.traits
+
+
+def test_build_daily_review_bundle_filters_non_user_entries():
+    config.behavior.review_enabled = True
+    config.behavior.big_five_enabled = True
+    user_entry = Entry(
+        id="diary-user",
+        type=EntryType.diary,
+        title="ユーザー日記",
+        content="TODOを整理して完了した",
+        timestamp=datetime(2026, 3, 18, 20, 0, tzinfo=UTC),
+        status=EntryStatus.active,
+        source=EntrySource.user,
+        workspace_path="/tmp/workspace",
+        meta=EntryMeta(),
+    )
+    ai_entry = Entry(
+        id="diary-ai",
+        type=EntryType.diary,
+        title="AI日記",
+        content="自動生成レビュー",
+        timestamp=datetime(2026, 3, 18, 21, 0, tzinfo=UTC),
+        status=EntryStatus.active,
+        source=EntrySource.ai,
+        workspace_path="/tmp/workspace",
+        meta=EntryMeta(),
+    )
+
+    bundle = build_daily_review_bundle(
+        "/tmp/workspace", date(2026, 3, 18), [user_entry, ai_entry], config.behavior
+    )
+    assert bundle.review_entry is not None
+    assert "ユーザー日記" in bundle.review_entry.content
+    assert "AI日記" not in bundle.review_entry.content
+
+
+def test_build_weekly_review_bundle_respects_trait_targets():
+    config.behavior.review_enabled = True
+    config.behavior.big_five_enabled = True
+    config.behavior.big_five_trait_targets = {
+        "openness": "keep",
+        "conscientiousness": "up",
+        "extraversion": "up",
+        "agreeableness": "keep",
+        "neuroticism": "down",
+    }
+    entry = Entry(
+        id="todo-done-weekly",
+        type=EntryType.todo_done,
+        title="レビュー完了",
+        content="レビューを完了して少し不安もあった",
+        timestamp=datetime(2026, 3, 24, 9, 0, tzinfo=UTC),
+        status=EntryStatus.done,
+        source=EntrySource.user,
+        workspace_path="/tmp/workspace",
+        meta=EntryMeta(),
+    )
+    bundle = build_weekly_review_bundle(
+        "/tmp/workspace", [entry], date(2026, 3, 29), config.behavior
+    )
+    assert bundle.review_entry is not None
+    assert bundle.review_entry.meta.review_kind == "weekly_review"
+    assert "週次レビュー" in bundle.review_entry.title

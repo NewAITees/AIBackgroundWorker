@@ -43,6 +43,34 @@ class VrmConfig(BaseModel):
     model_filename: str = ""
 
 
+class BehaviorConfig(BaseModel):
+    review_enabled: bool = True
+    big_five_enabled: bool = False
+    daily_review_hour: int = 0
+    daily_review_minute: int = 20
+    weekly_review_weekday: int = 6
+    weekly_review_hour: int = 9
+    weekly_review_minute: int = 0
+    review_perspectives: list[str] = [
+        "今日の前進",
+        "詰まりやすかった点",
+        "明日に回すもの",
+    ]
+    big_five_perspectives: list[str] = [
+        "どの行動がどの特性に出ていたか",
+        "どの特性を伸ばしたいか",
+        "改善に効く次の行動は何か",
+    ]
+    big_five_focus_traits: list[str] = []
+    big_five_trait_targets: dict[str, str] = {
+        "openness": "up",
+        "conscientiousness": "up",
+        "extraversion": "up",
+        "agreeableness": "up",
+        "neuroticism": "down",
+    }
+
+
 class LifelogConfig(BaseModel):
     root_dir: str = "lifelog-system"
     config_path: str = "lifelog-system/config/config.yaml"
@@ -69,6 +97,7 @@ class LifelogConfig(BaseModel):
     daily_digest_hour: int = 0
     daily_digest_minute: int = 20
     daily_digest_lookback_days: int = 7
+    future_daily_days_ahead: int = 7
     windows_foreground_log_path: str = "scripts/logs/windows_foreground.jsonl"
     windows_foreground_merge_seconds: int = 900
 
@@ -79,6 +108,7 @@ class AppConfig(BaseModel):
     ai: AIConfig = AIConfig()
     workspace: WorkspaceConfig = WorkspaceConfig(dirs=WorkspaceDirsConfig())
     vrm: VrmConfig = VrmConfig()
+    behavior: BehaviorConfig = BehaviorConfig()
     lifelog: LifelogConfig = LifelogConfig()
 
 
@@ -102,6 +132,7 @@ def load_config(path: Optional[Path] = None) -> AppConfig:
             }
         ),
         vrm=VrmConfig(**raw.get("vrm", {})),
+        behavior=BehaviorConfig(**raw.get("behavior", {})),
         lifelog=LifelogConfig(**raw.get("lifelog", {})),
     )
 

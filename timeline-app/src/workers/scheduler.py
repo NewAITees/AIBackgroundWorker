@@ -49,84 +49,89 @@ def start_scheduler() -> AsyncIOScheduler:
     """未起動なら scheduler を開始する。"""
     _configure_scheduler_logging()
     scheduler = get_scheduler()
-    if scheduler.get_job("activity-sync") is None:
-        scheduler.add_job(
-            _guarded("activity", activity_worker.sync_once),
-            "interval",
-            seconds=config.lifelog.activity_sync_seconds,
-            id="activity-sync",
-            max_instances=1,
-            coalesce=True,
-            replace_existing=True,
-            misfire_grace_time=config.lifelog.activity_sync_seconds,
-        )
-    if scheduler.get_job("browser-sync") is None:
-        scheduler.add_job(
-            _guarded("browser", browser_worker.sync_once),
-            "interval",
-            seconds=config.lifelog.browser_import_seconds,
-            id="browser-sync",
-            max_instances=1,
-            coalesce=True,
-            replace_existing=True,
-            misfire_grace_time=config.lifelog.browser_import_seconds,
-        )
-    if scheduler.get_job("info-sync") is None:
-        scheduler.add_job(
-            _guarded("info", info_worker.sync_once),
-            "interval",
-            seconds=config.lifelog.info_collect_seconds,
-            id="info-sync",
-            max_instances=1,
-            coalesce=True,
-            replace_existing=True,
-            misfire_grace_time=config.lifelog.info_collect_seconds,
-        )
-    if scheduler.get_job("analysis-pipeline-sync") is None:
-        scheduler.add_job(
-            _guarded("analysis", analysis_pipeline_worker.sync_once),
-            "interval",
-            seconds=config.lifelog.analysis_pipeline_seconds,
-            id="analysis-pipeline-sync",
-            max_instances=1,
-            coalesce=True,
-            replace_existing=True,
-            misfire_grace_time=config.lifelog.analysis_pipeline_seconds,
-        )
-    if scheduler.get_job("hourly-summary-sync") is None:
-        scheduler.add_job(
-            _guarded("hourly_summary", hourly_summary_worker.sync_once),
-            "interval",
-            seconds=config.lifelog.hourly_summary_seconds,
-            id="hourly-summary-sync",
-            max_instances=1,
-            coalesce=True,
-            replace_existing=True,
-            misfire_grace_time=config.lifelog.hourly_summary_seconds,
-        )
-    if scheduler.get_job("daily-digest-sync") is None:
-        scheduler.add_job(
-            _guarded("daily_digest", daily_digest_worker.sync_once),
-            "cron",
-            hour=config.lifelog.daily_digest_hour,
-            minute=config.lifelog.daily_digest_minute,
-            id="daily-digest-sync",
-            max_instances=1,
-            coalesce=True,
-            replace_existing=True,
-            misfire_grace_time=3600,
-        )
-    if scheduler.get_job("windows-foreground-merge") is None:
-        scheduler.add_job(
-            _guarded("windows", windows_foreground_worker.sync_once),
-            "interval",
-            seconds=config.lifelog.windows_foreground_merge_seconds,
-            id="windows-foreground-merge",
-            max_instances=1,
-            coalesce=True,
-            replace_existing=True,
-            misfire_grace_time=config.lifelog.windows_foreground_merge_seconds,
-        )
+    scheduler.add_job(
+        _guarded("activity", activity_worker.sync_once),
+        "interval",
+        seconds=config.lifelog.activity_sync_seconds,
+        id="activity-sync",
+        max_instances=1,
+        coalesce=True,
+        replace_existing=True,
+        misfire_grace_time=config.lifelog.activity_sync_seconds,
+    )
+    scheduler.add_job(
+        _guarded("browser", browser_worker.sync_once),
+        "interval",
+        seconds=config.lifelog.browser_import_seconds,
+        id="browser-sync",
+        max_instances=1,
+        coalesce=True,
+        replace_existing=True,
+        misfire_grace_time=config.lifelog.browser_import_seconds,
+    )
+    scheduler.add_job(
+        _guarded("info", info_worker.sync_once),
+        "interval",
+        seconds=config.lifelog.info_collect_seconds,
+        id="info-sync",
+        max_instances=1,
+        coalesce=True,
+        replace_existing=True,
+        misfire_grace_time=config.lifelog.info_collect_seconds,
+    )
+    scheduler.add_job(
+        _guarded("analysis", analysis_pipeline_worker.sync_once),
+        "interval",
+        seconds=config.lifelog.analysis_pipeline_seconds,
+        id="analysis-pipeline-sync",
+        max_instances=1,
+        coalesce=True,
+        replace_existing=True,
+        misfire_grace_time=config.lifelog.analysis_pipeline_seconds,
+    )
+    scheduler.add_job(
+        _guarded("hourly_summary", hourly_summary_worker.sync_once),
+        "interval",
+        seconds=config.lifelog.hourly_summary_seconds,
+        id="hourly-summary-sync",
+        max_instances=1,
+        coalesce=True,
+        replace_existing=True,
+        misfire_grace_time=config.lifelog.hourly_summary_seconds,
+    )
+    scheduler.add_job(
+        _guarded("daily_digest", daily_digest_worker.sync_once),
+        "cron",
+        hour=config.behavior.daily_review_hour,
+        minute=config.behavior.daily_review_minute,
+        id="daily-digest-sync",
+        max_instances=1,
+        coalesce=True,
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    scheduler.add_job(
+        _guarded("daily_digest", daily_digest_worker.sync_weekly_review_once),
+        "cron",
+        day_of_week=str(config.behavior.weekly_review_weekday),
+        hour=config.behavior.weekly_review_hour,
+        minute=config.behavior.weekly_review_minute,
+        id="weekly-review-sync",
+        max_instances=1,
+        coalesce=True,
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    scheduler.add_job(
+        _guarded("windows", windows_foreground_worker.sync_once),
+        "interval",
+        seconds=config.lifelog.windows_foreground_merge_seconds,
+        id="windows-foreground-merge",
+        max_instances=1,
+        coalesce=True,
+        replace_existing=True,
+        misfire_grace_time=config.lifelog.windows_foreground_merge_seconds,
+    )
     if not scheduler.running:
         scheduler.start()
     return scheduler

@@ -44,6 +44,21 @@ class PipelineSettingsUpdate(BaseModel):
     info_use_ollama: bool | None = None
     analyze_batch_size: int | None = None
     deep_limit: int | None = None
+    future_daily_days_ahead: int | None = None
+
+
+class BehaviorSettingsUpdate(BaseModel):
+    review_enabled: bool | None = None
+    big_five_enabled: bool | None = None
+    daily_review_hour: int | None = None
+    daily_review_minute: int | None = None
+    weekly_review_weekday: int | None = None
+    weekly_review_hour: int | None = None
+    weekly_review_minute: int | None = None
+    review_perspectives: list[str] | None = None
+    big_five_perspectives: list[str] | None = None
+    big_five_focus_traits: list[str] | None = None
+    big_five_trait_targets: dict[str, str] | None = None
 
 
 class VrmSettingsUpdate(BaseModel):
@@ -69,10 +84,24 @@ async def get_settings() -> dict[str, Any]:
             "info_use_ollama": config.lifelog.info_use_ollama,
             "analyze_batch_size": config.lifelog.analyze_batch_size,
             "deep_limit": config.lifelog.deep_limit,
+            "future_daily_days_ahead": config.lifelog.future_daily_days_ahead,
         },
         "vrm": {
             "model_filename": config.vrm.model_filename,
             "available_models": [path.name for path in list_vrm_paths()],
+        },
+        "behavior": {
+            "review_enabled": config.behavior.review_enabled,
+            "big_five_enabled": config.behavior.big_five_enabled,
+            "daily_review_hour": config.behavior.daily_review_hour,
+            "daily_review_minute": config.behavior.daily_review_minute,
+            "weekly_review_weekday": config.behavior.weekly_review_weekday,
+            "weekly_review_hour": config.behavior.weekly_review_hour,
+            "weekly_review_minute": config.behavior.weekly_review_minute,
+            "review_perspectives": config.behavior.review_perspectives,
+            "big_five_perspectives": config.behavior.big_five_perspectives,
+            "big_five_focus_traits": config.behavior.big_five_focus_traits,
+            "big_five_trait_targets": config.behavior.big_five_trait_targets,
         },
         **worker_control_service.get_all(),
         "feeds": _read_feeds(),
@@ -122,6 +151,8 @@ async def update_pipeline_settings(req: PipelineSettingsUpdate) -> dict[str, Any
         config.lifelog.analyze_batch_size = req.analyze_batch_size
     if req.deep_limit is not None:
         config.lifelog.deep_limit = req.deep_limit
+    if req.future_daily_days_ahead is not None:
+        config.lifelog.future_daily_days_ahead = max(req.future_daily_days_ahead, 0)
 
     _save_config()
     return {
@@ -129,6 +160,57 @@ async def update_pipeline_settings(req: PipelineSettingsUpdate) -> dict[str, Any
         "info_use_ollama": config.lifelog.info_use_ollama,
         "analyze_batch_size": config.lifelog.analyze_batch_size,
         "deep_limit": config.lifelog.deep_limit,
+        "future_daily_days_ahead": config.lifelog.future_daily_days_ahead,
+    }
+
+
+@router.patch("/settings/behavior")
+async def update_behavior_settings(req: BehaviorSettingsUpdate) -> dict[str, Any]:
+    if req.review_enabled is not None:
+        config.behavior.review_enabled = req.review_enabled
+    if req.big_five_enabled is not None:
+        config.behavior.big_five_enabled = req.big_five_enabled
+    if req.daily_review_hour is not None:
+        config.behavior.daily_review_hour = min(max(req.daily_review_hour, 0), 23)
+    if req.daily_review_minute is not None:
+        config.behavior.daily_review_minute = min(max(req.daily_review_minute, 0), 59)
+    if req.weekly_review_weekday is not None:
+        config.behavior.weekly_review_weekday = min(max(req.weekly_review_weekday, 0), 6)
+    if req.weekly_review_hour is not None:
+        config.behavior.weekly_review_hour = min(max(req.weekly_review_hour, 0), 23)
+    if req.weekly_review_minute is not None:
+        config.behavior.weekly_review_minute = min(max(req.weekly_review_minute, 0), 59)
+    if req.review_perspectives is not None:
+        config.behavior.review_perspectives = _normalize_text_list(req.review_perspectives)
+    if req.big_five_perspectives is not None:
+        config.behavior.big_five_perspectives = _normalize_text_list(req.big_five_perspectives)
+    if req.big_five_focus_traits is not None:
+        config.behavior.big_five_focus_traits = _normalize_trait_list(req.big_five_focus_traits)
+    if req.big_five_trait_targets is not None:
+        config.behavior.big_five_trait_targets = _normalize_trait_targets(
+            req.big_five_trait_targets
+        )
+
+    _save_config()
+    from ..workers.scheduler import start_scheduler
+
+    try:
+        start_scheduler()
+    except RuntimeError as exc:
+        if "Event loop is closed" not in str(exc):
+            raise
+    return {
+        "review_enabled": config.behavior.review_enabled,
+        "big_five_enabled": config.behavior.big_five_enabled,
+        "daily_review_hour": config.behavior.daily_review_hour,
+        "daily_review_minute": config.behavior.daily_review_minute,
+        "weekly_review_weekday": config.behavior.weekly_review_weekday,
+        "weekly_review_hour": config.behavior.weekly_review_hour,
+        "weekly_review_minute": config.behavior.weekly_review_minute,
+        "review_perspectives": config.behavior.review_perspectives,
+        "big_five_perspectives": config.behavior.big_five_perspectives,
+        "big_five_focus_traits": config.behavior.big_five_focus_traits,
+        "big_five_trait_targets": config.behavior.big_five_trait_targets,
     }
 
 
@@ -269,6 +351,32 @@ def _write_search_queries(queries: list[str]) -> None:
     _SEARCH_QUERIES_PATH.write_text(header + "\n".join(queries) + "\n", encoding="utf-8")
 
 
+def _normalize_text_list(values: list[str]) -> list[str]:
+    return [value.strip() for value in values if value and value.strip()]
+
+
+def _normalize_trait_list(values: list[str]) -> list[str]:
+    allowed = {"openness", "conscientiousness", "extraversion", "agreeableness", "neuroticism"}
+    return [value for value in values if value in allowed]
+
+
+def _normalize_trait_targets(values: dict[str, str]) -> dict[str, str]:
+    allowed_traits = {
+        "openness",
+        "conscientiousness",
+        "extraversion",
+        "agreeableness",
+        "neuroticism",
+    }
+    allowed_targets = {"up", "down", "keep"}
+    normalized = {}
+    for trait, direction in values.items():
+        if trait not in allowed_traits:
+            continue
+        normalized[trait] = direction if direction in allowed_targets else "keep"
+    return normalized
+
+
 def _save_config() -> None:
     """現在の config オブジェクトを config.yaml に書き戻す。"""
     if not _CONFIG_PATH.exists():
@@ -288,9 +396,23 @@ def _save_config() -> None:
     raw["lifelog"]["info_use_ollama"] = config.lifelog.info_use_ollama
     raw["lifelog"]["analyze_batch_size"] = config.lifelog.analyze_batch_size
     raw["lifelog"]["deep_limit"] = config.lifelog.deep_limit
+    raw["lifelog"]["future_daily_days_ahead"] = config.lifelog.future_daily_days_ahead
 
     raw.setdefault("vrm", {})
     raw["vrm"]["model_filename"] = config.vrm.model_filename
+
+    raw.setdefault("behavior", {})
+    raw["behavior"]["review_enabled"] = config.behavior.review_enabled
+    raw["behavior"]["big_five_enabled"] = config.behavior.big_five_enabled
+    raw["behavior"]["daily_review_hour"] = config.behavior.daily_review_hour
+    raw["behavior"]["daily_review_minute"] = config.behavior.daily_review_minute
+    raw["behavior"]["weekly_review_weekday"] = config.behavior.weekly_review_weekday
+    raw["behavior"]["weekly_review_hour"] = config.behavior.weekly_review_hour
+    raw["behavior"]["weekly_review_minute"] = config.behavior.weekly_review_minute
+    raw["behavior"]["review_perspectives"] = config.behavior.review_perspectives
+    raw["behavior"]["big_five_perspectives"] = config.behavior.big_five_perspectives
+    raw["behavior"]["big_five_focus_traits"] = config.behavior.big_five_focus_traits
+    raw["behavior"]["big_five_trait_targets"] = config.behavior.big_five_trait_targets
 
     with open(_CONFIG_PATH, "w", encoding="utf-8") as f:
         yaml.dump(raw, f, allow_unicode=True, sort_keys=False)
