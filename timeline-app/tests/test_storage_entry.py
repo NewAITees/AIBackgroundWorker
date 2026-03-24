@@ -80,3 +80,28 @@ class TestWriteReadEntry:
         write_entry(str(tmp_path), "articles", entry)
         restored = read_entry(str(tmp_path), "articles", entry.id)
         assert restored.content == "日本語テスト🎉"
+
+    def test_meta_roundtrip_recurring_fields(self, tmp_path):
+        entry = make_entry(
+            workspace_path=str(tmp_path),
+            meta=EntryMeta(
+                recurring_enabled=True,
+                recurring_rule="custom_weekdays",
+                recurring_interval=2,
+                recurring_count=5,
+                recurring_weekdays=[0, 2, 4],
+                recurring_series_id="series-abc123",
+                recurring_sequence=3,
+                recurring_scheduled_for="2026-03-18",
+            ),
+        )
+        write_entry(str(tmp_path), "articles", entry)
+        restored = read_entry(str(tmp_path), "articles", entry.id)
+        assert restored.meta.recurring_enabled is True
+        assert restored.meta.recurring_rule == "custom_weekdays"
+        assert restored.meta.recurring_interval == 2
+        assert restored.meta.recurring_count == 5
+        assert restored.meta.recurring_weekdays == [0, 2, 4]
+        assert restored.meta.recurring_series_id == "series-abc123"
+        assert restored.meta.recurring_sequence == 3
+        assert restored.meta.recurring_scheduled_for == "2026-03-18"

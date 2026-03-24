@@ -391,6 +391,22 @@ class TestChat:
 
 
 class TestNewsFeedback:
+    def test_get_feedback_stats(self, client: TestClient, monkeypatch):
+        class _Repo:
+            def get_feedback_stats(self):
+                return {
+                    "config": {"prior_alpha": 2.0},
+                    "source": [{"name": "SourceA", "score": 0.8, "samples": 4.0}],
+                    "category": [{"name": "AI", "score": 0.75, "samples": 3.0}],
+                }
+
+        monkeypatch.setattr("src.routers.news._load_repo", lambda: _Repo())
+
+        resp = client.get("/api/news/feedback/stats")
+        assert resp.status_code == 200
+        assert resp.json()["source"][0]["name"] == "SourceA"
+        assert resp.json()["category"][0]["name"] == "AI"
+
     def test_get_articles_includes_feedback_state(self, client: TestClient, monkeypatch):
         class _Repo:
             def get_articles_by_ids(self, article_ids):
@@ -409,6 +425,22 @@ class TestNewsFeedback:
                     }
                 }
 
+            def get_article_analysis_map(self, article_ids):
+                return {
+                    101: {
+                        "category": "AI",
+                        "importance_score": 0.91,
+                        "relevance_score": 0.84,
+                        "llm_importance_score": 0.8,
+                        "llm_relevance_score": 0.7,
+                        "source_bonus": 0.07,
+                        "category_bonus": 0.04,
+                        "total_bonus": 0.11,
+                        "importance_reason": "importance",
+                        "relevance_reason": "relevance",
+                    }
+                }
+
         monkeypatch.setattr("src.routers.news._load_repo", lambda: _Repo())
 
         resp = client.get("/api/news/articles?ids=collected-info-101,collected-info-102")
@@ -419,11 +451,24 @@ class TestNewsFeedback:
             "report_status": "done",
             "report_entry_id": "report-9",
         }
+        assert data[0]["analysis"] == {
+            "category": "AI",
+            "importance_score": 0.91,
+            "relevance_score": 0.84,
+            "llm_importance_score": 0.8,
+            "llm_relevance_score": 0.7,
+            "source_bonus": 0.07,
+            "category_bonus": 0.04,
+            "total_bonus": 0.11,
+            "importance_reason": "importance",
+            "relevance_reason": "relevance",
+        }
         assert data[1]["feedback"] == {
             "sentiment": None,
             "report_status": "none",
             "report_entry_id": None,
         }
+        assert data[1]["analysis"] is None
 
     def test_post_feedback_toggles_exclusive_state(self, client: TestClient, monkeypatch):
         class _Repo:

@@ -90,6 +90,8 @@ async def get_timeline(
 
 def _project_active_todo(entry: Entry) -> Entry:
     now = datetime.now(timezone.utc)
+    if entry.meta.recurring_enabled:
+        return entry
     entry_timestamp = _as_utc(entry.timestamp)
     if entry_timestamp > now:
         return entry

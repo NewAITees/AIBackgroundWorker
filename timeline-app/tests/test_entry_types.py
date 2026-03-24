@@ -142,6 +142,28 @@ class TestTodoEntry:
         data = _get(client, eid)
         assert data["type"] == "todo"
 
+    def test_recurring_meta_roundtrip(self, client: TestClient):
+        eid, _ = _create(
+            client,
+            "todo",
+            "繰り返しタスク",
+            meta={
+                "recurring_enabled": True,
+                "recurring_rule": "custom_weekdays",
+                "recurring_interval": 1,
+                "recurring_count": 5,
+                "recurring_weekdays": [0, 2, 4],
+            },
+        )
+        data = _get(client, eid)
+        assert data["meta"]["recurring_enabled"] is True
+        assert data["meta"]["recurring_rule"] == "custom_weekdays"
+        assert data["meta"]["recurring_interval"] == 1
+        assert data["meta"]["recurring_count"] == 5
+        assert data["meta"]["recurring_weekdays"] == [0, 2, 4]
+        assert data["meta"]["recurring_series_id"].startswith("series-")
+        assert data["meta"]["recurring_sequence"] == 1
+
     def test_appears_on_timeline_future_section(self, client: TestClient):
         eid, _ = _create(client, "todo", "未来セクション確認")
         resp = client.get("/api/timeline")
@@ -170,6 +192,53 @@ class TestTodoEntry:
         data = _patch(client, eid, type="todo_done", timestamp=explicit)
         ts = datetime.fromisoformat(data["timestamp"])
         assert ts <= datetime.now(timezone.utc) - timedelta(minutes=50)
+
+    def test_overdue_recurring_todo_keeps_past_timestamp_on_timeline(self, client: TestClient):
+        past = (datetime.now(timezone.utc) - timedelta(days=1)).replace(second=0, microsecond=0)
+        eid, _ = _create(
+            client,
+            "todo",
+            "昨日の繰り返しTODO",
+            timestamp=past.isoformat(),
+            meta={
+                "recurring_enabled": True,
+                "recurring_rule": "daily",
+                "recurring_interval": 1,
+                "recurring_count": 3,
+            },
+        )
+        resp = client.get("/api/timeline", params={"before": 48, "after": 24})
+        todo_entry = next(entry for entry in resp.json()["todo_entries"] if entry["id"] == eid)
+        assert datetime.fromisoformat(todo_entry["timestamp"]) <= datetime.now(timezone.utc)
+
+    def test_disable_recurring_clears_meta(self, client: TestClient):
+        eid, _ = _create(
+            client,
+            "todo",
+            "解除する繰り返しTODO",
+            meta={"recurring_enabled": True, "recurring_rule": "daily", "recurring_interval": 1},
+        )
+        data = _patch(client, eid, meta={"recurring_enabled": False, "recurring_rule": None})
+        assert data["meta"]["recurring_enabled"] is False
+        assert data["meta"]["recurring_rule"] is None
+        assert data["meta"]["recurring_series_id"] is None
+
+    def test_change_from_todo_to_non_todo_clears_recurring_meta(self, client: TestClient):
+        eid, _ = _create(
+            client,
+            "todo",
+            "型変更で recurring を失うTODO",
+            meta={
+                "recurring_enabled": True,
+                "recurring_rule": "daily",
+                "recurring_interval": 1,
+            },
+        )
+        data = _patch(client, eid, type="memo")
+        assert data["type"] == "memo"
+        assert data["meta"]["recurring_enabled"] is False
+        assert data["meta"]["recurring_rule"] is None
+        assert data["meta"]["recurring_series_id"] is None
 
 
 class TestTodoDoneEntry:

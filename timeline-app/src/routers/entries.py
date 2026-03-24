@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from ..ai.ollama_client import OllamaClient, OllamaClientError
 from ..config import config
-from ..models.entry import Entry, EntryCreate, EntryType, EntryUpdate
+from ..models.entry import Entry, EntryCreate, EntryMeta, EntryType, EntryUpdate
 from ..routers.workspace import get_open_workspace
 from ..services.ai_control import ai_control_service
 from ..services.chat_transcript import append_chat_message
@@ -52,6 +52,59 @@ def _delete_ai_backup(workspace_path: str, entry_id: str) -> bool:
     return delete_file_if_exists(backup)
 
 
+def _normalize_recurring_meta(
+    entry_id: str,
+    entry_type: EntryType,
+    timestamp: datetime,
+    meta: EntryMeta,
+) -> EntryMeta:
+    if entry_type not in {EntryType.todo, EntryType.todo_done}:
+        return meta.model_copy(
+            update={
+                "recurring_enabled": False,
+                "recurring_rule": None,
+                "recurring_interval": None,
+                "recurring_count": None,
+                "recurring_weekdays": [],
+                "recurring_series_id": None,
+                "recurring_sequence": None,
+                "recurring_scheduled_for": None,
+            }
+        )
+    if not meta.recurring_enabled:
+        return meta.model_copy(
+            update={
+                "recurring_enabled": False,
+                "recurring_rule": None,
+                "recurring_interval": None,
+                "recurring_count": None,
+                "recurring_weekdays": [],
+                "recurring_series_id": None,
+                "recurring_sequence": None,
+                "recurring_scheduled_for": None,
+            }
+        )
+
+    interval = max(meta.recurring_interval or 1, 1)
+    count = max(meta.recurring_count, 1) if meta.recurring_count else None
+    weekdays = sorted({day for day in meta.recurring_weekdays if 0 <= day <= 6})
+    if meta.recurring_rule != "custom_weekdays":
+        weekdays = []
+
+    return meta.model_copy(
+        update={
+            "recurring_enabled": True,
+            "recurring_rule": meta.recurring_rule or "daily",
+            "recurring_interval": interval,
+            "recurring_count": count,
+            "recurring_weekdays": weekdays,
+            "recurring_series_id": meta.recurring_series_id or f"series-{entry_id}",
+            "recurring_sequence": meta.recurring_sequence or 1,
+            "recurring_scheduled_for": meta.recurring_scheduled_for or timestamp.date().isoformat(),
+        }
+    )
+
+
 @router.post("/entries", response_model=Entry, status_code=201)
 async def create_entry(req: EntryCreate):
     """entry を新規作成する"""
@@ -79,6 +132,11 @@ async def create_entry(req: EntryCreate):
         links=req.links,
         related_ids=req.related_ids,
         meta=req.meta,
+    )
+    entry = entry.model_copy(
+        update={
+            "meta": _normalize_recurring_meta(entry.id, entry.type, entry.timestamp, entry.meta)
+        }
     )
     persist_entry(workspace_path, entry)
     return entry
@@ -113,7 +171,7 @@ async def update_entry(entry_id: str, req: EntryUpdate):
 
     # meta はフィールド単位でマージする（全置換しない）
     if req.meta is not None:
-        merged_meta = entry.meta.model_copy(update=req.meta.model_dump(exclude_none=True))
+        merged_meta = entry.meta.model_copy(update=req.meta.model_dump(exclude_unset=True))
         update_data["meta"] = merged_meta
 
     # todo → todo_done 完了時は timestamp を完了時刻へ更新（手動指定がなければ）
@@ -121,6 +179,16 @@ async def update_entry(entry_id: str, req: EntryUpdate):
         update_data["timestamp"] = datetime.now(timezone.utc)
 
     updated = entry.model_copy(update=update_data)
+    updated = updated.model_copy(
+        update={
+            "meta": _normalize_recurring_meta(
+                updated.id,
+                updated.type,
+                updated.timestamp,
+                updated.meta,
+            )
+        }
+    )
     persist_entry(workspace_path, updated)
     _delete_ai_backup(workspace_path, entry_id)
     return updated
