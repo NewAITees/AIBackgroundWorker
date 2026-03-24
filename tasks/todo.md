@@ -5,6 +5,66 @@
 
 ---
 
+## timeline-app: フェーズ6 M3 行動改善
+
+- [x] 要件書 §10 / §21.3 / §24.2 と既存実装を照合し、レビュー機能と Big Five 機能の分離方針を整理する
+- [x] Big Five を opt-in で有効化できる設定項目と、日次レビュー観点 / Big Five レビュー観点の設定項目を追加する
+- [x] entry メタデータへ Big Five 傾向スコアを保持できるようにし、日次処理で対象 entry に付与する
+- [x] 日次レビュー要約と改善アクション提案を生成し、改善アクションをタイムライン entry として流入させる
+- [x] 週次レビュー画面または専用パネルを追加し、通常レビューと Big Five レビューを分けて表示する
+- [x] テスト・確認を実施し、完了後に `tasks/lessons.md` を更新する
+
+---
+
+## timeline-app: M3 行動改善 追加調整
+
+- [x] 日次レビュー時刻と週次レビュー曜日/時刻を設定できるようにする
+- [x] Big Five の各因子ごとに目標方向を設定できるようにする
+- [x] レビュー対象を user 関連 entry に絞る
+- [x] テスト・確認を実施し、完了後に `tasks/lessons.md` を更新する
+
+---
+
+## lifelog-system: SLO violation / merge_windows_logs 調査
+
+- [x] `activity_collector` の SLO 計測箇所と warning 出力条件を特定する
+- [x] `DB write time P95 > 500ms` の実体が追えるように必要ログ案を整理または実装する
+- [x] `merge_windows_logs` の `Resuming from line ...` が重いかどうか実装と実測観点で確認する
+- [x] 調査結果をまとめ、必要なら `tasks/lessons.md` を更新する
+
+---
+
+## news feedback: N-2 再設計（時間減衰つき interest profile）
+
+- [ ] N-2 の主軸を「過去記事 few-shot 注入」から「構造化 interest profile + 前処理スコア補正」へ更新する
+      → 生記事列挙の LLM 注入は暫定策に下げる
+      → 推薦本体は Stage1 前の補正層として設計する
+- [ ] `article_feedback` を「現在状態」と「履歴イベント」に分離する設計を追加する
+      → `article_feedback` は最新状態を保持
+      → `article_feedback_events` は append-only で `positive` / `negative` / `report_requested` / 解除を記録する
+- [ ] interest profile の最小特徴集合を定義する
+      → 第1段階は `source_name` と `category` に限定する
+      → 将来の `tag` / `keyword` / `topic` 拡張を阻害しないスキーマにする
+- [ ] source/category ごとの時間減衰つき preference 集計関数を追加する
+      → `positive` は加点、`negative` は減点、`report_requested` は強い加点として扱う
+      → 直近 7 日 / 30 日 / それ以前で重みを落とす案を比較して決める
+- [ ] ベイズ風の事前確率つき preference score を実装する
+      → 少数データで暴れないよう `a,b` の事前値を持たせる
+      → source/category ごとに 0〜1 の安定した score を返す
+- [ ] Stage1 の importance / relevance に interest bonus を加える前処理補正を実装する
+      → `final_score = llm_score + source_bonus + category_bonus` の弱い補正から始める
+      → フィードバック件数が少ない期間は補正を弱める安全装置を入れる
+- [ ] profile / score のデバッグ API を health とは別エンドポイントで追加する
+      → `/api/news/feedback/stats` などで source/category ごとの score と件数を確認できるようにする
+      → 上位 positive / negative source、上位 category、直近変動を見られるようにする
+- [ ] 「なぜその記事が上がったか」を確認できる説明用データを追加する
+      → source bonus / category bonus / 元の llm_score を分けて確認できるようにする
+- [ ] 非教師学習・共起は第2段階タスクとして分離する
+      → positive 記事群から keyword cluster / latent topic を抽出する補助層として扱う
+      → 推薦本体には直結させず、profile 拡張候補として別評価する
+
+---
+
 ## timeline-app: 右ペイン AI 編集 + チャット継続
 
 - [x] 右ペイン閲覧モードに「AI に投げる」導線を追加する
@@ -14,6 +74,41 @@
 - [x] `POST /api/entries/{id}/append_message` を追加し、会話を末尾追記保存できるようにする
 - [x] chat 系 entry の右ペインに会話履歴表示と継続入力欄を追加する
 - [x] テストを追加し、完了後に `tasks/lessons.md` を更新する
+
+---
+
+## timeline-app: 右ペイン AI/チャット UI 整理
+
+- [x] chat / chat_ai / chat_user ではチャット継続 UI のみ表示する
+- [x] 非チャット entry では右ペイン下部に AI 指示入力欄と `AIに投げる` ボタンを横並びで表示する
+- [x] 構文確認を実施し、完了後に `tasks/lessons.md` を更新する
+
+---
+
+## timeline-app: 未来日付 daily Markdown 自動補充
+
+- [x] `tasks/todo.md` 起点で関連実装箇所を調査する
+- [x] 設定で「何日先まで作るか」を変更できるようにする
+- [x] 日次の自動処理で指定日数先まで `daily/*.md` を不足分作成する
+- [x] 構文確認と必要テストを実施し、`tasks/lessons.md` を更新する
+
+---
+
+## timeline-app: 毎日TODO 自動生成
+
+- [x] 毎日TODOの保存形式と関連実装箇所を調査する
+- [x] 設定画面で毎日自動生成するTODOテンプレートを編集できるようにする
+- [x] future daily 補充時に各日付向けTODOを重複なしで自動生成する
+- [x] テスト・構文確認を実施し、`tasks/lessons.md` を更新する
+
+---
+
+## timeline-app: TODO 繰り返し設定の再設計
+
+- [x] TODO に繰り返しフラグ・ルール・間隔・回数・曜日指定を持てるようにする
+- [x] 日次処理で当日到達分だけを自動生成し、未来への大量生成をやめる
+- [x] 未完了の期限超過 TODO を未来へ寄せず、過去の未完了 TODO として扱う
+- [x] テスト・構文確認を実施し、`tasks/lessons.md` を更新する
 
 ---
 
@@ -42,6 +137,58 @@
 - [x] トップバーのワークスペース入力欄と「開く」ボタンを削除する
 - [x] 起動時は `config.workspace.default_path` 自動適用前提の UI に整理する
 - [x] テストと構文確認を実施し、完了後に `tasks/lessons.md` を更新する
+
+---
+
+## timeline-app: VRM 表示フィット調整
+
+- [x] 左パネル VRM を bounds 基準で自動配置・自動フィットする
+- [x] 左パネルに表示枠と判定表示を追加する
+- [x] 構文確認を実施し、完了後に `tasks/lessons.md` を更新する
+
+---
+
+## timeline-app: VRM 待機モーション調整
+
+- [x] 左パネルの診断用表示枠とステータス表示を削除する
+- [x] VRM を自然な待機姿勢へ調整する
+- [x] 呼吸する待機モーションを追加する
+- [x] 構文確認を実施し、完了後に `tasks/lessons.md` を更新する
+
+---
+
+## timeline-app: VRM 微調整
+
+- [x] VRM の前後向きを修正する
+- [x] カメラ距離を近めに調整する
+- [x] 腕を体の横で自然に下ろす姿勢へ再調整する
+- [x] 構文確認を実施し、完了後に `tasks/lessons.md` を更新する
+
+---
+
+## timeline-app: VRM 追加フレーミング調整
+
+- [x] 腕をさらに体側へ寄せる
+- [x] 顔と上半身中心になるようカメラをさらに近づける
+- [x] 構文確認を実施し、完了後に `tasks/lessons.md` を更新する
+
+---
+
+## timeline-app: VRM デバッグ調整 UI
+
+- [x] 左パネルに一時的な VRM デバッグ UI を追加する
+- [x] カメラと主要ボーン角度をリアルタイム調整できるようにする
+- [x] 現在値を確認できる表示を追加する
+- [x] 構文確認を実施し、完了後に `tasks/lessons.md` を更新する
+
+---
+
+## timeline-app: animation FBX 運用整理
+
+- [x] `models/animation/` を Git 管理対象から外す
+- [ ] FBX を配布用の非 raw 形式へ変換する経路を保留タスクとして整理する
+- [x] `@KA_Idle01_breathing.FBX` を待機ループとして再生する
+- [x] 構文確認を実施し、完了後に `tasks/lessons.md` を更新する
 
 ---
 
@@ -351,7 +498,7 @@ _sync_once_blocking():
       → 今回はこのタスクを先に対応する
       → 種別フィルタの複数選択ドロップダウン化、未完了TODO/AI表示トグルの同居、右ペイン種別変更UIの整理までを同時に見る
       → 検索・日付ジャンプもメニュー内へ移し、上部常設には開閉ボタンと要約のみ残す構成にした
-- [ ] ワークスペースの「開くボタン」とパス入力欄を削除する
+- [x] ワークスペースの「開くボタン」とパス入力欄を削除する
       → 設定ページから操作できれば十分。起動時に config.yaml のパスを自動適用する形に整理する
 - [x] 種別フィルタをボタン方式から複数選択可能なドロップダウン/チェックリスト形式に変更する
       → 単一選択ボタン列を廃止し、複数種別を同時に選べる形にする（例: ポップオーバー内チェックボックス）
