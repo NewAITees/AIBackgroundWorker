@@ -17,6 +17,34 @@
 
 ---
 
+## timeline-app: 左パネル VRM 表示
+
+- [x] 左パネルに VRM 表示用 canvas と状態表示を追加する
+- [x] `models/*.vrm` を配信する API を追加する
+- [x] フロントで Three.js + three-vrm を使ってモデルを読み込む
+- [x] 左パネルで簡易待機モーションとリサイズ追従を実装する
+- [x] テストと構文確認を実施し、完了後に `tasks/lessons.md` を更新する
+
+---
+
+## timeline-app: VRM ローカル化 + 設定切替
+
+- [x] VRM 依存を CDN ではなくローカル配布ファイルへ切り替える
+- [x] `config.yaml` / settings API に VRM モデル設定項目を追加する
+- [x] 設定画面に VRM モデル選択 UI を追加する
+- [x] 左パネルが設定された VRM を再読込できるようにする
+- [x] テストと構文確認を実施し、完了後に `tasks/lessons.md` を更新する
+
+---
+
+## timeline-app: workspace 導線整理
+
+- [x] トップバーのワークスペース入力欄と「開く」ボタンを削除する
+- [x] 起動時は `config.workspace.default_path` 自動適用前提の UI に整理する
+- [x] テストと構文確認を実施し、完了後に `tasks/lessons.md` を更新する
+
+---
+
 ## 最優先: 単純化・削減フェーズ（残1件）
 
 - [ ] Windows 移行時: `WindowsForegroundWorker` に `powershell.exe foreground_logger.ps1` の起動管理を追加する
@@ -273,31 +301,32 @@ _sync_once_blocking():
 
 #### Step A: `generate_theme_reports` を記事単位に変更（`repository.py` + `generate_theme_report.py`）
 
-- [ ] `reports` テーブルに `source_article_id INTEGER` カラムを追加（マイグレーション）
-- [ ] `repository.py` に `fetch_deep_research_per_article()` を追加
+- [x] `reports` テーブルに `source_article_id INTEGER` カラムを追加（マイグレーション）
+- [x] `repository.py` に `fetch_deep_research_per_article()` を追加
       → `fetch_deep_research_by_theme` の代替。記事ごとのフラットなリストを返す
-- [ ] `repository.py` に `get_existing_report_article_ids() -> set[int]` を追加
+- [x] `repository.py` に `get_existing_report_article_ids() -> set[int]` を追加
       → article_id ベースの重複チェック用
-- [ ] `repository.py` の `save_report()` に `source_article_id` 引数を追加
-- [ ] `generate_theme_report.py` の `generate_theme_reports()` を記事ごとループに変更
+- [x] `repository.py` の `save_report()` に `source_article_id` 引数を追加
+- [x] `generate_theme_report.py` の `generate_theme_reports()` を記事ごとループに変更
       → ファイル名: `article_{date}_{title_slug}_{article_id}.md`（article_id で一意性保証）
       → skip チェック: `article_id in existing_report_article_ids`
 
 #### Step B: `analysis_pipeline_worker` を記事単位ループに変更
 
-- [ ] `_sync_once_blocking` を以下の構造に変更:
+- [x] `_sync_once_blocking` を以下の構造に変更:
       1. Stage1 全件実行 → `is_paused()` チェック
       2. 重要度上位 `deep_limit` 件をループ
          - Stage2（1件）→ Stage3（1件）→ `is_paused()` チェック
-- [ ] config に `deep_limit`（Stage2/3 の最大処理件数、デフォルト 5）を追加
-- [ ] `analyze_pending_articles` の戻り値から article_id + importance_score のリストを取得できるか確認
-      → 取れない場合は DB から直接 SELECT する
+- [x] config に `deep_limit`（Stage2/3 の最大処理件数、デフォルト 5）を追加
+- [x] `analyze_pending_articles` の戻り値から article_id + importance_score のリストを取得できるか確認
+      → 取れない場合は DB から直接 SELECT する（`fetch_deep_research_targets` で代替済み）
 
 #### Step C: `deep_research_articles` / `generate_theme_reports` の単体呼び出し対応
 
-- [ ] `deep_research_articles(article_ids=[id])` のように単体 ID 指定で呼べるか確認
-      → 対応していなければ引数を追加
-- [ ] `generate_theme_reports(article_ids=[id])` 同様に確認・対応
+- [x] `deep_research_articles(article_ids=[id])` のように単体 ID 指定で呼べるか確認
+      → `article_id: Optional[int] = None` 引数で対応済み
+- [x] `generate_theme_reports(article_ids=[id])` 同様に確認・対応
+      → `article_id: int | None = None` 引数で対応済み
 
 ---
 
@@ -377,23 +406,23 @@ _sync_once_blocking():
 
 #### 右ペイン AI 編集機能（§28.2）
 
-- [ ] 右ペインの閲覧モードに「AI に投げる」ボタンを追加する
-- [ ] ボタン押下で本文の上/下に指示入力欄（textarea）を展開する
-- [ ] `POST /api/entries/{id}/ai_edit` エンドポイントを新規作成する
+- [x] 右ペインの閲覧モードに「AI に投げる」ボタンを追加する
+- [x] ボタン押下で本文の上/下に指示入力欄（textarea）を展開する
+- [x] `POST /api/entries/{id}/ai_edit` エンドポイントを新規作成する
       → リクエスト: `{ "instruction": "..." }`
       → Ollama に「現在の content + instruction」を渡して編集済み全文を返させる
-- [ ] 編集結果を右ペインにプレビュー表示し、「保存」「キャンセル」で確定/破棄する
-- [ ] 編集リクエスト前に `articles/{id}.bak.md` へバックアップを取る
+- [x] 編集結果を右ペインにプレビュー表示し、「保存」「キャンセル」で確定/破棄する
+- [x] 編集リクエスト前に `articles/{id}.bak.md` へバックアップを取る
       → 保存/キャンセル時にバックアップを削除する
 
 #### 右ペインでのチャット継続（§28.3）
 
-- [ ] entry の type が `chat` / `chat_ai` の場合、右ペインに会話履歴を Markdown 描画で表示する
-- [ ] 右ペイン下部にチャット入力欄と送信ボタンを追加する（非チャット型 entry には表示しない）
-- [ ] 送信時に `POST /api/chat` へ既存の `thread_id` を渡してスレッドを継続する
-- [ ] `POST /api/entries/{id}/append_message` エンドポイントを新規作成する
+- [x] entry の type が `chat` / `chat_ai` の場合、右ペインに会話履歴を Markdown 描画で表示する
+- [x] 右ペイン下部にチャット入力欄と送信ボタンを追加する（非チャット型 entry には表示しない）
+- [x] 送信時に `POST /api/chat` へ既存の `thread_id` を渡してスレッドを継続する
+- [x] `POST /api/entries/{id}/append_message` エンドポイントを新規作成する
       → 末尾追記方式で `articles/{id}.md` にメッセージを保存する（競合・破損リスク低減）
-- [ ] AI 応答が返り次第、右ペイン下部に即時追記表示する（ポーリングまたは SSE）
+- [x] AI 応答が返り次第、右ペイン下部に即時追記表示する（ポーリングまたは SSE）
 
 ---
 

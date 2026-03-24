@@ -1,3 +1,8 @@
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { VRMLoaderPlugin, VRMUtils } from "@pixiv/three-vrm";
+
 const state = {
   workspace: null,
   entries: [],
@@ -33,6 +38,16 @@ const state = {
 };
 
 const refs = {};
+const vrmState = {
+  renderer: null,
+  scene: null,
+  camera: null,
+  controls: null,
+  clock: null,
+  currentVrm: null,
+  animationFrameId: null,
+  resizeObserver: null,
+};
 const CHAT_DRAFT_KEY_PREFIX = "timeline-chat-draft:";
 const INITIAL_TIMELINE_HOURS = 12;
 const PAGING_TIMELINE_HOURS = 24;
@@ -53,14 +68,13 @@ const DETAIL_TYPE_OPTIONS = [
 document.addEventListener("DOMContentLoaded", async () => {
   cacheRefs();
   bindEvents();
+  await initVrmPane();
   await refreshWorkspace();
   await refreshAIStatus();
 });
 
 function cacheRefs() {
-  refs.workspacePath = document.getElementById("workspace-path");
   refs.aiToggle = document.getElementById("ai-toggle");
-  refs.workspaceOpen = document.getElementById("workspace-open");
   refs.showVrmPane = document.getElementById("show-vrm-pane");
   refs.showDetailPane = document.getElementById("show-detail-pane");
   refs.showTimelinePane = document.getElementById("show-timeline-pane");
@@ -80,6 +94,8 @@ function cacheRefs() {
   refs.workspaceEmpty = document.getElementById("workspace-empty");
   refs.layout = document.querySelector(".layout");
   refs.vrmPane = document.querySelector(".vrm-pane");
+  refs.vrmCanvas = document.getElementById("vrm-canvas");
+  refs.vrmStatus = document.getElementById("vrm-status");
   refs.timelineRoot = document.getElementById("timeline-root");
   refs.timelinePane = document.querySelector(".timeline-pane");
   refs.pastList = document.getElementById("past-list");
@@ -140,6 +156,9 @@ function cacheRefs() {
   refs.sOllamaTimeout = document.getElementById("s-ollama-timeout");
   refs.sAiStatus = document.getElementById("s-ai-status");
   refs.sAiSave = document.getElementById("s-ai-save");
+  refs.sVrmModel = document.getElementById("s-vrm-model");
+  refs.sVrmStatus = document.getElementById("s-vrm-status");
+  refs.sVrmSave = document.getElementById("s-vrm-save");
   refs.sWorkers = document.getElementById("s-workers");
   refs.sInfoLimit = document.getElementById("s-info-limit");
   refs.sInfoUseOllama = document.getElementById("s-info-use-ollama");
@@ -158,7 +177,6 @@ function cacheRefs() {
 }
 
 function bindEvents() {
-  refs.workspaceOpen.addEventListener("click", openWorkspace);
   refs.filterMenuButton.addEventListener("click", toggleFilterMenu);
   refs.typeFilters.addEventListener("change", handleTypeFilterChange);
   refs.timelineSearch.addEventListener("input", handleTimelineSearch);
@@ -198,6 +216,7 @@ function bindEvents() {
   refs.settingsClose.addEventListener("click", closeSettingsPanel);
   refs.sPersonalitySave.addEventListener("click", savePersonality);
   refs.sAiSave.addEventListener("click", saveAiSettings);
+  refs.sVrmSave.addEventListener("click", saveVrmSettings);
   refs.sPipelineSave.addEventListener("click", savePipelineSettings);
   refs.sFeedAdd.addEventListener("click", addFeed);
   refs.sSearchQueryAdd.addEventListener("click", addSearchQuery);
@@ -242,6 +261,118 @@ function syncResponsivePaneState() {
   refs.showTimelinePane.dataset.active = String(!state.leftPaneOpen && !state.detailPaneOpen);
 }
 
+async function initVrmPane() {
+  if (!refs.vrmCanvas || !refs.vrmStatus) return;
+
+  refs.vrmStatus.textContent = "モデル情報を確認中...";
+  if (!vrmState.renderer) {
+    setupVrmScene();
+  }
+
+  try {
+    const vrm = await api("/api/vrm");
+    await loadVrmModel(vrm.url);
+    refs.vrmStatus.textContent = vrm.filename;
+  } catch (error) {
+    refs.vrmStatus.textContent = `VRM 読み込み失敗: ${error.message}`;
+  }
+}
+
+function setupVrmScene() {
+  const canvas = refs.vrmCanvas;
+  const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 100);
+  const controls = new OrbitControls(camera, canvas);
+  const clock = new THREE.Clock();
+
+  camera.position.set(0, 1.35, 2.1);
+  controls.target.set(0, 1.15, 0);
+  controls.enablePan = false;
+  controls.enableZoom = false;
+  controls.minPolarAngle = Math.PI / 2.4;
+  controls.maxPolarAngle = Math.PI / 1.8;
+  controls.update();
+
+  scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+  const directionalLight = new THREE.DirectionalLight(0xfff4df, 1.8);
+  directionalLight.position.set(1.8, 2.2, 2.6);
+  scene.add(directionalLight);
+
+  const rimLight = new THREE.DirectionalLight(0xf3b885, 0.8);
+  rimLight.position.set(-1.2, 1.1, -1.8);
+  scene.add(rimLight);
+
+  vrmState.renderer = renderer;
+  vrmState.scene = scene;
+  vrmState.camera = camera;
+  vrmState.controls = controls;
+  vrmState.clock = clock;
+
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  resizeVrmRenderer();
+  if (!vrmState.resizeObserver) {
+    vrmState.resizeObserver = new ResizeObserver(() => resizeVrmRenderer());
+    vrmState.resizeObserver.observe(refs.vrmCanvas);
+  }
+  startVrmRenderLoop();
+}
+
+async function loadVrmModel(url) {
+  const loader = new GLTFLoader();
+  loader.crossOrigin = "anonymous";
+  loader.register((parser) => new VRMLoaderPlugin(parser));
+
+  const gltf = await loader.loadAsync(url);
+  const vrm = gltf.userData.vrm;
+  if (!vrm) {
+    throw new Error("VRM として解釈できませんでした");
+  }
+
+  if (vrmState.currentVrm) {
+    vrmState.scene.remove(vrmState.currentVrm.scene);
+    VRMUtils.deepDispose(vrmState.currentVrm.scene);
+  }
+
+  VRMUtils.rotateVRM0(vrm);
+  vrm.scene.rotation.y = Math.PI;
+  vrm.scene.position.set(0, -1.05, 0);
+  vrmState.scene.add(vrm.scene);
+  vrmState.currentVrm = vrm;
+}
+
+function resizeVrmRenderer() {
+  if (!vrmState.renderer || !vrmState.camera || !refs.vrmCanvas) return;
+  const width = refs.vrmCanvas.clientWidth || refs.vrmCanvas.parentElement?.clientWidth || 1;
+  const height = refs.vrmCanvas.clientHeight || refs.vrmCanvas.parentElement?.clientHeight || 1;
+  vrmState.renderer.setSize(width, height, false);
+  vrmState.camera.aspect = width / height;
+  vrmState.camera.updateProjectionMatrix();
+}
+
+function startVrmRenderLoop() {
+  if (vrmState.animationFrameId) {
+    cancelAnimationFrame(vrmState.animationFrameId);
+  }
+
+  const tick = () => {
+    vrmState.animationFrameId = requestAnimationFrame(tick);
+    if (!vrmState.renderer || !vrmState.scene || !vrmState.camera || !vrmState.clock) return;
+
+    const delta = vrmState.clock.getDelta();
+    const elapsed = vrmState.clock.elapsedTime;
+    if (vrmState.currentVrm) {
+      vrmState.currentVrm.update(delta);
+      vrmState.currentVrm.scene.rotation.y = Math.PI + Math.sin(elapsed * 0.6) * 0.08;
+      vrmState.currentVrm.scene.position.y = -1.05 + Math.sin(elapsed * 1.4) * 0.015;
+    }
+    vrmState.controls?.update();
+    vrmState.renderer.render(vrmState.scene, vrmState.camera);
+  };
+
+  tick();
+}
+
 async function api(path, options = {}) {
   const response = await fetch(path, {
     headers: { "Content-Type": "application/json", ...(options.headers || {}) },
@@ -264,7 +395,6 @@ async function refreshWorkspace() {
     state.workspace = workspace;
     renderWorkspace();
     if (workspace.opened) {
-      refs.workspacePath.value = workspace.path;
       await loadTimeline();
     }
   } catch (error) {
@@ -313,26 +443,6 @@ function renderWorkspace() {
   refs.timelineRoot.classList.remove("hidden");
   refs.workspaceSummary.textContent = `${state.workspace.mode}\n${state.workspace.path}`;
   restoreChatDraft();
-}
-
-async function openWorkspace() {
-  const path = refs.workspacePath.value.trim();
-  if (!path) {
-    refs.workspaceSummary.textContent = "パスを入力してください";
-    return;
-  }
-
-  refs.workspaceSummary.textContent = "ワークスペースを開いています...";
-  try {
-    state.workspace = await api("/api/workspace/open", {
-      method: "POST",
-      body: JSON.stringify({ path }),
-    });
-    renderWorkspace();
-    await loadTimeline();
-  } catch (error) {
-    refs.workspaceSummary.textContent = error.message;
-  }
 }
 
 async function loadTimeline() {
@@ -1497,6 +1607,7 @@ async function loadSettings() {
     refs.sOllamaUrl.value = s.ai.ollama_base_url;
     refs.sOllamaModel.value = s.ai.ollama_model;
     refs.sOllamaTimeout.value = s.ai.timeout_seconds;
+    renderVrmOptions(s.vrm?.available_models ?? [], s.vrm?.model_filename ?? "");
     refs.sInfoLimit.value = s.pipeline.info_limit;
     refs.sInfoUseOllama.checked = !!s.pipeline.info_use_ollama;
     refs.sAnalyzeBatch.value = s.pipeline.analyze_batch_size;
@@ -1507,6 +1618,21 @@ async function loadSettings() {
   } catch (e) {
     refs.sAiStatus.textContent = e.message;
   }
+}
+
+function renderVrmOptions(models, selected) {
+  refs.sVrmModel.innerHTML = "";
+  const autoOption = document.createElement("option");
+  autoOption.value = "";
+  autoOption.textContent = models.length ? "自動選択（先頭のモデル）" : "モデルなし";
+  refs.sVrmModel.appendChild(autoOption);
+  for (const model of models) {
+    const option = document.createElement("option");
+    option.value = model;
+    option.textContent = model;
+    refs.sVrmModel.appendChild(option);
+  }
+  refs.sVrmModel.value = selected || "";
 }
 
 function renderWorkers(workers) {
@@ -1618,6 +1744,23 @@ async function saveAiSettings() {
     refs.sAiStatus.textContent = "保存しました";
   } catch (e) {
     refs.sAiStatus.textContent = e.message;
+  }
+}
+
+async function saveVrmSettings() {
+  refs.sVrmStatus.textContent = "保存中...";
+  try {
+    const response = await api("/api/settings/vrm", {
+      method: "PATCH",
+      body: JSON.stringify({
+        model_filename: refs.sVrmModel.value || "",
+      }),
+    });
+    renderVrmOptions(response.available_models || [], response.model_filename || "");
+    refs.sVrmStatus.textContent = "保存しました";
+    await initVrmPane();
+  } catch (e) {
+    refs.sVrmStatus.textContent = e.message;
   }
 }
 

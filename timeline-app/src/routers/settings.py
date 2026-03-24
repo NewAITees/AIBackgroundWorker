@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from ..config import _CONFIG_PATH, config
+from .vrm import list_vrm_paths
 from ..services.worker_control_service import worker_control_service
 
 router = APIRouter()
@@ -45,6 +46,10 @@ class PipelineSettingsUpdate(BaseModel):
     deep_limit: int | None = None
 
 
+class VrmSettingsUpdate(BaseModel):
+    model_filename: str | None = None
+
+
 # ---------------------------------------------------------------------------
 # GET /api/settings
 # ---------------------------------------------------------------------------
@@ -64,6 +69,10 @@ async def get_settings() -> dict[str, Any]:
             "info_use_ollama": config.lifelog.info_use_ollama,
             "analyze_batch_size": config.lifelog.analyze_batch_size,
             "deep_limit": config.lifelog.deep_limit,
+        },
+        "vrm": {
+            "model_filename": config.vrm.model_filename,
+            "available_models": [path.name for path in list_vrm_paths()],
         },
         **worker_control_service.get_all(),
         "feeds": _read_feeds(),
@@ -120,6 +129,21 @@ async def update_pipeline_settings(req: PipelineSettingsUpdate) -> dict[str, Any
         "info_use_ollama": config.lifelog.info_use_ollama,
         "analyze_batch_size": config.lifelog.analyze_batch_size,
         "deep_limit": config.lifelog.deep_limit,
+    }
+
+
+@router.patch("/settings/vrm")
+async def update_vrm_settings(req: VrmSettingsUpdate) -> dict[str, Any]:
+    available = {path.name for path in list_vrm_paths()}
+    model_filename = (req.model_filename or "").strip()
+    if model_filename and model_filename not in available:
+        raise HTTPException(status_code=404, detail="VRM モデルが見つかりません")
+
+    config.vrm.model_filename = model_filename
+    _save_config()
+    return {
+        "model_filename": config.vrm.model_filename,
+        "available_models": sorted(available),
     }
 
 
@@ -264,6 +288,9 @@ def _save_config() -> None:
     raw["lifelog"]["info_use_ollama"] = config.lifelog.info_use_ollama
     raw["lifelog"]["analyze_batch_size"] = config.lifelog.analyze_batch_size
     raw["lifelog"]["deep_limit"] = config.lifelog.deep_limit
+
+    raw.setdefault("vrm", {})
+    raw["vrm"]["model_filename"] = config.vrm.model_filename
 
     with open(_CONFIG_PATH, "w", encoding="utf-8") as f:
         yaml.dump(raw, f, allow_unicode=True, sort_keys=False)

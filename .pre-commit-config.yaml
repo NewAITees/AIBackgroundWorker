@@ -6,6 +6,7 @@ repos:
         exclude: ^(.*\.md|.*\.yaml|.*\.yml|.*\.txt|.*\.sh|.*\.ps1)$
       - id: end-of-file-fixer
       - id: check-added-large-files
+        exclude: ^timeline-app/vendor-src/
       - id: check-merge-conflict
       - id: mixed-line-ending
       - id: detect-private-key

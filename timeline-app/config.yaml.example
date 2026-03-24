@@ -16,6 +16,9 @@ workspace:
     daily: "daily"
     articles: "articles"
 
+vrm:
+  model_filename: ""
+
 lifelog:
   root_dir: "lifelog-system"
   config_path: "lifelog-system/config/config.yaml"

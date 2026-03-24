@@ -29,6 +29,14 @@ def reset_personality():
 
 
 @pytest.fixture(autouse=True)
+def reset_vrm_model():
+    """各テスト前後に VRM 設定をリセットする。"""
+    original = config.vrm.model_filename
+    yield
+    config.vrm.model_filename = original
+
+
+@pytest.fixture(autouse=True)
 def temp_settings_files(monkeypatch, tmp_path):
     rss_path = tmp_path / "rss_feeds.txt"
     rss_path.write_text("# test feeds\nhttps://example.com/feed.xml\n", encoding="utf-8")
@@ -74,6 +82,13 @@ class TestSettingsGet:
         assert isinstance(data["feeds"], list)
         assert "search_queries" in data
         assert isinstance(data["search_queries"], list)
+
+    def test_returns_vrm_section(self, client: TestClient):
+        resp = client.get("/api/settings")
+        vrm = resp.json()["vrm"]
+        assert "model_filename" in vrm
+        assert "available_models" in vrm
+        assert isinstance(vrm["available_models"], list)
 
 
 class TestSettingsPatchAi:
@@ -172,3 +187,20 @@ class TestSettingsPipeline:
         assert resp.status_code == 200
         assert resp.json()["info_use_ollama"] is False
         assert config.lifelog.info_use_ollama is False
+
+
+class TestSettingsVrm:
+    def test_update_vrm_model(self, client: TestClient):
+        settings = client.get("/api/settings").json()
+        available = settings["vrm"]["available_models"]
+        if not available:
+            pytest.skip("VRM model not available")
+
+        resp = client.patch("/api/settings/vrm", json={"model_filename": available[0]})
+        assert resp.status_code == 200
+        assert resp.json()["model_filename"] == available[0]
+        assert config.vrm.model_filename == available[0]
+
+    def test_rejects_unknown_vrm_model(self, client: TestClient):
+        resp = client.patch("/api/settings/vrm", json={"model_filename": "missing.vrm"})
+        assert resp.status_code == 404

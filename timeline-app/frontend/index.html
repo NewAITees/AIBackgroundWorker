@@ -5,6 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Timeline App</title>
   <link rel="stylesheet" href="/assets/styles.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "/vendor/three/build/three.module.js",
+        "three/addons/": "/vendor/three/examples/jsm/",
+        "@pixiv/three-vrm": "/vendor/@pixiv/three-vrm/lib/three-vrm.module.js"
+      }
+    }
+  </script>
 </head>
 <body>
   <div class="app-shell">
@@ -20,8 +29,6 @@
       <div class="workspace-bar">
         <button id="ai-toggle" class="ghost-button ai-toggle" type="button">AI: 読み込み中</button>
         <button id="jump-now" class="ghost-button">今日へ戻る</button>
-        <input id="workspace-path" type="text" placeholder="ワークスペースのパス" />
-        <button id="workspace-open">開く</button>
       </div>
       <div class="mobile-panel-nav" aria-label="モバイルパネル切り替え">
         <button id="show-vrm-pane" class="ghost-button mobile-panel-button" type="button">AI</button>
@@ -38,7 +45,11 @@
         </div>
         <div class="vrm-placeholder">
           <div class="vrm-avatar-area">
-            <p class="vrm-label">AI アシスタント</p>
+            <canvas id="vrm-canvas" class="vrm-canvas" aria-label="VRM アシスタント表示"></canvas>
+            <div class="vrm-overlay">
+              <p class="vrm-label">AI アシスタント</p>
+              <p id="vrm-status" class="vrm-status">モデルを読み込み中...</p>
+            </div>
           </div>
           <div id="workspace-summary" class="workspace-summary"></div>
         </div>
@@ -121,8 +132,8 @@
         </div>
 
         <div id="workspace-empty" class="empty-state hidden">
-          <h2>ワークスペースを開いてください</h2>
-          <p>Obsidian Vault でも通常フォルダでも開けます。開いたら `daily/` と `articles/` を自動作成します。</p>
+          <h2>ワークスペースが未設定です</h2>
+          <p>`config.yaml` の `workspace.default_path` を設定して再読み込みしてください。</p>
         </div>
 
         <div id="timeline-root" class="timeline-root hidden">
@@ -307,6 +318,18 @@
       </section>
 
       <section class="settings-section">
+        <h3>VRM</h3>
+        <label class="settings-field">
+          <span>モデル</span>
+          <select id="s-vrm-model"></select>
+        </label>
+        <div class="settings-actions">
+          <span id="s-vrm-status" class="settings-status"></span>
+          <button id="s-vrm-save" type="button">保存</button>
+        </div>
+      </section>
+
+      <section class="settings-section">
         <h3>ワーカー</h3>
         <div id="s-workers" class="settings-workers"></div>
       </section>
@@ -377,8 +400,8 @@
     <button type="button" class="candidate-button"></button>
   </template>
 
-  <script src="https://cdn.jsdelivr.net/npm/marked@14/marked.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
-  <script src="/assets/app.js" defer></script>
+  <script src="/vendor/marked/marked.min.js"></script>
+  <script src="/vendor/dompurify/dist/purify.min.js"></script>
+  <script type="module" src="/assets/app.js"></script>
 </body>
 </html>

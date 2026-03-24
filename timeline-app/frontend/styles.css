@@ -219,6 +219,7 @@ body[data-mobile-layout="false"] .layout[data-detail-open="false"] .detail-pane 
 }
 
 .vrm-avatar-area {
+  position: relative;
   aspect-ratio: 3 / 4;
   border-radius: 20px;
   background: linear-gradient(160deg, rgba(191, 90, 54, 0.06), rgba(207, 143, 41, 0.06));
@@ -226,12 +227,36 @@ body[data-mobile-layout="false"] .layout[data-detail-open="false"] .detail-pane 
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
+}
+
+.vrm-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.vrm-overlay {
+  position: absolute;
+  inset: auto 14px 14px 14px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 250, 242, 0.78);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(173, 149, 117, 0.25);
 }
 
 .vrm-label {
   margin: 0;
   color: var(--muted);
   font-size: 13px;
+  text-align: center;
+}
+
+.vrm-status {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
   text-align: center;
 }
 

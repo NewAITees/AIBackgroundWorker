@@ -39,6 +39,10 @@ class WorkspaceConfig(BaseModel):
     dirs: WorkspaceDirsConfig = WorkspaceDirsConfig()
 
 
+class VrmConfig(BaseModel):
+    model_filename: str = ""
+
+
 class LifelogConfig(BaseModel):
     root_dir: str = "lifelog-system"
     config_path: str = "lifelog-system/config/config.yaml"
@@ -74,6 +78,7 @@ class AppConfig(BaseModel):
     server: ServerConfig = ServerConfig()
     ai: AIConfig = AIConfig()
     workspace: WorkspaceConfig = WorkspaceConfig(dirs=WorkspaceDirsConfig())
+    vrm: VrmConfig = VrmConfig()
     lifelog: LifelogConfig = LifelogConfig()
 
 
@@ -96,6 +101,7 @@ def load_config(path: Optional[Path] = None) -> AppConfig:
                 "dirs": WorkspaceDirsConfig(**raw.get("workspace", {}).get("dirs", {})),
             }
         ),
+        vrm=VrmConfig(**raw.get("vrm", {})),
         lifelog=LifelogConfig(**raw.get("lifelog", {})),
     )
 

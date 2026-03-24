@@ -117,6 +117,25 @@ class TestWorkspace:
         assert resp.json()["mode"] == "obsidian"
 
 
+class TestVrm:
+    def test_returns_vrm_metadata(self, client: TestClient):
+        resp = client.get("/api/vrm")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["filename"].endswith(".vrm")
+        assert data["url"].startswith("/api/vrm/model/")
+
+    def test_serves_vrm_file(self, client: TestClient):
+        meta = client.get("/api/vrm").json()
+        resp = client.get(meta["url"])
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("model/gltf-binary")
+
+    def test_vendor_static_is_served(self, client: TestClient):
+        resp = client.get("/vendor/three/package.json")
+        assert resp.status_code == 200
+
+
 class TestEntries:
     def test_create_entry(self, client: TestClient):
         payload = {

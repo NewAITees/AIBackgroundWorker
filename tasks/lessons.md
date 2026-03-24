@@ -233,6 +233,16 @@
 - 対策: chat entry 本文は transcript Markdown として扱い、`<!-- chat-message:user|assistant -->` マーカー付きで保存・追記・描画を統一する。
 - パターン: AI 編集のプレビュー生成前に元本文の退避先が曖昧だと、保存/キャンセル時の後始末が UI 実装ごとにぶれやすい。
 - 対策: `articles/{id}.bak.md` を唯一の一時バックアップとし、生成は `ai_edit` 開始時、削除は `PATCH /entries/{id}` 成功時または明示キャンセル時に一本化する。
+- パターン: フロントにビルド基盤がない状態で VRM 表示を足すと、依存導入を後回しにしたまま実装が止まりやすい。
+- 対策: まず「静的 HTML/JS のまま動かす」方針を固定し、ESM CDN + `type="module"` を採るか、ローカル vendor 配置にするかを先に決める。今回の timeline-app は前者で統一した。
+- パターン: `models/*.vrm` を左パネルで直接読む経路がないと、モデル配置済みでも UI 実装が静的プレースホルダで止まる。
+- 対策: フロントは固定ファイル名を決め打ちせず、`GET /api/vrm` でメタデータを取り、`GET /api/vrm/model/{filename}` で実体を読む形にすると差し替えしやすい。
+- パターン: セキュリティ上 CDN を避けたい画面で、`three` だけローカル化しても `marked` や `DOMPurify` が外部配信のままだと方針が崩れる。
+- 対策: フロント依存はまとめて `vendor-src/node_modules` へ固定し、FastAPI から `/vendor` 配信する。HTML では import map とローカル script のみを使う。
+- パターン: VRM モデル選択を UI だけで持つと、再起動後に元へ戻りやすい。
+- 対策: `config.yaml` に `vrm.model_filename` を保存し、`/api/settings` は「現在値 + 利用可能一覧」を返す。左パネルはその設定値を読む `GET /api/vrm` だけを見る。
+- パターン: workspace の手動「開く」導線と `config.workspace.default_path` の自動適用を併存させると、どちらが正本か分かりにくくなる。
+- 対策: 運用上の workspace は `config.yaml` 側を正本に寄せ、通常 UI からは手動 open を外す。未設定時は「どこを直せばよいか」を空状態メッセージに明示する。
 - パターン: `collected_info` の時間帯サマリーを `source_type` 無視 + 全体 `LIMIT` で組むと、DuckDuckGo 検索結果が RSS を押し出して「ニュース箱」が実質 search 箱になる。
 - 対策: hourly summary は `news` と `search` を entry type ごとに分離し、表示件数は全体件数ではなく「ソースごと上限」で切る。定期検索の設定は `search_queries.txt` を UI から編集可能にし、収集 worker 側も `--search` を明示して実行経路を隠さない。
 - パターン: 旧 systemd timer を「置き換え済み」と認識していても、user unit が有効化されたまま残っていると、削除済みスクリプトを永続的に叩き続けて失敗ログや誤調査の原因になる。
