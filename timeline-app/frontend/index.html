@@ -24,6 +24,7 @@
       <nav class="topbar-nav">
         <button id="nav-timeline" class="nav-button active">タイムライン</button>
         <button class="nav-button" disabled>カレンダー</button>
+        <button id="nav-review" class="nav-button">レビュー</button>
         <button id="nav-settings" class="nav-button">設定</button>
       </nav>
       <div class="workspace-bar">
@@ -46,11 +47,15 @@
         <div class="vrm-placeholder">
           <div class="vrm-avatar-area">
             <canvas id="vrm-canvas" class="vrm-canvas" aria-label="VRM アシスタント表示"></canvas>
-            <div class="vrm-overlay">
-              <p class="vrm-label">AI アシスタント</p>
-              <p id="vrm-status" class="vrm-status">モデルを読み込み中...</p>
-            </div>
           </div>
+          <section id="vrm-debug-panel" class="vrm-debug-panel">
+            <div class="vrm-debug-header">
+              <strong>VRM Debug</strong>
+              <button id="vrm-debug-copy" class="ghost-button" type="button">値をコピー</button>
+            </div>
+            <div id="vrm-debug-controls" class="vrm-debug-controls"></div>
+            <pre id="vrm-debug-output" class="vrm-debug-output"></pre>
+          </section>
           <div id="workspace-summary" class="workspace-summary"></div>
         </div>
       </aside>
@@ -187,7 +192,6 @@
               <h2 id="detail-title"></h2>
             </div>
             <div class="detail-head-actions">
-              <button id="detail-ai-toggle" class="ghost-button hidden" type="button">AI に投げる</button>
               <button id="detail-edit-toggle" class="ghost-button" type="button">編集</button>
             </div>
           </div>
@@ -206,12 +210,12 @@
 
           <section id="detail-ai-panel" class="detail-ai-panel hidden">
             <label class="detail-field-label" for="detail-ai-instruction">AI への指示</label>
-            <textarea id="detail-ai-instruction" rows="5" placeholder="例: 誤字を直して、箇条書きを読みやすく整えて"></textarea>
+            <div class="detail-ai-compose">
+              <textarea id="detail-ai-instruction" rows="4" placeholder="例: 誤字を直して、箇条書きを読みやすく整えて"></textarea>
+              <button id="detail-ai-submit" type="button">AIに投げる</button>
+            </div>
             <div class="detail-actions">
               <span id="detail-ai-status" class="detail-status-inline"></span>
-              <div class="detail-action-buttons">
-                <button id="detail-ai-submit" type="button">AI で編集</button>
-              </div>
             </div>
             <div id="detail-ai-preview" class="detail-ai-preview hidden">
               <h3>AI 編集プレビュー</h3>
@@ -259,6 +263,38 @@
             <label class="detail-field-label">日時
               <input id="detail-timestamp-input" type="datetime-local" step="60" />
             </label>
+            <section id="detail-recurring-panel" class="detail-recurring-panel hidden">
+              <label class="timeline-toggle">
+                <input id="detail-recurring-enabled" type="checkbox" />
+                <span>繰り返し TODO</span>
+              </label>
+              <div id="detail-recurring-fields" class="detail-recurring-fields hidden">
+                <label class="detail-field-label">繰り返しルール
+                  <select id="detail-recurring-rule">
+                    <option value="daily">毎日</option>
+                    <option value="weekdays">平日</option>
+                    <option value="weekends">土日</option>
+                    <option value="weekly">毎週</option>
+                    <option value="custom_weekdays">曜日指定</option>
+                  </select>
+                </label>
+                <label class="detail-field-label">間隔
+                  <input id="detail-recurring-interval" type="number" min="1" max="365" />
+                </label>
+                <label class="detail-field-label">回数
+                  <input id="detail-recurring-count" type="number" min="1" max="3650" />
+                </label>
+                <div id="detail-recurring-weekdays" class="detail-recurring-weekdays hidden">
+                  <label><input type="checkbox" value="0" />月</label>
+                  <label><input type="checkbox" value="1" />火</label>
+                  <label><input type="checkbox" value="2" />水</label>
+                  <label><input type="checkbox" value="3" />木</label>
+                  <label><input type="checkbox" value="4" />金</label>
+                  <label><input type="checkbox" value="5" />土</label>
+                  <label><input type="checkbox" value="6" />日</label>
+                </div>
+              </div>
+            </section>
             <select id="detail-status-input">
               <option value="active">active</option>
               <option value="done">done</option>
@@ -335,6 +371,99 @@
       </section>
 
       <section class="settings-section">
+        <h3>行動改善</h3>
+        <label class="timeline-toggle">
+          <input id="s-review-enabled" type="checkbox" />
+          <span>日次レビューを有効にする</span>
+        </label>
+        <label class="timeline-toggle">
+          <input id="s-big-five-enabled" type="checkbox" />
+          <span>Big Five レビューを有効にする</span>
+        </label>
+        <label class="settings-field">
+          <span>日次レビュー時刻</span>
+          <input id="s-daily-review-time" type="time" />
+        </label>
+        <label class="settings-field">
+          <span>週次レビュー曜日</span>
+          <select id="s-weekly-review-weekday">
+            <option value="0">月曜</option>
+            <option value="1">火曜</option>
+            <option value="2">水曜</option>
+            <option value="3">木曜</option>
+            <option value="4">金曜</option>
+            <option value="5">土曜</option>
+            <option value="6">日曜</option>
+          </select>
+        </label>
+        <label class="settings-field">
+          <span>週次レビュー時刻</span>
+          <input id="s-weekly-review-time" type="time" />
+        </label>
+        <label class="settings-field settings-field--column">
+          <span>日次レビュー観点（1行1項目）</span>
+          <textarea id="s-review-perspectives" rows="4" placeholder="例: 今日の前進&#10;詰まりやすかった点&#10;明日に回すもの"></textarea>
+        </label>
+        <label class="settings-field settings-field--column">
+          <span>Big Five レビュー観点（1行1項目）</span>
+          <textarea id="s-big-five-perspectives" rows="4" placeholder="例: どの行動がどの特性に出ていたか&#10;どの特性を伸ばしたいか"></textarea>
+        </label>
+        <label class="settings-field settings-field--column">
+          <span>重点 trait（1行1項目 / openness, conscientiousness, extraversion, agreeableness, neuroticism）</span>
+          <textarea id="s-big-five-focus-traits" rows="3" placeholder="例: conscientiousness&#10;extraversion"></textarea>
+        </label>
+        <div class="settings-field settings-field--column">
+          <span>因子ごとの目標方向</span>
+          <div class="settings-trait-grid">
+            <label class="settings-field">
+              <span>Openness</span>
+              <select id="s-trait-target-openness">
+                <option value="up">上げたい</option>
+                <option value="down">下げたい</option>
+                <option value="keep">維持したい</option>
+              </select>
+            </label>
+            <label class="settings-field">
+              <span>Conscientiousness</span>
+              <select id="s-trait-target-conscientiousness">
+                <option value="up">上げたい</option>
+                <option value="down">下げたい</option>
+                <option value="keep">維持したい</option>
+              </select>
+            </label>
+            <label class="settings-field">
+              <span>Extraversion</span>
+              <select id="s-trait-target-extraversion">
+                <option value="up">上げたい</option>
+                <option value="down">下げたい</option>
+                <option value="keep">維持したい</option>
+              </select>
+            </label>
+            <label class="settings-field">
+              <span>Agreeableness</span>
+              <select id="s-trait-target-agreeableness">
+                <option value="up">上げたい</option>
+                <option value="down">下げたい</option>
+                <option value="keep">維持したい</option>
+              </select>
+            </label>
+            <label class="settings-field">
+              <span>Neuroticism</span>
+              <select id="s-trait-target-neuroticism">
+                <option value="up">上げたい</option>
+                <option value="down">下げたい</option>
+                <option value="keep">維持したい</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <div class="settings-actions">
+          <span id="s-behavior-status" class="settings-status"></span>
+          <button id="s-behavior-save" type="button">保存</button>
+        </div>
+      </section>
+
+      <section class="settings-section">
         <h3>分析パイプライン</h3>
         <label class="settings-field">
           <span>RSS 取得上限（件）</span>
@@ -351,6 +480,10 @@
         <label class="settings-field">
           <span>深掘り上位件数</span>
           <input id="s-deep-limit" type="number" min="1" max="50" />
+        </label>
+        <label class="settings-field">
+          <span>未来 daily 作成日数</span>
+          <input id="s-future-daily-days" type="number" min="0" max="365" />
         </label>
         <div class="settings-actions">
           <span id="s-pipeline-status" class="settings-status"></span>
@@ -376,6 +509,41 @@
           <button id="s-search-query-add" type="button">追加</button>
         </div>
         <span id="s-search-query-status" class="settings-status"></span>
+      </section>
+    </div>
+  </div>
+
+  <div id="review-panel" class="settings-panel hidden" role="dialog" aria-label="週次レビュー">
+    <div class="settings-inner">
+      <div class="settings-head">
+        <h2>週次レビュー</h2>
+        <button id="review-close" class="ghost-button" type="button" aria-label="閉じる">×</button>
+      </div>
+      <section class="settings-section">
+        <label class="settings-field">
+          <span>基準日</span>
+          <input id="review-anchor-date" type="date" />
+        </label>
+        <div class="settings-actions">
+          <span id="review-status" class="settings-status"></span>
+          <button id="review-reload" type="button">再読込</button>
+        </div>
+      </section>
+      <section class="settings-section">
+        <h3>概要</h3>
+        <div id="review-overview" class="review-body"></div>
+      </section>
+      <section class="settings-section">
+        <h3>通常レビュー</h3>
+        <div id="review-perspectives" class="review-stack"></div>
+      </section>
+      <section class="settings-section">
+        <h3>Big Five</h3>
+        <div id="review-big-five" class="review-stack"></div>
+      </section>
+      <section class="settings-section">
+        <h3>今週の対象 entry</h3>
+        <div id="review-entries" class="review-stack"></div>
       </section>
     </div>
   </div>

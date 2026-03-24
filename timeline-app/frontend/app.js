@@ -1,6 +1,8 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import * as SkeletonUtils from "three/addons/utils/SkeletonUtils.js";
 import { VRMLoaderPlugin, VRMUtils } from "@pixiv/three-vrm";
 
 const state = {
@@ -14,7 +16,6 @@ const state = {
   selectedEntry: null,
   chatThreadId: null,
   editMode: false,
-  detailAiOpen: false,
   detailAiPreviewContent: null,
   initialScrollDone: false,
   aroundTimestamp: null,
@@ -35,9 +36,29 @@ const state = {
     showAi: true,
   },
   lastUndoAction: null,
+  weeklyReview: null,
 };
 
 const refs = {};
+const vrmDebugConfig = {
+  cameraTargetY: 0.72,
+  cameraHeightFactor: 0.34,
+  cameraWidthFactor: 0.44,
+  cameraDepthFactor: 1.35,
+  cameraYOffset: 0.015,
+  leftShoulderZ: -0.015,
+  rightShoulderZ: 0.015,
+  leftUpperArmX: 0.03,
+  rightUpperArmX: 0.03,
+  leftUpperArmZ: -0.1,
+  rightUpperArmZ: 0.1,
+  leftLowerArmX: -0.08,
+  rightLowerArmX: -0.08,
+  leftLowerArmZ: -0.01,
+  rightLowerArmZ: 0.01,
+  leftHandZ: 0.003,
+  rightHandZ: -0.003,
+};
 const vrmState = {
   renderer: null,
   scene: null,
@@ -45,8 +66,34 @@ const vrmState = {
   controls: null,
   clock: null,
   currentVrm: null,
+  baseSceneY: 0,
+  idleRig: null,
+  idleAnimation: null,
   animationFrameId: null,
   resizeObserver: null,
+};
+const VRM_IDLE_ANIMATION_FILE = "@KA_Idle01_breathing.FBX";
+const VRM_ANIMATION_BONE_MAP = {
+  hips: "Hips",
+  spine: "Spine",
+  chest: "Chest",
+  upperChest: "Upper Chest",
+  neck: "Neck",
+  head: "Head",
+  leftShoulder: "Shoulder_L",
+  leftUpperArm: "Upper Arm_L",
+  leftLowerArm: "Lower Arm_L",
+  leftHand: "Hand_L",
+  rightShoulder: "Shoulder_R",
+  rightUpperArm: "Upper Arm_R",
+  rightLowerArm: "Lower Arm_R",
+  rightHand: "Hand_R",
+  leftUpperLeg: "Upper Leg_L",
+  leftLowerLeg: "Lower Leg_L",
+  leftFoot: "Foot_L",
+  rightUpperLeg: "Upper Leg_R",
+  rightLowerLeg: "Lower Leg_R",
+  rightFoot: "Foot_R",
 };
 const CHAT_DRAFT_KEY_PREFIX = "timeline-chat-draft:";
 const INITIAL_TIMELINE_HOURS = 12;
@@ -68,6 +115,7 @@ const DETAIL_TYPE_OPTIONS = [
 document.addEventListener("DOMContentLoaded", async () => {
   cacheRefs();
   bindEvents();
+  initVrmDebugControls();
   await initVrmPane();
   await refreshWorkspace();
   await refreshAIStatus();
@@ -95,7 +143,10 @@ function cacheRefs() {
   refs.layout = document.querySelector(".layout");
   refs.vrmPane = document.querySelector(".vrm-pane");
   refs.vrmCanvas = document.getElementById("vrm-canvas");
-  refs.vrmStatus = document.getElementById("vrm-status");
+  refs.vrmDebugPanel = document.getElementById("vrm-debug-panel");
+  refs.vrmDebugControls = document.getElementById("vrm-debug-controls");
+  refs.vrmDebugOutput = document.getElementById("vrm-debug-output");
+  refs.vrmDebugCopy = document.getElementById("vrm-debug-copy");
   refs.timelineRoot = document.getElementById("timeline-root");
   refs.timelinePane = document.querySelector(".timeline-pane");
   refs.pastList = document.getElementById("past-list");
@@ -121,9 +172,15 @@ function cacheRefs() {
   refs.detailContentInput = document.getElementById("detail-content-input");
   refs.detailTypeInput = document.getElementById("detail-type-input");
   refs.detailTimestampInput = document.getElementById("detail-timestamp-input");
+  refs.detailRecurringPanel = document.getElementById("detail-recurring-panel");
+  refs.detailRecurringEnabled = document.getElementById("detail-recurring-enabled");
+  refs.detailRecurringFields = document.getElementById("detail-recurring-fields");
+  refs.detailRecurringRule = document.getElementById("detail-recurring-rule");
+  refs.detailRecurringInterval = document.getElementById("detail-recurring-interval");
+  refs.detailRecurringCount = document.getElementById("detail-recurring-count");
+  refs.detailRecurringWeekdays = document.getElementById("detail-recurring-weekdays");
   refs.detailStatusInput = document.getElementById("detail-status-input");
   refs.detailEditToggle = document.getElementById("detail-edit-toggle");
-  refs.detailAiToggle = document.getElementById("detail-ai-toggle");
   refs.detailReadonly = document.getElementById("detail-readonly");
   refs.detailAiPanel = document.getElementById("detail-ai-panel");
   refs.detailAiInstruction = document.getElementById("detail-ai-instruction");
@@ -145,9 +202,19 @@ function cacheRefs() {
   refs.nowAnchor = document.getElementById("now-anchor");
   // settings panel
   refs.navTimeline = document.getElementById("nav-timeline");
+  refs.navReview = document.getElementById("nav-review");
   refs.navSettings = document.getElementById("nav-settings");
   refs.settingsPanel = document.getElementById("settings-panel");
   refs.settingsClose = document.getElementById("settings-close");
+  refs.reviewPanel = document.getElementById("review-panel");
+  refs.reviewClose = document.getElementById("review-close");
+  refs.reviewAnchorDate = document.getElementById("review-anchor-date");
+  refs.reviewReload = document.getElementById("review-reload");
+  refs.reviewStatus = document.getElementById("review-status");
+  refs.reviewOverview = document.getElementById("review-overview");
+  refs.reviewPerspectives = document.getElementById("review-perspectives");
+  refs.reviewBigFive = document.getElementById("review-big-five");
+  refs.reviewEntries = document.getElementById("review-entries");
   refs.sPersonality = document.getElementById("s-personality");
   refs.sPersonalityStatus = document.getElementById("s-personality-status");
   refs.sPersonalitySave = document.getElementById("s-personality-save");
@@ -160,10 +227,26 @@ function cacheRefs() {
   refs.sVrmStatus = document.getElementById("s-vrm-status");
   refs.sVrmSave = document.getElementById("s-vrm-save");
   refs.sWorkers = document.getElementById("s-workers");
+  refs.sReviewEnabled = document.getElementById("s-review-enabled");
+  refs.sBigFiveEnabled = document.getElementById("s-big-five-enabled");
+  refs.sDailyReviewTime = document.getElementById("s-daily-review-time");
+  refs.sWeeklyReviewWeekday = document.getElementById("s-weekly-review-weekday");
+  refs.sWeeklyReviewTime = document.getElementById("s-weekly-review-time");
+  refs.sReviewPerspectives = document.getElementById("s-review-perspectives");
+  refs.sBigFivePerspectives = document.getElementById("s-big-five-perspectives");
+  refs.sBigFiveFocusTraits = document.getElementById("s-big-five-focus-traits");
+  refs.sTraitTargetOpenness = document.getElementById("s-trait-target-openness");
+  refs.sTraitTargetConscientiousness = document.getElementById("s-trait-target-conscientiousness");
+  refs.sTraitTargetExtraversion = document.getElementById("s-trait-target-extraversion");
+  refs.sTraitTargetAgreeableness = document.getElementById("s-trait-target-agreeableness");
+  refs.sTraitTargetNeuroticism = document.getElementById("s-trait-target-neuroticism");
+  refs.sBehaviorStatus = document.getElementById("s-behavior-status");
+  refs.sBehaviorSave = document.getElementById("s-behavior-save");
   refs.sInfoLimit = document.getElementById("s-info-limit");
   refs.sInfoUseOllama = document.getElementById("s-info-use-ollama");
   refs.sAnalyzeBatch = document.getElementById("s-analyze-batch");
   refs.sDeepLimit = document.getElementById("s-deep-limit");
+  refs.sFutureDailyDays = document.getElementById("s-future-daily-days");
   refs.sPipelineStatus = document.getElementById("s-pipeline-status");
   refs.sPipelineSave = document.getElementById("s-pipeline-save");
   refs.sFeeds = document.getElementById("s-feeds");
@@ -203,20 +286,27 @@ function bindEvents() {
   refs.chatInput.addEventListener("input", persistChatDraft);
   refs.chatDraftClear.addEventListener("click", clearChatDraft);
   refs.detailEditToggle.addEventListener("click", toggleDetailEdit);
-  refs.detailAiToggle.addEventListener("click", toggleDetailAiPanel);
   refs.detailAiSubmit.addEventListener("click", requestAiEditPreview);
   refs.detailAiSave.addEventListener("click", saveAiEditPreview);
   refs.detailAiCancel.addEventListener("click", cancelAiEditPreview);
   refs.detailChatForm.addEventListener("submit", submitDetailChat);
   refs.detailForm.addEventListener("submit", saveDetail);
+  refs.detailTypeInput.addEventListener("change", renderRecurringFieldsState);
+  refs.detailRecurringEnabled.addEventListener("change", renderRecurringFieldsState);
+  refs.detailRecurringRule.addEventListener("change", renderRecurringFieldsState);
   refs.detailUndo.addEventListener("click", undoLastAction);
   refs.jumpNow.addEventListener("click", () => scrollToNow("smooth"));
+  refs.navReview.addEventListener("click", openReviewPanel);
   refs.navSettings.addEventListener("click", openSettingsPanel);
-  refs.navTimeline.addEventListener("click", closeSettingsPanel);
+  refs.navTimeline.addEventListener("click", closeOverlayPanels);
   refs.settingsClose.addEventListener("click", closeSettingsPanel);
+  refs.reviewClose.addEventListener("click", closeReviewPanel);
+  refs.reviewReload.addEventListener("click", loadWeeklyReview);
+  refs.vrmDebugCopy?.addEventListener("click", copyVrmDebugConfig);
   refs.sPersonalitySave.addEventListener("click", savePersonality);
   refs.sAiSave.addEventListener("click", saveAiSettings);
   refs.sVrmSave.addEventListener("click", saveVrmSettings);
+  refs.sBehaviorSave.addEventListener("click", saveBehaviorSettings);
   refs.sPipelineSave.addEventListener("click", savePipelineSettings);
   refs.sFeedAdd.addEventListener("click", addFeed);
   refs.sSearchQueryAdd.addEventListener("click", addSearchQuery);
@@ -262,9 +352,7 @@ function syncResponsivePaneState() {
 }
 
 async function initVrmPane() {
-  if (!refs.vrmCanvas || !refs.vrmStatus) return;
-
-  refs.vrmStatus.textContent = "モデル情報を確認中...";
+  if (!refs.vrmCanvas) return;
   if (!vrmState.renderer) {
     setupVrmScene();
   }
@@ -272,9 +360,8 @@ async function initVrmPane() {
   try {
     const vrm = await api("/api/vrm");
     await loadVrmModel(vrm.url);
-    refs.vrmStatus.textContent = vrm.filename;
   } catch (error) {
-    refs.vrmStatus.textContent = `VRM 読み込み失敗: ${error.message}`;
+    console.error("VRM 読み込み失敗", error);
   }
 }
 
@@ -333,12 +420,220 @@ async function loadVrmModel(url) {
     vrmState.scene.remove(vrmState.currentVrm.scene);
     VRMUtils.deepDispose(vrmState.currentVrm.scene);
   }
+  vrmState.idleAnimation = null;
 
   VRMUtils.rotateVRM0(vrm);
-  vrm.scene.rotation.y = Math.PI;
-  vrm.scene.position.set(0, -1.05, 0);
+  vrm.scene.rotation.y = 0;
   vrmState.scene.add(vrm.scene);
   vrmState.currentVrm = vrm;
+  fitVrmInFrame(vrm);
+  setupIdleRig(vrm);
+  try {
+    await loadIdleAnimation(vrm);
+  } catch (error) {
+    console.error("VRM idle animation 読み込み失敗", error);
+  }
+}
+
+function fitVrmInFrame(vrm) {
+  if (!vrmState.camera || !vrmState.controls) {
+    throw new Error("VRM カメラが初期化されていません");
+  }
+
+  vrm.scene.updateMatrixWorld(true);
+  let box = new THREE.Box3().setFromObject(vrm.scene);
+  if (box.isEmpty()) {
+    throw new Error("VRM のサイズを取得できませんでした");
+  }
+
+  const initialCenter = box.getCenter(new THREE.Vector3());
+  vrm.scene.position.x -= initialCenter.x;
+  vrm.scene.position.z -= initialCenter.z;
+  vrm.scene.position.y -= box.min.y;
+  vrm.scene.updateMatrixWorld(true);
+
+  box = new THREE.Box3().setFromObject(vrm.scene);
+  const size = box.getSize(new THREE.Vector3());
+  const target = new THREE.Vector3(0, size.y * vrmDebugConfig.cameraTargetY, 0);
+  const verticalFov = THREE.MathUtils.degToRad(vrmState.camera.fov);
+  const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * vrmState.camera.aspect);
+  const distanceForHeight = (size.y * vrmDebugConfig.cameraHeightFactor) / Math.tan(verticalFov / 2);
+  const distanceForWidth = (size.x * vrmDebugConfig.cameraWidthFactor) / Math.tan(horizontalFov / 2);
+  const distance = Math.max(distanceForHeight, distanceForWidth, size.z * vrmDebugConfig.cameraDepthFactor, 0.8);
+
+  vrmState.camera.position.set(0, target.y + size.y * vrmDebugConfig.cameraYOffset, distance);
+  vrmState.camera.near = Math.max(0.01, distance / 100);
+  vrmState.camera.far = Math.max(20, distance * 20);
+  vrmState.camera.updateProjectionMatrix();
+  vrmState.controls.target.copy(target);
+  vrmState.controls.update();
+  vrmState.baseSceneY = vrm.scene.position.y;
+  renderVrmDebugOutput();
+}
+
+function setupIdleRig(vrm) {
+  const humanoid = vrm.humanoid;
+  if (!humanoid) {
+    vrmState.idleRig = null;
+    return;
+  }
+
+  const definitions = [
+    { name: "hips", base: [0.0, 0.02, 0.0], breath: [0.01, 0.0, 0.0], sway: [0.0, 0.015, 0.0] },
+    { name: "spine", base: [0.05, 0.0, 0.0], breath: [0.01, 0.0, 0.0], sway: [0.0, 0.01, 0.01] },
+    { name: "chest", base: [0.09, 0.0, 0.0], breath: [0.025, 0.0, 0.0], sway: [0.0, 0.012, 0.012] },
+    { name: "upperChest", base: [0.07, 0.0, 0.0], breath: [0.03, 0.0, 0.0], sway: [0.0, 0.015, 0.015] },
+    { name: "neck", base: [-0.02, 0.0, 0.0], breath: [0.008, 0.0, 0.0], sway: [0.0, 0.012, 0.0] },
+    { name: "head", base: [-0.03, 0.0, 0.0], breath: [0.01, 0.0, 0.0], sway: [0.0, 0.018, 0.0] },
+    { name: "leftShoulder", base: [0.0, 0.0, vrmDebugConfig.leftShoulderZ], breath: [0.004, 0.0, -0.002], sway: [0.0, 0.0, -0.003] },
+    { name: "rightShoulder", base: [0.0, 0.0, vrmDebugConfig.rightShoulderZ], breath: [0.004, 0.0, 0.002], sway: [0.0, 0.0, 0.003] },
+    { name: "leftUpperArm", base: [vrmDebugConfig.leftUpperArmX, 0.0, vrmDebugConfig.leftUpperArmZ], breath: [0.005, 0.0, -0.003], sway: [0.0, 0.004, -0.004] },
+    { name: "rightUpperArm", base: [vrmDebugConfig.rightUpperArmX, 0.0, vrmDebugConfig.rightUpperArmZ], breath: [0.005, 0.0, 0.003], sway: [0.0, -0.004, 0.004] },
+    { name: "leftLowerArm", base: [vrmDebugConfig.leftLowerArmX, 0.0, vrmDebugConfig.leftLowerArmZ], breath: [0.004, 0.0, 0.0], sway: [0.0, 0.0, -0.003] },
+    { name: "rightLowerArm", base: [vrmDebugConfig.rightLowerArmX, 0.0, vrmDebugConfig.rightLowerArmZ], breath: [0.004, 0.0, 0.0], sway: [0.0, 0.0, 0.003] },
+    { name: "leftHand", base: [0.0, 0.0, vrmDebugConfig.leftHandZ], breath: [0.0, 0.0, 0.001], sway: [0.0, 0.0, 0.001] },
+    { name: "rightHand", base: [0.0, 0.0, vrmDebugConfig.rightHandZ], breath: [0.0, 0.0, -0.001], sway: [0.0, 0.0, -0.001] },
+    { name: "leftUpperLeg", base: [0.03, 0.0, 0.02], breath: [0.0, 0.0, 0.0], sway: [0.0, 0.006, 0.0] },
+    { name: "rightUpperLeg", base: [0.03, 0.0, -0.02], breath: [0.0, 0.0, 0.0], sway: [0.0, -0.006, 0.0] },
+  ];
+
+  vrmState.idleRig = definitions
+    .map((definition) => {
+      const node =
+        humanoid.getNormalizedBoneNode?.(definition.name) ||
+        humanoid.getRawBoneNode?.(definition.name) ||
+        null;
+      if (!node) return null;
+      return {
+        ...definition,
+        node,
+        baseQuaternion: node.quaternion.clone(),
+      };
+    })
+    .filter(Boolean);
+
+  applyIdlePose(0);
+  renderVrmDebugOutput();
+}
+
+async function loadIdleAnimation(vrm) {
+  const humanoid = vrm.humanoid;
+  if (!humanoid) return;
+
+  const loader = new FBXLoader();
+  const sourceRoot = await loader.loadAsync(`/api/vrm/animation/${encodeURIComponent(VRM_IDLE_ANIMATION_FILE)}`);
+  const clip = sourceRoot.animations?.[0];
+  if (!clip) return;
+
+  const normalizedRoot = humanoid.normalizedHumanBonesRoot;
+  if (!normalizedRoot) return;
+
+  Object.entries(VRM_ANIMATION_BONE_MAP).forEach(([humanoidName]) => {
+    const node = humanoid.getNormalizedBoneNode?.(humanoidName);
+    if (node) {
+      node.userData.humanoidBoneName = humanoidName;
+    }
+  });
+
+  sourceRoot.visible = false;
+  sourceRoot.updateMatrixWorld(true);
+  const sourceMixer = new THREE.AnimationMixer(sourceRoot);
+  const action = sourceMixer.clipAction(clip);
+  action.setLoop(THREE.LoopRepeat, Infinity);
+  action.clampWhenFinished = false;
+  action.play();
+
+  vrmState.idleAnimation = {
+    sourceRoot,
+    sourceMixer,
+    sourceHelper: new THREE.SkeletonHelper(sourceRoot),
+    targetHelper: new THREE.SkeletonHelper(normalizedRoot),
+  };
+}
+
+const VRM_DEBUG_CONTROLS = [
+  { key: "cameraTargetY", label: "targetY", min: 0.4, max: 0.9, step: 0.01 },
+  { key: "cameraHeightFactor", label: "heightFit", min: 0.2, max: 0.8, step: 0.01 },
+  { key: "cameraWidthFactor", label: "widthFit", min: 0.2, max: 0.8, step: 0.01 },
+  { key: "cameraDepthFactor", label: "depthFit", min: 0.6, max: 2.0, step: 0.01 },
+  { key: "cameraYOffset", label: "cameraYOffset", min: -0.1, max: 0.2, step: 0.005 },
+  { key: "leftShoulderZ", label: "leftShoulderZ", min: -0.5, max: 0.2, step: 0.005 },
+  { key: "rightShoulderZ", label: "rightShoulderZ", min: -0.2, max: 0.5, step: 0.005 },
+  { key: "leftUpperArmX", label: "leftUpperArmX", min: -0.3, max: 0.4, step: 0.005 },
+  { key: "rightUpperArmX", label: "rightUpperArmX", min: -0.3, max: 0.4, step: 0.005 },
+  { key: "leftUpperArmZ", label: "leftUpperArmZ", min: -0.8, max: 0.2, step: 0.005 },
+  { key: "rightUpperArmZ", label: "rightUpperArmZ", min: -0.2, max: 0.8, step: 0.005 },
+  { key: "leftLowerArmX", label: "leftLowerArmX", min: -0.5, max: 0.2, step: 0.005 },
+  { key: "rightLowerArmX", label: "rightLowerArmX", min: -0.5, max: 0.2, step: 0.005 },
+  { key: "leftLowerArmZ", label: "leftLowerArmZ", min: -0.3, max: 0.2, step: 0.005 },
+  { key: "rightLowerArmZ", label: "rightLowerArmZ", min: -0.2, max: 0.3, step: 0.005 },
+  { key: "leftHandZ", label: "leftHandZ", min: -0.1, max: 0.1, step: 0.001 },
+  { key: "rightHandZ", label: "rightHandZ", min: -0.1, max: 0.1, step: 0.001 },
+];
+
+function initVrmDebugControls() {
+  if (!refs.vrmDebugControls) return;
+  refs.vrmDebugControls.innerHTML = "";
+  VRM_DEBUG_CONTROLS.forEach((control) => {
+    const row = document.createElement("label");
+    row.className = "vrm-debug-row";
+    row.innerHTML = `
+      <span>${control.label}</span>
+      <input type="range" min="${control.min}" max="${control.max}" step="${control.step}" value="${vrmDebugConfig[control.key]}">
+      <span class="vrm-debug-value">${Number(vrmDebugConfig[control.key]).toFixed(3)}</span>
+    `;
+    const input = row.querySelector("input");
+    const value = row.querySelector(".vrm-debug-value");
+    input.addEventListener("input", () => {
+      vrmDebugConfig[control.key] = Number(input.value);
+      value.textContent = vrmDebugConfig[control.key].toFixed(3);
+      applyVrmDebugConfig();
+    });
+    refs.vrmDebugControls.appendChild(row);
+  });
+  renderVrmDebugOutput();
+}
+
+function applyVrmDebugConfig() {
+  if (!vrmState.currentVrm) {
+    renderVrmDebugOutput();
+    return;
+  }
+  fitVrmInFrame(vrmState.currentVrm);
+  setupIdleRig(vrmState.currentVrm);
+}
+
+function renderVrmDebugOutput() {
+  if (!refs.vrmDebugOutput) return;
+  refs.vrmDebugOutput.textContent = JSON.stringify(vrmDebugConfig, null, 2);
+}
+
+async function copyVrmDebugConfig() {
+  const payload = JSON.stringify(vrmDebugConfig, null, 2);
+  try {
+    await navigator.clipboard.writeText(payload);
+  } catch (error) {
+    console.error("VRM debug 値のコピーに失敗しました", error);
+  }
+}
+
+function applyIdlePose(elapsed) {
+  if (!vrmState.currentVrm || !vrmState.idleRig) return;
+
+  const breath = Math.sin(elapsed * 1.35);
+  const sway = Math.sin(elapsed * 0.55);
+  const secondary = Math.sin(elapsed * 0.82 + 1.3);
+
+  vrmState.idleRig.forEach((bone) => {
+    const euler = new THREE.Euler(
+      bone.base[0] + bone.breath[0] * breath + bone.sway[0] * sway,
+      bone.base[1] + bone.breath[1] * breath + bone.sway[1] * secondary,
+      bone.base[2] + bone.breath[2] * breath + bone.sway[2] * sway,
+      "XYZ",
+    );
+    const offset = new THREE.Quaternion().setFromEuler(euler);
+    bone.node.quaternion.copy(bone.baseQuaternion).multiply(offset);
+  });
 }
 
 function resizeVrmRenderer() {
@@ -362,9 +657,22 @@ function startVrmRenderLoop() {
     const delta = vrmState.clock.getDelta();
     const elapsed = vrmState.clock.elapsedTime;
     if (vrmState.currentVrm) {
+      if (vrmState.idleAnimation) {
+        vrmState.idleAnimation.sourceMixer.update(delta);
+        vrmState.idleAnimation.sourceRoot.updateMatrixWorld(true);
+        SkeletonUtils.retarget(vrmState.idleAnimation.targetHelper, vrmState.idleAnimation.sourceHelper, {
+          preserveBoneMatrix: true,
+          preserveBonePositions: true,
+          useTargetMatrix: true,
+          hip: "Hips",
+          getBoneName: (bone) => VRM_ANIMATION_BONE_MAP[bone.userData?.humanoidBoneName] ?? null,
+        });
+      } else {
+        applyIdlePose(elapsed);
+      }
       vrmState.currentVrm.update(delta);
-      vrmState.currentVrm.scene.rotation.y = Math.PI + Math.sin(elapsed * 0.6) * 0.08;
-      vrmState.currentVrm.scene.position.y = -1.05 + Math.sin(elapsed * 1.4) * 0.015;
+      vrmState.currentVrm.scene.rotation.y = Math.sin(elapsed * 0.45) * 0.03;
+      vrmState.currentVrm.scene.position.y = vrmState.baseSceneY + Math.sin(elapsed * 1.35) * 0.012;
     }
     vrmState.controls?.update();
     vrmState.renderer.render(vrmState.scene, vrmState.camera);
@@ -793,7 +1101,6 @@ function fallbackTitle(entry) {
 async function selectEntry(entryId) {
   state.selectedEntryId = entryId;
   refs.detailStatusMessage.textContent = "";
-  state.detailAiOpen = false;
   state.detailAiPreviewContent = null;
   refs.detailAiInstruction.value = "";
   refs.detailAiStatus.textContent = "";
@@ -824,18 +1131,31 @@ function renderDetail() {
   refs.detailView.classList.remove("hidden");
   refs.detailType.textContent = state.selectedEntry.type;
   refs.detailTitle.textContent = state.selectedEntry.title || fallbackTitle(state.selectedEntry);
-  refs.detailMeta.textContent = `${formatDateTime(state.selectedEntry.timestamp)} | ${state.selectedEntry.status}`;
+  refs.detailMeta.textContent = buildDetailMeta(state.selectedEntry);
   refs.detailContent.innerHTML = renderEntryMarkdown(state.selectedEntry);
   refs.detailTitleInput.value = state.selectedEntry.title || "";
   refs.detailContentInput.value = state.selectedEntry.content;
   refs.detailTypeInput.value = state.selectedEntry.type;
   refs.detailTimestampInput.value = toDatetimeLocal(state.selectedEntry.timestamp);
+  populateRecurringForm(state.selectedEntry);
   refs.detailStatusInput.value = state.selectedEntry.status;
   renderDetailAiState();
   renderDetailChatState();
   renderQuickTypeOptions();
   renderUndoState();
   applyDetailMode();
+}
+
+function buildDetailMeta(entry) {
+  const parts = [`${formatDateTime(entry.timestamp)}`, entry.status];
+  const traits = entry.meta?.traits || {};
+  const traitParts = Object.entries(traits)
+    .filter(([, value]) => Number(value) > 0)
+    .map(([trait, value]) => `${trait}:${Number(value).toFixed(2)}`);
+  if (traitParts.length) {
+    parts.push(`Big Five ${traitParts.join(", ")}`);
+  }
+  return parts.join(" | ");
 }
 
 function toggleDetailEdit() {
@@ -845,12 +1165,14 @@ function toggleDetailEdit() {
 }
 
 function applyDetailMode() {
+  const aiEditable = isAiEditableEntry(state.selectedEntry);
   refs.detailReadonly.classList.toggle("hidden", state.editMode);
   refs.detailForm.classList.toggle("hidden", !state.editMode);
-  refs.detailAiToggle.classList.toggle("hidden", state.editMode || !state.selectedEntry);
-  refs.detailAiPanel.classList.toggle("hidden", state.editMode || !state.detailAiOpen || !state.selectedEntry);
+  refs.detailAiPanel.classList.toggle("hidden", state.editMode || !aiEditable);
   refs.detailChatPanel.classList.toggle("hidden", state.editMode || !isChatEntry(state.selectedEntry));
+  refs.detailRecurringPanel.classList.toggle("hidden", !state.editMode || !isTodoType(refs.detailTypeInput.value));
   refs.detailEditToggle.textContent = state.editMode ? "閲覧" : "編集";
+  renderRecurringFieldsState();
 }
 
 async function saveDetail(event) {
@@ -870,6 +1192,7 @@ async function saveDetail(event) {
           ? new Date(refs.detailTimestampInput.value).toISOString()
           : undefined,
         status: refs.detailStatusInput.value,
+        meta: buildRecurringMetaPayload(),
       }),
     });
     setUndoAction({
@@ -886,21 +1209,80 @@ async function saveDetail(event) {
   }
 }
 
-function toggleDetailAiPanel() {
-  if (!state.selectedEntry || state.editMode) return;
-  state.detailAiOpen = !state.detailAiOpen;
-  renderDetailAiState();
-  applyDetailMode();
+function isTodoType(type) {
+  return type === "todo" || type === "todo_done";
+}
+
+function populateRecurringForm(entry) {
+  const meta = entry?.meta || {};
+  refs.detailRecurringEnabled.checked = !!meta.recurring_enabled;
+  refs.detailRecurringRule.value = meta.recurring_rule || "daily";
+  refs.detailRecurringInterval.value = meta.recurring_interval || 1;
+  refs.detailRecurringCount.value = meta.recurring_count || "";
+  for (const input of refs.detailRecurringWeekdays.querySelectorAll('input[type="checkbox"]')) {
+    input.checked = Array.isArray(meta.recurring_weekdays)
+      ? meta.recurring_weekdays.includes(Number(input.value))
+      : false;
+  }
+  renderRecurringFieldsState();
+}
+
+function renderRecurringFieldsState() {
+  const todoVisible = state.editMode && isTodoType(refs.detailTypeInput.value);
+  refs.detailRecurringPanel.classList.toggle("hidden", !todoVisible);
+  const enabled = todoVisible && refs.detailRecurringEnabled.checked;
+  refs.detailRecurringFields.classList.toggle("hidden", !enabled);
+  const customWeekdays = enabled && refs.detailRecurringRule.value === "custom_weekdays";
+  refs.detailRecurringWeekdays.classList.toggle("hidden", !customWeekdays);
+}
+
+function buildRecurringMetaPayload() {
+  const currentMeta = state.selectedEntry?.meta || {};
+  if (!isTodoType(refs.detailTypeInput.value)) {
+    return currentMeta;
+  }
+  if (!refs.detailRecurringEnabled.checked) {
+    return {
+      ...currentMeta,
+      recurring_enabled: false,
+      recurring_rule: null,
+      recurring_interval: null,
+      recurring_count: null,
+      recurring_weekdays: [],
+      recurring_series_id: null,
+      recurring_sequence: null,
+      recurring_scheduled_for: null,
+    };
+  }
+  return {
+    ...currentMeta,
+    recurring_enabled: true,
+    recurring_rule: refs.detailRecurringRule.value,
+    recurring_interval: Math.max(parseInt(refs.detailRecurringInterval.value || "1", 10), 1),
+    recurring_count: refs.detailRecurringCount.value
+      ? Math.max(parseInt(refs.detailRecurringCount.value, 10), 1)
+      : null,
+    recurring_weekdays:
+      refs.detailRecurringRule.value === "custom_weekdays"
+        ? Array.from(refs.detailRecurringWeekdays.querySelectorAll('input[type="checkbox"]:checked')).map(
+            (input) => Number(input.value),
+          )
+        : [],
+  };
 }
 
 function renderDetailAiState() {
+  const visible = isAiEditableEntry(state.selectedEntry);
   const hasPreview = !!state.detailAiPreviewContent;
-  refs.detailAiToggle.textContent = state.detailAiOpen ? "AI を閉じる" : "AI に投げる";
-  refs.detailAiPanel.classList.toggle("hidden", !state.detailAiOpen || state.editMode || !state.selectedEntry);
+  refs.detailAiPanel.classList.toggle("hidden", !visible || state.editMode);
   refs.detailAiPreview.classList.toggle("hidden", !hasPreview);
   refs.detailAiPreviewContent.innerHTML = hasPreview
     ? DOMPurify.sanitize(marked.parse(state.detailAiPreviewContent || ""))
     : "";
+  if (!visible) {
+    refs.detailAiStatus.textContent = "";
+    refs.detailAiInstruction.value = "";
+  }
 }
 
 async function requestAiEditPreview() {
@@ -945,7 +1327,6 @@ async function saveAiEditPreview() {
       payload: previous,
     });
     state.detailAiPreviewContent = null;
-    state.detailAiOpen = false;
     refs.detailAiInstruction.value = "";
     refs.detailAiStatus.textContent = "AI 編集を保存しました";
     renderDetail();
@@ -966,7 +1347,6 @@ async function cancelAiEditPreview() {
       method: "DELETE",
     });
     state.detailAiPreviewContent = null;
-    state.detailAiOpen = false;
     refs.detailAiInstruction.value = "";
     refs.detailAiStatus.textContent = "AI 編集を破棄しました";
     renderDetailAiState();
@@ -1516,6 +1896,10 @@ function isChatEntry(entry) {
   return !!entry && (entry.type === "chat" || entry.type === "chat_user" || entry.type === "chat_ai");
 }
 
+function isAiEditableEntry(entry) {
+  return !!entry && !isChatEntry(entry);
+}
+
 function renderEntryMarkdown(entry) {
   const markdown = isChatEntry(entry) ? buildChatHistoryMarkdown(entry) : entry.content || "";
   return DOMPurify.sanitize(marked.parse(markdown));
@@ -1588,16 +1972,45 @@ function clearChatDraft(options = {}) {
 // ---------------------------------------------------------------------------
 
 async function openSettingsPanel() {
+  closeReviewPanel({ preserveNav: true });
   refs.settingsPanel.classList.remove("hidden");
   refs.navSettings.classList.add("active");
   refs.navTimeline.classList.remove("active");
+  refs.navReview.classList.remove("active");
   await loadSettings();
 }
 
 function closeSettingsPanel() {
   refs.settingsPanel.classList.add("hidden");
   refs.navSettings.classList.remove("active");
-  refs.navTimeline.classList.add("active");
+  if (refs.reviewPanel.classList.contains("hidden")) {
+    refs.navTimeline.classList.add("active");
+  }
+}
+
+async function openReviewPanel() {
+  closeSettingsPanel();
+  refs.reviewPanel.classList.remove("hidden");
+  refs.navReview.classList.add("active");
+  refs.navTimeline.classList.remove("active");
+  refs.navSettings.classList.remove("active");
+  if (!refs.reviewAnchorDate.value) {
+    refs.reviewAnchorDate.value = new Date().toISOString().slice(0, 10);
+  }
+  await loadWeeklyReview();
+}
+
+function closeReviewPanel(options = {}) {
+  refs.reviewPanel.classList.add("hidden");
+  refs.navReview.classList.remove("active");
+  if (!options.preserveNav && refs.settingsPanel.classList.contains("hidden")) {
+    refs.navTimeline.classList.add("active");
+  }
+}
+
+function closeOverlayPanels() {
+  closeSettingsPanel();
+  closeReviewPanel();
 }
 
 async function loadSettings() {
@@ -1608,10 +2021,20 @@ async function loadSettings() {
     refs.sOllamaModel.value = s.ai.ollama_model;
     refs.sOllamaTimeout.value = s.ai.timeout_seconds;
     renderVrmOptions(s.vrm?.available_models ?? [], s.vrm?.model_filename ?? "");
+    refs.sReviewEnabled.checked = !!s.behavior?.review_enabled;
+    refs.sBigFiveEnabled.checked = !!s.behavior?.big_five_enabled;
+    refs.sDailyReviewTime.value = buildTimeValue(s.behavior?.daily_review_hour ?? 0, s.behavior?.daily_review_minute ?? 0);
+    refs.sWeeklyReviewWeekday.value = String(s.behavior?.weekly_review_weekday ?? 6);
+    refs.sWeeklyReviewTime.value = buildTimeValue(s.behavior?.weekly_review_hour ?? 9, s.behavior?.weekly_review_minute ?? 0);
+    refs.sReviewPerspectives.value = (s.behavior?.review_perspectives ?? []).join("\n");
+    refs.sBigFivePerspectives.value = (s.behavior?.big_five_perspectives ?? []).join("\n");
+    refs.sBigFiveFocusTraits.value = (s.behavior?.big_five_focus_traits ?? []).join("\n");
+    applyTraitTargetSettings(s.behavior?.big_five_trait_targets ?? {});
     refs.sInfoLimit.value = s.pipeline.info_limit;
     refs.sInfoUseOllama.checked = !!s.pipeline.info_use_ollama;
     refs.sAnalyzeBatch.value = s.pipeline.analyze_batch_size;
     refs.sDeepLimit.value = s.pipeline.deep_limit;
+    refs.sFutureDailyDays.value = s.pipeline.future_daily_days_ahead ?? 0;
     renderWorkers(s.workers);
     renderFeeds(s.feeds);
     renderSearchQueries(s.search_queries ?? []);
@@ -1764,6 +2187,33 @@ async function saveVrmSettings() {
   }
 }
 
+async function saveBehaviorSettings() {
+  refs.sBehaviorStatus.textContent = "保存中...";
+  try {
+    const dailyTime = parseTimeValue(refs.sDailyReviewTime.value || "00:20");
+    const weeklyTime = parseTimeValue(refs.sWeeklyReviewTime.value || "09:00");
+    await api("/api/settings/behavior", {
+      method: "PATCH",
+      body: JSON.stringify({
+        review_enabled: !!refs.sReviewEnabled.checked,
+        big_five_enabled: !!refs.sBigFiveEnabled.checked,
+        daily_review_hour: dailyTime.hour,
+        daily_review_minute: dailyTime.minute,
+        weekly_review_weekday: parseInt(refs.sWeeklyReviewWeekday.value, 10),
+        weekly_review_hour: weeklyTime.hour,
+        weekly_review_minute: weeklyTime.minute,
+        review_perspectives: textareaLines(refs.sReviewPerspectives.value),
+        big_five_perspectives: textareaLines(refs.sBigFivePerspectives.value),
+        big_five_focus_traits: textareaLines(refs.sBigFiveFocusTraits.value),
+        big_five_trait_targets: collectTraitTargetSettings(),
+      }),
+    });
+    refs.sBehaviorStatus.textContent = "保存しました";
+  } catch (e) {
+    refs.sBehaviorStatus.textContent = e.message;
+  }
+}
+
 async function savePipelineSettings() {
   refs.sPipelineStatus.textContent = "保存中...";
   try {
@@ -1774,6 +2224,7 @@ async function savePipelineSettings() {
         info_use_ollama: !!refs.sInfoUseOllama.checked,
         analyze_batch_size: parseInt(refs.sAnalyzeBatch.value, 10),
         deep_limit: parseInt(refs.sDeepLimit.value, 10),
+        future_daily_days_ahead: parseInt(refs.sFutureDailyDays.value, 10),
       }),
     });
     refs.sPipelineStatus.textContent = "保存しました";
@@ -1842,6 +2293,112 @@ async function deleteSearchQuery(query) {
   } catch (e) {
     refs.sSearchQueryStatus.textContent = e.message;
   }
+}
+
+async function loadWeeklyReview() {
+  refs.reviewStatus.textContent = "読込中...";
+  refs.reviewOverview.textContent = "";
+  refs.reviewPerspectives.innerHTML = "";
+  refs.reviewBigFive.innerHTML = "";
+  refs.reviewEntries.innerHTML = "";
+  try {
+    const anchorDate = refs.reviewAnchorDate.value || new Date().toISOString().slice(0, 10);
+    const res = await api(`/api/reviews/weekly?anchor_date=${encodeURIComponent(anchorDate)}`);
+    state.weeklyReview = res;
+    renderWeeklyReview();
+    refs.reviewStatus.textContent = `${res.week_start} - ${res.week_end}`;
+  } catch (e) {
+    refs.reviewStatus.textContent = e.message;
+  }
+}
+
+function renderWeeklyReview() {
+  const review = state.weeklyReview;
+  if (!review) return;
+  refs.reviewOverview.textContent = review.overview || "";
+
+  refs.reviewPerspectives.innerHTML = "";
+  for (const item of review.perspective_notes || []) {
+    refs.reviewPerspectives.appendChild(buildReviewCard(item.title, item.body));
+  }
+
+  refs.reviewBigFive.innerHTML = "";
+  if (!review.big_five_enabled) {
+    refs.reviewBigFive.appendChild(
+      buildReviewCard("Big Five はオフです", "興味があるときだけ設定で有効にし、通常レビューとは分けて確認できます。"),
+    );
+  } else {
+    for (const item of review.big_five?.trait_notes || []) {
+      const focus = (review.big_five?.focus_traits || []).includes(item.trait) ? "重点" : "参考";
+      const directionLabel = traitDirectionLabel(item.target_direction);
+      refs.reviewBigFive.appendChild(
+        buildReviewCard(`${item.label} (${focus})`, `${item.body}\n\n改善行動: ${item.improvement_hint}`),
+      );
+      refs.reviewBigFive.lastElementChild.querySelector("h4").textContent = `${item.label} (${focus} / ${directionLabel})`;
+    }
+  }
+
+  refs.reviewEntries.innerHTML = "";
+  for (const entry of review.entries || []) {
+    refs.reviewEntries.appendChild(
+      buildReviewCard(
+        `${formatDateTime(entry.timestamp)} | ${entry.type}`,
+        `${entry.title}\n${entry.summary || ""}`,
+      ),
+    );
+  }
+}
+
+function buildReviewCard(title, body) {
+  const card = document.createElement("article");
+  card.className = "review-card";
+  const heading = document.createElement("h4");
+  heading.textContent = title;
+  const copy = document.createElement("p");
+  copy.textContent = body;
+  card.appendChild(heading);
+  card.appendChild(copy);
+  return card;
+}
+
+function textareaLines(value) {
+  return value
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function buildTimeValue(hour, minute) {
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
+function parseTimeValue(value) {
+  const [hour, minute] = (value || "00:00").split(":").map((part) => parseInt(part, 10) || 0);
+  return { hour, minute };
+}
+
+function applyTraitTargetSettings(targets) {
+  refs.sTraitTargetOpenness.value = targets.openness || "up";
+  refs.sTraitTargetConscientiousness.value = targets.conscientiousness || "up";
+  refs.sTraitTargetExtraversion.value = targets.extraversion || "up";
+  refs.sTraitTargetAgreeableness.value = targets.agreeableness || "up";
+  refs.sTraitTargetNeuroticism.value = targets.neuroticism || "down";
+}
+
+function collectTraitTargetSettings() {
+  return {
+    openness: refs.sTraitTargetOpenness.value,
+    conscientiousness: refs.sTraitTargetConscientiousness.value,
+    extraversion: refs.sTraitTargetExtraversion.value,
+    agreeableness: refs.sTraitTargetAgreeableness.value,
+    neuroticism: refs.sTraitTargetNeuroticism.value,
+  };
+}
+
+function traitDirectionLabel(direction) {
+  if (direction === "up") return "上げたい";
+  if (direction === "down") return "下げたい";
+  return "維持したい";
 }
 
 function toDatetimeLocal(isoString) {

@@ -236,30 +236,6 @@ body[data-mobile-layout="false"] .layout[data-detail-open="false"] .detail-pane 
   display: block;
 }
 
-.vrm-overlay {
-  position: absolute;
-  inset: auto 14px 14px 14px;
-  padding: 10px 12px;
-  border-radius: 14px;
-  background: rgba(255, 250, 242, 0.78);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(173, 149, 117, 0.25);
-}
-
-.vrm-label {
-  margin: 0;
-  color: var(--muted);
-  font-size: 13px;
-  text-align: center;
-}
-
-.vrm-status {
-  margin: 6px 0 0;
-  color: var(--muted);
-  font-size: 12px;
-  text-align: center;
-}
-
 .workspace-summary {
   font-size: 12px;
   color: var(--muted);
@@ -270,6 +246,61 @@ body[data-mobile-layout="false"] .layout[data-detail-open="false"] .detail-pane 
   background: rgba(255, 255, 255, 0.5);
   border-radius: 12px;
   border: 1px solid rgba(173, 149, 117, 0.2);
+}
+
+.vrm-debug-panel {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(173, 149, 117, 0.24);
+  background: rgba(255, 255, 255, 0.72);
+  display: grid;
+  gap: 10px;
+}
+
+.vrm-debug-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.vrm-debug-controls {
+  display: grid;
+  gap: 8px;
+}
+
+.vrm-debug-row {
+  display: grid;
+  grid-template-columns: 1fr 120px 56px;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.vrm-debug-row input[type="range"] {
+  width: 100%;
+}
+
+.vrm-debug-value {
+  text-align: right;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.vrm-debug-output {
+  margin: 0;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(244, 239, 230, 0.9);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .timeline-pane {
@@ -633,6 +664,33 @@ body[data-mobile-layout="false"] .layout[data-detail-open="false"] .detail-pane 
   background: rgba(255, 255, 255, 0.75);
 }
 
+.detail-recurring-panel {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(173, 149, 117, 0.24);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.detail-recurring-fields {
+  display: grid;
+  gap: 10px;
+}
+
+.detail-recurring-weekdays {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.detail-recurring-weekdays label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+}
+
 .chat-form textarea {
   resize: vertical;
 }
@@ -738,6 +796,18 @@ body[data-mobile-layout="false"] .layout[data-detail-open="false"] .detail-pane 
   background: rgba(255, 255, 255, 0.75);
   resize: vertical;
   box-sizing: border-box;
+}
+
+.detail-ai-compose {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.detail-ai-compose button {
+  min-width: 132px;
+  align-self: stretch;
 }
 
 .detail-ai-preview {
@@ -1015,6 +1085,42 @@ body[data-mobile-layout="false"] .layout[data-detail-open="false"] .detail-pane 
   color: var(--text);
 }
 
+.settings-trait-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.review-body {
+  line-height: 1.7;
+  color: var(--text);
+}
+
+.review-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.review-card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.review-card h4 {
+  margin: 0 0 6px;
+  font-size: 0.92rem;
+}
+
+.review-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
 @media (max-width: 900px) {
   .app-shell {
     min-height: 100vh;
@@ -1136,8 +1242,13 @@ body[data-mobile-layout="false"] .layout[data-detail-open="false"] .detail-pane 
     align-items: stretch;
   }
 
+  .detail-ai-compose {
+    grid-template-columns: 1fr;
+  }
+
   .chat-action-buttons,
-  .detail-action-buttons {
+  .detail-action-buttons,
+  .detail-ai-compose button {
     width: 100%;
     justify-content: flex-end;
   }
