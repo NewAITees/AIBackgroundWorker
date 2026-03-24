@@ -50,6 +50,7 @@ class LifelogConfig(BaseModel):
     info_config_dir: str = "lifelog-system/config/info_collector"
     info_collect_seconds: int = 3600
     info_limit: int = 10
+    info_use_ollama: bool = True
     analysis_pipeline_seconds: int = 1800
     analyze_batch_size: int = 20
     deep_batch_size: int = 3

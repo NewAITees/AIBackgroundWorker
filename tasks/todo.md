@@ -5,6 +5,18 @@
 
 ---
 
+## timeline-app: 右ペイン AI 編集 + チャット継続
+
+- [x] 右ペイン閲覧モードに「AI に投げる」導線を追加する
+- [x] AI 編集用の指示入力欄、プレビュー、保存/キャンセル UI を追加する
+- [x] `POST /api/entries/{id}/ai_edit` を追加し、バックアップ作成つきで Ollama 編集を実行する
+- [x] 保存/キャンセル時に `articles/{id}.bak.md` を削除する
+- [x] `POST /api/entries/{id}/append_message` を追加し、会話を末尾追記保存できるようにする
+- [x] chat 系 entry の右ペインに会話履歴表示と継続入力欄を追加する
+- [x] テストを追加し、完了後に `tasks/lessons.md` を更新する
+
+---
+
 ## 最優先: 単純化・削減フェーズ（残1件）
 
 - [ ] Windows 移行時: `WindowsForegroundWorker` に `powershell.exe foreground_logger.ps1` の起動管理を追加する
@@ -54,12 +66,53 @@
 - [x] `search|DuckDuckGo` の保存元調査結果を整理し、旧運用・別経路の痕跡があれば記録する
       → リポジトリ内で `collected_info(source_type='search', source_name='DuckDuckGo')` を保存する経路は `src.info_collector.auto_runner --search/--all` と `scripts/info_collector/search_web.sh`
       → 修正前の `timeline-app/src/workers/info_worker.py` は `--search` を呼んでいなかったため、既存の DuckDuckGo 行は手動実行または旧/別運用ジョブ由来の可能性が高い
+- [ ] DuckDuckGo 検索の実行元を追加調査する
+      → systemd / cron / README / 旧導線を再確認し、実行元候補の確度を整理する
+
+### 旧 timer 移行
+
+- [x] user systemd の `info-integrated.timer` / `info-integrated.service` を現行 `timeline-app` worker へ移行完了扱いにする
+      → 旧 service の「収集→分析→深掘り→レポート」は `timeline-app` の `info_worker` + `analysis_pipeline_worker` + `scheduler` へ分割移行済み
+- [x] 旧 `info-integrated.timer` を停止・無効化する
+      → `systemctl --user disable --now info-integrated.timer` 実施済み
+- [x] 無効化後の状態確認結果を記録する
+      → `info-integrated.timer` は `disabled` / `inactive (dead)`、次回 trigger は `n/a`
+      → `info-integrated.service` は直近失敗状態の履歴を残すが、timer からは起動されない状態になった
+- [x] user systemd の `info-collector.timer` / `info-collector.service` を調査し、現在の DuckDuckGo 保存元かどうかを確認する
+      → `info-collector.timer` は `hourly` で `info-collector.service` を起動
+      → `info-collector.service` の `ExecStart` は `scripts/info_collector/auto_collect.sh --all --limit 10 --use-ollama`
+      → 直近実行 `2026-03-24 01:02:32 JST` の systemd 出力に `search: { queries: 10, saved: 84 }` が残っており、現在の DuckDuckGo 保存元であることを確認
+
+### systemd 非依存化確認
+
+- [x] `info-collector.service` の責務が現行 `timeline-app` worker に揃っているか確認する
+      → 旧 service の `auto_collect.sh --all --limit 10 --use-ollama` に対して、現行 `info_worker` は RSS/news/search/limit を実装済み
+- [x] 足りない収集・設定反映があれば `timeline-app` 側へ実装する
+      → 欠けていた `--use-ollama` 相当を `config.lifelog.info_use_ollama` として追加し、worker / settings API / UI / テストへ反映済み
+- [x] user systemd の `info-collector.timer` を停止・無効化する
+      → `systemctl --user disable --now info-collector.timer` 実施済み
+- [x] 無効化後の運用導線が `timeline-app` 側だけで成立することを記録する
+      → `info-collector.timer` は `disabled` / `inactive (dead)`、user timer 一覧からも消え、収集導線は `timeline-app` scheduler 側へ一本化した
+
+### AI 性格設定の保持確認
+
+- [x] `AI 性格 / 性格・話し方` の保存先と保持条件を確認する
+      → 保存先は `timeline-app/config.yaml` の `ai.personality`。再起動時はここから読み込まれる
+- [x] 画面から空文字で保存した場合に設定が消える条件を確認する
+      → `/api/settings/ai` は空文字もそのまま保存するため、空欄のまま保存すると `config.yaml` も空で上書きされる
+- [x] 指定文言 `大和なでしこでかわいらしい感じで話して` を設定へ反映する
 
 ---
 
 ## lifelog-system 移動タスク（§33）
 
 > 前提: 単独起動導線の除去は完了済み
+> 優先方針: desktop 常駐化より先に、`timeline-app` を唯一の運用入口にするための移設を完了させる
+> 完了条件:
+> - `lifelog-system` が `timeline-app` 配下へ移り、外部ディレクトリ参照なしで動く
+> - `timeline-app` 単体で収集 / 分析 / 要約 / レポートが動く
+> - Windows 主実行環境で path / subprocess / 設定ファイル参照が破綻しない
+> - systemd や旧単独起動導線に依存しない
 
 - [ ] `timeline-app/src/workers/` が `lifelog-system/src/` をインポートしている箇所を全列挙する
       → 現在は `sys.path` 操作 + `src.__path__` 拡張で対応中
@@ -68,6 +121,10 @@
 - [ ] `lifelog-system/pyproject.toml` の依存を `timeline-app/pyproject.toml` に統合し、`uv sync` で確認する
 - [ ] 動作確認（`./scripts/start.sh` で全ワーカーが正常起動すること）
 - [ ] 旧 `lifelog-system/pyproject.toml` を削除する
+- [ ] Windows 移行の阻害要因を列挙して解消方針を固める
+      → `root_dir`, `PYTHONPATH`, shell script, WSL 前提 path 変換, subprocess 呼び出しを対象にする
+- [ ] Windows 上で `timeline-app` 単体起動が成立する条件を整理する
+      → desktop 化前に「Web + worker が Windows で単独起動できる」状態を要件化する
 
 ---
 
@@ -354,6 +411,10 @@ _sync_once_blocking():
 ## フェーズ7: M4 常駐化 / OS化（M3完了後）
 
 > 参照: 要件書 §21.4、§3.6（デスクトップアプリ方針）
+> 着手条件:
+> - `lifelog-system` の `timeline-app` 配下移設が完了している
+> - Windows 主実行環境で `timeline-app` 単体運用が成立している
+> - 常駐対象の起動点が `timeline-app` に一本化されている
 
 - [ ] desktop 版: pywebview で Web フロントを包む最小実装（要件書 §21.1.5）
 - [ ] desktop 常駐・バックグラウンド起動（要件書 §19.3）

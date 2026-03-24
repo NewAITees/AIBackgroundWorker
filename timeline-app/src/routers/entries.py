@@ -1,17 +1,55 @@
 """entry CRUD API。Markdown ファイルを正本として扱う。"""
 
+import shutil
 import uuid
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
+from ..ai.ollama_client import OllamaClient, OllamaClientError
 from ..config import config
 from ..models.entry import Entry, EntryCreate, EntryType, EntryUpdate
 from ..routers.workspace import get_open_workspace
+from ..services.ai_control import ai_control_service
+from ..services.chat_transcript import append_chat_message
+from ..storage.common import article_backup_path, article_path, delete_file_if_exists
 from ..storage.entry_reader import read_entry
+from ..storage.entry_writer import append_entry_content
+from ..storage.daily_writer import upsert_entry_in_daily
 from ..storage.persistence import persist_entry
 
 router = APIRouter()
 TODO_FUTURE_OFFSET = timedelta(minutes=5)
+
+
+class EntryAiEditRequest(BaseModel):
+    instruction: str
+
+
+class EntryAiEditResponse(BaseModel):
+    edited_content: str
+
+
+class EntryAppendMessageRequest(BaseModel):
+    role: str
+    content: str
+
+
+class EntryBackupCleanupResponse(BaseModel):
+    deleted: bool
+
+
+def _backup_article_if_needed(workspace_path: str, entry_id: str) -> None:
+    source = article_path(workspace_path, config.workspace.dirs.articles, entry_id)
+    backup = article_backup_path(workspace_path, config.workspace.dirs.articles, entry_id)
+    if backup.exists():
+        return
+    shutil.copy2(source, backup)
+
+
+def _delete_ai_backup(workspace_path: str, entry_id: str) -> bool:
+    backup = article_backup_path(workspace_path, config.workspace.dirs.articles, entry_id)
+    return delete_file_if_exists(backup)
 
 
 @router.post("/entries", response_model=Entry, status_code=201)
@@ -84,4 +122,76 @@ async def update_entry(entry_id: str, req: EntryUpdate):
 
     updated = entry.model_copy(update=update_data)
     persist_entry(workspace_path, updated)
+    _delete_ai_backup(workspace_path, entry_id)
     return updated
+
+
+@router.post("/entries/{entry_id}/ai_edit", response_model=EntryAiEditResponse)
+async def ai_edit_entry(entry_id: str, req: EntryAiEditRequest):
+    """AI に本文編集を依頼し、プレビュー用の編集済み全文を返す。"""
+    if ai_control_service.is_paused():
+        raise HTTPException(status_code=409, detail="AI処理は一時停止中です")
+
+    instruction = req.instruction.strip()
+    if not instruction:
+        raise HTTPException(status_code=400, detail="instruction を入力してください")
+
+    workspace = get_open_workspace()
+    workspace_path = workspace["path"]
+
+    try:
+        entry = read_entry(workspace_path, config.workspace.dirs.articles, entry_id)
+        _backup_article_if_needed(workspace_path, entry_id)
+        edited_content = OllamaClient(config.ai).edit_entry_content(
+            current_content=entry.content,
+            instruction=instruction,
+            context={"entry_id": entry_id},
+        )
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="entry が見つかりません")
+    except OllamaClientError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    return EntryAiEditResponse(edited_content=edited_content)
+
+
+@router.delete("/entries/{entry_id}/ai_edit_backup", response_model=EntryBackupCleanupResponse)
+async def delete_ai_edit_backup(entry_id: str):
+    workspace = get_open_workspace()
+    deleted = _delete_ai_backup(workspace["path"], entry_id)
+    return EntryBackupCleanupResponse(deleted=deleted)
+
+
+@router.post("/entries/{entry_id}/append_message", response_model=Entry)
+async def append_entry_message(entry_id: str, req: EntryAppendMessageRequest):
+    """chat entry の本文末尾へ会話メッセージを追記する。"""
+    workspace = get_open_workspace()
+    workspace_path = workspace["path"]
+    role = req.role.strip().lower()
+    content = req.content.strip()
+    if role not in {"user", "assistant"}:
+        raise HTTPException(status_code=400, detail="role は user または assistant を指定してください")
+    if not content:
+        raise HTTPException(status_code=400, detail="content を入力してください")
+
+    try:
+        entry = read_entry(workspace_path, config.workspace.dirs.articles, entry_id)
+        if entry.type not in {EntryType.chat_user, EntryType.chat_ai}:
+            raise HTTPException(status_code=400, detail="chat entry のみ追記できます")
+        appended_content = append_chat_message(entry.content, role, content)
+        appended_only = appended_content[len(entry.content.rstrip()) :].strip()
+        append_entry_content(
+            workspace_path,
+            config.workspace.dirs.articles,
+            entry_id,
+            appended_only,
+        )
+        updated = read_entry(workspace_path, config.workspace.dirs.articles, entry_id)
+        upsert_entry_in_daily(workspace_path, config.workspace.dirs.daily, updated)
+        return updated
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="entry が見つかりません")
+    except ValueError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc

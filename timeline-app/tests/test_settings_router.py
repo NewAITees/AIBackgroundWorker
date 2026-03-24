@@ -160,3 +160,15 @@ class TestSettingsSearchQueries:
         )
         assert resp.status_code == 200
         assert "生成AI 最新動向" not in resp.json()["search_queries"]
+
+
+class TestSettingsPipeline:
+    def test_pipeline_includes_info_use_ollama(self, client: TestClient):
+        resp = client.get("/api/settings")
+        assert "info_use_ollama" in resp.json()["pipeline"]
+
+    def test_update_info_use_ollama(self, client: TestClient):
+        resp = client.patch("/api/settings/pipeline", json={"info_use_ollama": False})
+        assert resp.status_code == 200
+        assert resp.json()["info_use_ollama"] is False
+        assert config.lifelog.info_use_ollama is False

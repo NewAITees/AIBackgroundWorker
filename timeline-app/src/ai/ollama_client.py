@@ -205,6 +205,60 @@ class OllamaClient:
             title = target_label
         return OllamaSummaryResult(title=title, content=content, should_create=should_create)
 
+    def edit_entry_content(
+        self,
+        *,
+        current_content: str,
+        instruction: str,
+        caller: str = "entry_ai_edit",
+        context: dict[str, Any] | None = None,
+    ) -> str:
+        tool = {
+            "type": "function",
+            "function": {
+                "name": "edit_entry_content",
+                "description": "指示に従って本文全体を編集し、編集後の全文を返す。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "edited_content": {
+                            "type": "string",
+                            "description": "編集後の Markdown 本文全文",
+                        }
+                    },
+                    "required": ["edited_content"],
+                },
+            },
+        }
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "あなたは Markdown 本文を編集するアシスタントです。"
+                    "ユーザー指示に従って本文全体を書き換えてください。"
+                    "指示されていない情報は勝手に削除しないこと。"
+                    "出力は編集後の Markdown 本文全文とし、説明文や前置きは不要です。"
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"指示:\n{instruction.strip()}\n\n" "現在の本文:\n" f"{current_content.rstrip()}"
+                ),
+            },
+        ]
+        args, fallback_content = self._chat_with_tools(
+            messages,
+            [tool],
+            caller=caller,
+            purpose="edit_entry_content",
+            context=context,
+        )
+        edited_content = str(args.get("edited_content", "")).strip() or fallback_content.strip()
+        if not edited_content:
+            raise OllamaClientError("編集結果が空です")
+        return edited_content
+
     def check_health(self) -> dict:
         """Ollama の到達性と利用モデル設定を返す。"""
         try:

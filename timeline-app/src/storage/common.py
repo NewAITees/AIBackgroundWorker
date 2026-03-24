@@ -63,6 +63,10 @@ def article_path(workspace_path: str, articles_dir: str, entry_id: str) -> Path:
     return Path(workspace_path) / articles_dir / f"{entry_id}.md"
 
 
+def article_backup_path(workspace_path: str, articles_dir: str, entry_id: str) -> Path:
+    return Path(workspace_path) / articles_dir / f"{entry_id}.bak.md"
+
+
 def daily_path(workspace_path: str, daily_dir: str, target_date: date) -> Path:
     return Path(workspace_path) / daily_dir / f"{target_date.isoformat()}.md"
 
@@ -97,4 +101,11 @@ def restore_from_backup(path: Path) -> bool:
     if not backup.exists():
         return False
     shutil.copy2(backup, path)
+    return True
+
+
+def delete_file_if_exists(path: Path) -> bool:
+    if not path.exists():
+        return False
+    path.unlink()
     return True

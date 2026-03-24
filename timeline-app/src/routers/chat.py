@@ -14,6 +14,7 @@ from ..config import config
 from ..models.entry import Entry, EntryMeta, EntrySource, EntryType
 from ..routers.workspace import get_open_workspace
 from ..services.ai_control import ai_control_service
+from ..services.chat_transcript import build_chat_transcript
 from ..storage.persistence import persist_entry
 
 router = APIRouter()
@@ -25,6 +26,7 @@ _MAX_HISTORY_PER_THREAD = 100
 class ChatRequest(BaseModel):
     content: str
     thread_id: str | None = None
+    save_entry: bool = True
 
 
 class ChatResponse(BaseModel):
@@ -61,13 +63,20 @@ def _normalize_candidates(raw_candidates: list[dict]) -> list[dict]:
     return candidates[:3]
 
 
-def _save_chat_ai_entry(workspace_path: str, thread_id: str, reply: str) -> Entry:
+def _save_chat_ai_entry(
+    workspace_path: str, thread_id: str, user_content: str, reply: str
+) -> Entry:
     entry_id = f"{datetime.now(timezone.utc).isoformat()}-chat_ai-{uuid.uuid4().hex[:6]}"
     entry = Entry(
         id=entry_id,
         type=EntryType.chat_ai,
         title=None,
-        content=reply,
+        content=build_chat_transcript(
+            [
+                {"role": "user", "content": user_content},
+                {"role": "assistant", "content": reply},
+            ]
+        ),
         timestamp=datetime.now(timezone.utc),
         source=EntrySource.ai,
         workspace_path=workspace_path,
@@ -109,7 +118,8 @@ async def chat(req: ChatRequest):
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     history.append({"role": "assistant", "content": result.reply})
-    _save_chat_ai_entry(workspace["path"], thread_id, result.reply)
+    if req.save_entry:
+        _save_chat_ai_entry(workspace["path"], thread_id, req.content, result.reply)
 
     return ChatResponse(
         reply=result.reply,

@@ -9,6 +9,8 @@ const state = {
   selectedEntry: null,
   chatThreadId: null,
   editMode: false,
+  detailAiOpen: false,
+  detailAiPreviewContent: null,
   initialScrollDone: false,
   aroundTimestamp: null,
   oldestTimestamp: null,
@@ -105,7 +107,21 @@ function cacheRefs() {
   refs.detailTimestampInput = document.getElementById("detail-timestamp-input");
   refs.detailStatusInput = document.getElementById("detail-status-input");
   refs.detailEditToggle = document.getElementById("detail-edit-toggle");
+  refs.detailAiToggle = document.getElementById("detail-ai-toggle");
   refs.detailReadonly = document.getElementById("detail-readonly");
+  refs.detailAiPanel = document.getElementById("detail-ai-panel");
+  refs.detailAiInstruction = document.getElementById("detail-ai-instruction");
+  refs.detailAiStatus = document.getElementById("detail-ai-status");
+  refs.detailAiSubmit = document.getElementById("detail-ai-submit");
+  refs.detailAiPreview = document.getElementById("detail-ai-preview");
+  refs.detailAiPreviewContent = document.getElementById("detail-ai-preview-content");
+  refs.detailAiSave = document.getElementById("detail-ai-save");
+  refs.detailAiCancel = document.getElementById("detail-ai-cancel");
+  refs.detailChatPanel = document.getElementById("detail-chat-panel");
+  refs.detailChatForm = document.getElementById("detail-chat-form");
+  refs.detailChatInput = document.getElementById("detail-chat-input");
+  refs.detailChatStatus = document.getElementById("detail-chat-status");
+  refs.detailChatSend = document.getElementById("detail-chat-send");
   refs.detailStatusMessage = document.getElementById("detail-status-message");
   refs.detailUndo = document.getElementById("detail-undo");
   refs.detailFormSubmit = document.getElementById("detail-form");
@@ -126,6 +142,7 @@ function cacheRefs() {
   refs.sAiSave = document.getElementById("s-ai-save");
   refs.sWorkers = document.getElementById("s-workers");
   refs.sInfoLimit = document.getElementById("s-info-limit");
+  refs.sInfoUseOllama = document.getElementById("s-info-use-ollama");
   refs.sAnalyzeBatch = document.getElementById("s-analyze-batch");
   refs.sDeepLimit = document.getElementById("s-deep-limit");
   refs.sPipelineStatus = document.getElementById("s-pipeline-status");
@@ -168,6 +185,11 @@ function bindEvents() {
   refs.chatInput.addEventListener("input", persistChatDraft);
   refs.chatDraftClear.addEventListener("click", clearChatDraft);
   refs.detailEditToggle.addEventListener("click", toggleDetailEdit);
+  refs.detailAiToggle.addEventListener("click", toggleDetailAiPanel);
+  refs.detailAiSubmit.addEventListener("click", requestAiEditPreview);
+  refs.detailAiSave.addEventListener("click", saveAiEditPreview);
+  refs.detailAiCancel.addEventListener("click", cancelAiEditPreview);
+  refs.detailChatForm.addEventListener("submit", submitDetailChat);
   refs.detailForm.addEventListener("submit", saveDetail);
   refs.detailUndo.addEventListener("click", undoLastAction);
   refs.jumpNow.addEventListener("click", () => scrollToNow("smooth"));
@@ -661,6 +683,12 @@ function fallbackTitle(entry) {
 async function selectEntry(entryId) {
   state.selectedEntryId = entryId;
   refs.detailStatusMessage.textContent = "";
+  state.detailAiOpen = false;
+  state.detailAiPreviewContent = null;
+  refs.detailAiInstruction.value = "";
+  refs.detailAiStatus.textContent = "";
+  refs.detailChatInput.value = "";
+  refs.detailChatStatus.textContent = "";
   try {
     state.selectedEntry = await api(`/api/entries/${encodeURIComponent(entryId)}`);
     state.editMode = false;
@@ -687,12 +715,14 @@ function renderDetail() {
   refs.detailType.textContent = state.selectedEntry.type;
   refs.detailTitle.textContent = state.selectedEntry.title || fallbackTitle(state.selectedEntry);
   refs.detailMeta.textContent = `${formatDateTime(state.selectedEntry.timestamp)} | ${state.selectedEntry.status}`;
-  refs.detailContent.innerHTML = DOMPurify.sanitize(marked.parse(state.selectedEntry.content || ""));
+  refs.detailContent.innerHTML = renderEntryMarkdown(state.selectedEntry);
   refs.detailTitleInput.value = state.selectedEntry.title || "";
   refs.detailContentInput.value = state.selectedEntry.content;
   refs.detailTypeInput.value = state.selectedEntry.type;
   refs.detailTimestampInput.value = toDatetimeLocal(state.selectedEntry.timestamp);
   refs.detailStatusInput.value = state.selectedEntry.status;
+  renderDetailAiState();
+  renderDetailChatState();
   renderQuickTypeOptions();
   renderUndoState();
   applyDetailMode();
@@ -707,6 +737,9 @@ function toggleDetailEdit() {
 function applyDetailMode() {
   refs.detailReadonly.classList.toggle("hidden", state.editMode);
   refs.detailForm.classList.toggle("hidden", !state.editMode);
+  refs.detailAiToggle.classList.toggle("hidden", state.editMode || !state.selectedEntry);
+  refs.detailAiPanel.classList.toggle("hidden", state.editMode || !state.detailAiOpen || !state.selectedEntry);
+  refs.detailChatPanel.classList.toggle("hidden", state.editMode || !isChatEntry(state.selectedEntry));
   refs.detailEditToggle.textContent = state.editMode ? "閲覧" : "編集";
 }
 
@@ -743,6 +776,98 @@ async function saveDetail(event) {
   }
 }
 
+function toggleDetailAiPanel() {
+  if (!state.selectedEntry || state.editMode) return;
+  state.detailAiOpen = !state.detailAiOpen;
+  renderDetailAiState();
+  applyDetailMode();
+}
+
+function renderDetailAiState() {
+  const hasPreview = !!state.detailAiPreviewContent;
+  refs.detailAiToggle.textContent = state.detailAiOpen ? "AI を閉じる" : "AI に投げる";
+  refs.detailAiPanel.classList.toggle("hidden", !state.detailAiOpen || state.editMode || !state.selectedEntry);
+  refs.detailAiPreview.classList.toggle("hidden", !hasPreview);
+  refs.detailAiPreviewContent.innerHTML = hasPreview
+    ? DOMPurify.sanitize(marked.parse(state.detailAiPreviewContent || ""))
+    : "";
+}
+
+async function requestAiEditPreview() {
+  if (!state.selectedEntryId) return;
+  const instruction = refs.detailAiInstruction.value.trim();
+  if (!instruction) {
+    refs.detailAiStatus.textContent = "指示を入力してください";
+    return;
+  }
+
+  refs.detailAiStatus.textContent = "AI が編集中...";
+  refs.detailAiSubmit.disabled = true;
+  try {
+    const response = await api(`/api/entries/${encodeURIComponent(state.selectedEntryId)}/ai_edit`, {
+      method: "POST",
+      body: JSON.stringify({ instruction }),
+    });
+    state.detailAiPreviewContent = response.edited_content || "";
+    refs.detailAiStatus.textContent = "プレビューを生成しました";
+    renderDetailAiState();
+  } catch (error) {
+    refs.detailAiStatus.textContent = error.message;
+  } finally {
+    refs.detailAiSubmit.disabled = false;
+  }
+}
+
+async function saveAiEditPreview() {
+  if (!state.selectedEntryId || !state.detailAiPreviewContent) return;
+
+  refs.detailAiStatus.textContent = "保存中...";
+  refs.detailAiSave.disabled = true;
+  try {
+    const previous = snapshotEntry(state.selectedEntry);
+    state.selectedEntry = await api(`/api/entries/${encodeURIComponent(state.selectedEntryId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ content: state.detailAiPreviewContent }),
+    });
+    setUndoAction({
+      entryId: state.selectedEntryId,
+      label: "AI編集前に戻す",
+      payload: previous,
+    });
+    state.detailAiPreviewContent = null;
+    state.detailAiOpen = false;
+    refs.detailAiInstruction.value = "";
+    refs.detailAiStatus.textContent = "AI 編集を保存しました";
+    renderDetail();
+    await loadTimeline();
+  } catch (error) {
+    refs.detailAiStatus.textContent = error.message;
+  } finally {
+    refs.detailAiSave.disabled = false;
+  }
+}
+
+async function cancelAiEditPreview() {
+  if (!state.selectedEntryId) return;
+
+  refs.detailAiCancel.disabled = true;
+  try {
+    await api(`/api/entries/${encodeURIComponent(state.selectedEntryId)}/ai_edit_backup`, {
+      method: "DELETE",
+    });
+    state.detailAiPreviewContent = null;
+    state.detailAiOpen = false;
+    refs.detailAiInstruction.value = "";
+    refs.detailAiStatus.textContent = "AI 編集を破棄しました";
+    renderDetailAiState();
+    applyDetailMode();
+  } catch (error) {
+    refs.detailAiStatus.textContent = error.message;
+  } finally {
+    refs.detailAiCancel.disabled = false;
+  }
+}
+
 async function submitChat(event) {
   event.preventDefault();
   if (state.aiPaused) {
@@ -774,6 +899,62 @@ async function submitChat(event) {
     await loadTimeline();
   } catch (error) {
     refs.chatStatus.textContent = error.message;
+  }
+}
+
+function renderDetailChatState() {
+  const visible = isChatEntry(state.selectedEntry);
+  refs.detailChatPanel.classList.toggle("hidden", !visible || state.editMode);
+  if (!visible) {
+    refs.detailChatStatus.textContent = "";
+  }
+}
+
+async function submitDetailChat(event) {
+  event.preventDefault();
+  if (!state.selectedEntryId || !isChatEntry(state.selectedEntry)) return;
+  if (state.aiPaused) {
+    refs.detailChatStatus.textContent = "AI処理は一時停止中です";
+    return;
+  }
+
+  const content = refs.detailChatInput.value.trim();
+  if (!content) return;
+
+  refs.detailChatStatus.textContent = "AIに送信中...";
+  refs.detailChatSend.disabled = true;
+  try {
+    const threadId = state.selectedEntry.meta?.thread_id || null;
+    const response = await api("/api/chat", {
+      method: "POST",
+      body: JSON.stringify({
+        content,
+        thread_id: threadId,
+        save_entry: false,
+      }),
+    });
+    if (response.thread_id && response.thread_id !== threadId) {
+      state.selectedEntry = await api(`/api/entries/${encodeURIComponent(state.selectedEntryId)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ meta: { thread_id: response.thread_id } }),
+      });
+    }
+    state.selectedEntry = await api(`/api/entries/${encodeURIComponent(state.selectedEntryId)}/append_message`, {
+      method: "POST",
+      body: JSON.stringify({ role: "user", content }),
+    });
+    state.selectedEntry = await api(`/api/entries/${encodeURIComponent(state.selectedEntryId)}/append_message`, {
+      method: "POST",
+      body: JSON.stringify({ role: "assistant", content: response.reply || "" }),
+    });
+    refs.detailChatInput.value = "";
+    refs.detailChatStatus.textContent = "会話を追記しました";
+    renderDetail();
+    await loadTimeline();
+  } catch (error) {
+    refs.detailChatStatus.textContent = error.message;
+  } finally {
+    refs.detailChatSend.disabled = false;
   }
 }
 
@@ -1221,6 +1402,38 @@ function findEntryById(entryId) {
   return state.entries.find((entry) => entry.id === entryId) || null;
 }
 
+function isChatEntry(entry) {
+  return !!entry && (entry.type === "chat" || entry.type === "chat_user" || entry.type === "chat_ai");
+}
+
+function renderEntryMarkdown(entry) {
+  const markdown = isChatEntry(entry) ? buildChatHistoryMarkdown(entry) : entry.content || "";
+  return DOMPurify.sanitize(marked.parse(markdown));
+}
+
+function buildChatHistoryMarkdown(entry) {
+  const messages = parseChatTranscript(entry.content || "");
+  if (!messages.length) {
+    const heading = entry.type === "chat_ai" ? "### Assistant" : "### User";
+    return `${heading}\n\n${entry.content || ""}`;
+  }
+  return messages
+    .map((message) => `### ${message.role === "assistant" ? "Assistant" : "User"}\n\n${message.content}`)
+    .join("\n\n");
+}
+
+function parseChatTranscript(content) {
+  const pattern = /<!--\s*chat-message:(user|assistant)\s*-->\s*\n([\s\S]*?)(?=(?:\n<!--\s*chat-message:)|$)/g;
+  const messages = [];
+  for (const match of content.matchAll(pattern)) {
+    const role = match[1];
+    const body = match[2].replace(/^###\s+(?:User|Assistant)\s*\n+/u, "").trim();
+    if (!body) continue;
+    messages.push({ role, content: body });
+  }
+  return messages;
+}
+
 function chatDraftKey() {
   return `${CHAT_DRAFT_KEY_PREFIX}${state.workspace?.path || "default"}`;
 }
@@ -1285,6 +1498,7 @@ async function loadSettings() {
     refs.sOllamaModel.value = s.ai.ollama_model;
     refs.sOllamaTimeout.value = s.ai.timeout_seconds;
     refs.sInfoLimit.value = s.pipeline.info_limit;
+    refs.sInfoUseOllama.checked = !!s.pipeline.info_use_ollama;
     refs.sAnalyzeBatch.value = s.pipeline.analyze_batch_size;
     refs.sDeepLimit.value = s.pipeline.deep_limit;
     renderWorkers(s.workers);
@@ -1414,6 +1628,7 @@ async function savePipelineSettings() {
       method: "PATCH",
       body: JSON.stringify({
         info_limit: parseInt(refs.sInfoLimit.value, 10),
+        info_use_ollama: !!refs.sInfoUseOllama.checked,
         analyze_batch_size: parseInt(refs.sAnalyzeBatch.value, 10),
         deep_limit: parseInt(refs.sDeepLimit.value, 10),
       }),

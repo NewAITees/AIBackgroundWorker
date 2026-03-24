@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 
 import yaml
@@ -17,6 +18,7 @@ from .common import (
 )
 
 logger = logging.getLogger(__name__)
+_FRONTMATTER_RE = re.compile(r"(?ms)\A---\n.*?\n---\n?")
 
 
 def write_entry(workspace_path: str, articles_dir: str, entry: Entry) -> Path:
@@ -36,5 +38,28 @@ def write_entry(workspace_path: str, articles_dir: str, entry: Entry) -> Path:
         if restore_from_backup(path):
             logger.error("write_entry: 書き込み検証失敗、バックアップから復元しました: %s", path)
         raise RuntimeError(f"書き込み後の検証に失敗しました: {path}")
+
+    return path
+
+
+def append_entry_content(
+    workspace_path: str, articles_dir: str, entry_id: str, content: str
+) -> Path:
+    path = article_path(workspace_path, articles_dir, entry_id)
+    if not path.exists():
+        raise FileNotFoundError(path)
+
+    raw = path.read_text(encoding="utf-8")
+    if not _FRONTMATTER_RE.match(raw):
+        raise ValueError(f"frontmatter の形式が不正です: {path}")
+
+    backup_existing_file(path)
+    with path.open("a", encoding="utf-8") as fh:
+        if raw and not raw.endswith("\n"):
+            fh.write("\n")
+        if raw.rstrip():
+            fh.write("\n")
+        fh.write(content.rstrip())
+        fh.write("\n")
 
     return path

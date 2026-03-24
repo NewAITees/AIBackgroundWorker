@@ -40,6 +40,7 @@ class WorkerStatesUpdate(BaseModel):
 
 class PipelineSettingsUpdate(BaseModel):
     info_limit: int | None = None
+    info_use_ollama: bool | None = None
     analyze_batch_size: int | None = None
     deep_limit: int | None = None
 
@@ -60,6 +61,7 @@ async def get_settings() -> dict[str, Any]:
         },
         "pipeline": {
             "info_limit": config.lifelog.info_limit,
+            "info_use_ollama": config.lifelog.info_use_ollama,
             "analyze_batch_size": config.lifelog.analyze_batch_size,
             "deep_limit": config.lifelog.deep_limit,
         },
@@ -105,6 +107,8 @@ async def update_pipeline_settings(req: PipelineSettingsUpdate) -> dict[str, Any
     """パイプライン設定を更新して config.yaml に永続化する。"""
     if req.info_limit is not None:
         config.lifelog.info_limit = req.info_limit
+    if req.info_use_ollama is not None:
+        config.lifelog.info_use_ollama = req.info_use_ollama
     if req.analyze_batch_size is not None:
         config.lifelog.analyze_batch_size = req.analyze_batch_size
     if req.deep_limit is not None:
@@ -113,6 +117,7 @@ async def update_pipeline_settings(req: PipelineSettingsUpdate) -> dict[str, Any
     _save_config()
     return {
         "info_limit": config.lifelog.info_limit,
+        "info_use_ollama": config.lifelog.info_use_ollama,
         "analyze_batch_size": config.lifelog.analyze_batch_size,
         "deep_limit": config.lifelog.deep_limit,
     }
@@ -256,6 +261,7 @@ def _save_config() -> None:
 
     raw.setdefault("lifelog", {})
     raw["lifelog"]["info_limit"] = config.lifelog.info_limit
+    raw["lifelog"]["info_use_ollama"] = config.lifelog.info_use_ollama
     raw["lifelog"]["analyze_batch_size"] = config.lifelog.analyze_batch_size
     raw["lifelog"]["deep_limit"] = config.lifelog.deep_limit
 

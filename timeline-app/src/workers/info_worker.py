@@ -87,6 +87,8 @@ class InfoWorker:
             "--limit",
             str(config.lifelog.info_limit),
         ]
+        if config.lifelog.info_use_ollama:
+            cmd.append("--use-ollama")
         env = {
             **os.environ,
             "PYTHONPATH": str(lifelog_root),

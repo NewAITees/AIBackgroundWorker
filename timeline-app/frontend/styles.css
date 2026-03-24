@@ -659,6 +659,12 @@ body[data-mobile-layout="false"] .layout[data-detail-open="false"] .detail-pane 
   gap: 12px;
 }
 
+.detail-head-actions {
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .detail-type,
 .detail-meta {
   color: var(--muted);
@@ -687,6 +693,43 @@ body[data-mobile-layout="false"] .layout[data-detail-open="false"] .detail-pane 
   margin: 0;
   white-space: pre-wrap;
   line-height: 1.65;
+}
+
+.detail-ai-panel,
+.detail-chat-panel {
+  margin: 18px 0;
+  padding: 18px;
+  border: 1px solid rgba(173, 149, 117, 0.24);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.detail-ai-panel textarea,
+.detail-chat-form textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.75);
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.detail-ai-preview {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(173, 149, 117, 0.24);
+}
+
+.detail-ai-preview h3,
+.detail-chat-panel h3 {
+  margin: 0 0 12px;
+  font-family: "BIZ UDPMincho", "Yu Mincho", serif;
+}
+
+.detail-status-inline {
+  color: var(--muted);
+  font-size: 14px;
 }
 
 .detail-field-label {

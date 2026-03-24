@@ -175,7 +175,10 @@
               <p id="detail-type" class="detail-type"></p>
               <h2 id="detail-title"></h2>
             </div>
-            <button id="detail-edit-toggle" class="ghost-button">編集</button>
+            <div class="detail-head-actions">
+              <button id="detail-ai-toggle" class="ghost-button hidden" type="button">AI に投げる</button>
+              <button id="detail-edit-toggle" class="ghost-button" type="button">編集</button>
+            </div>
           </div>
 
           <div id="detail-meta" class="detail-meta"></div>
@@ -189,6 +192,41 @@
           <div id="detail-readonly" class="detail-readonly">
             <div id="detail-content" class="md-body"></div>
           </div>
+
+          <section id="detail-ai-panel" class="detail-ai-panel hidden">
+            <label class="detail-field-label" for="detail-ai-instruction">AI への指示</label>
+            <textarea id="detail-ai-instruction" rows="5" placeholder="例: 誤字を直して、箇条書きを読みやすく整えて"></textarea>
+            <div class="detail-actions">
+              <span id="detail-ai-status" class="detail-status-inline"></span>
+              <div class="detail-action-buttons">
+                <button id="detail-ai-submit" type="button">AI で編集</button>
+              </div>
+            </div>
+            <div id="detail-ai-preview" class="detail-ai-preview hidden">
+              <h3>AI 編集プレビュー</h3>
+              <div id="detail-ai-preview-content" class="md-body"></div>
+              <div class="detail-actions">
+                <span class="detail-status-inline">保存すると本文を置き換えます</span>
+                <div class="detail-action-buttons">
+                  <button id="detail-ai-cancel" class="ghost-button" type="button">キャンセル</button>
+                  <button id="detail-ai-save" type="button">保存</button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section id="detail-chat-panel" class="detail-chat-panel hidden">
+            <h3>チャット継続</h3>
+            <form id="detail-chat-form" class="detail-chat-form">
+              <textarea id="detail-chat-input" rows="4" placeholder="この会話の続きを入力"></textarea>
+              <div class="detail-actions">
+                <span id="detail-chat-status" class="detail-status-inline"></span>
+                <div class="detail-action-buttons">
+                  <button id="detail-chat-send" type="submit">送信</button>
+                </div>
+              </div>
+            </form>
+          </section>
 
           <form id="detail-form" class="detail-form hidden">
             <input id="detail-title-input" type="text" placeholder="タイトル" />
@@ -278,6 +316,10 @@
         <label class="settings-field">
           <span>RSS 取得上限（件）</span>
           <input id="s-info-limit" type="number" min="1" max="200" />
+        </label>
+        <label class="timeline-toggle">
+          <input id="s-info-use-ollama" type="checkbox" />
+          <span>検索クエリ生成に Ollama を使う</span>
         </label>
         <label class="settings-field">
           <span>分析バッチサイズ</span>

@@ -12,6 +12,31 @@ def _mock_ollama(reply: str = "テスト応答です。", candidates=None) -> Ol
     return OllamaChatResult(reply=reply, entry_candidates=candidates or [])
 
 
+def _edit_mock(edited_content: str):
+    from unittest.mock import MagicMock
+
+    m = MagicMock()
+    m.raise_for_status.return_value = None
+    m.json.return_value = {
+        "message": {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {
+                    "function": {
+                        "name": "edit_entry_content",
+                        "arguments": {
+                            "edited_content": edited_content,
+                        },
+                    }
+                }
+            ],
+        },
+        "done": True,
+    }
+    return m
+
+
 class TestHealth:
     def test_returns_ok(self, client: TestClient):
         with patch("src.routers.health.OllamaClient") as mock_cls:
@@ -154,6 +179,52 @@ class TestEntries:
             # conftest の tmp_workspace フィクスチャが cleanup するが念のため
             pass
 
+    def test_ai_edit_creates_backup_and_returns_preview(self, client: TestClient, tmp_workspace):
+        created = client.post(
+            "/api/entries",
+            json={"type": "memo", "content": "元の本文", "source": "user"},
+        ).json()
+        with patch("src.ai.ollama_client.requests.post", return_value=_edit_mock("編集後の本文")):
+            resp = client.post(
+                f"/api/entries/{created['id']}/ai_edit",
+                json={"instruction": "読みやすくして"},
+            )
+        assert resp.status_code == 200
+        assert resp.json()["edited_content"] == "編集後の本文"
+        backup = tmp_workspace / "articles" / f"{created['id']}.bak.md"
+        assert backup.exists()
+        assert "元の本文" in backup.read_text(encoding="utf-8")
+
+    def test_ai_edit_cancel_deletes_backup(self, client: TestClient, tmp_workspace):
+        created = client.post(
+            "/api/entries",
+            json={"type": "memo", "content": "元の本文", "source": "user"},
+        ).json()
+        with patch("src.ai.ollama_client.requests.post", return_value=_edit_mock("編集後の本文")):
+            client.post(
+                f"/api/entries/{created['id']}/ai_edit",
+                json={"instruction": "整形して"},
+            )
+        resp = client.delete(f"/api/entries/{created['id']}/ai_edit_backup")
+        assert resp.status_code == 200
+        assert resp.json()["deleted"] is True
+        assert not (tmp_workspace / "articles" / f"{created['id']}.bak.md").exists()
+
+    def test_append_message_appends_chat_transcript(self, client: TestClient):
+        created = client.post(
+            "/api/entries",
+            json={"type": "chat_ai", "content": "最初の応答", "source": "ai"},
+        ).json()
+        resp = client.post(
+            f"/api/entries/{created['id']}/append_message",
+            json={"role": "user", "content": "追加の質問"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "最初の応答" in data["content"]
+        assert "<!-- chat-message:user -->" in data["content"]
+        assert "追加の質問" in data["content"]
+
 
 class TestTimeline:
     def test_returns_empty_for_no_entries(self, client: TestClient):
@@ -257,6 +328,27 @@ class TestChat:
         with patch("src.ai.ollama_client.requests.post", side_effect=req.RequestException("down")):
             resp = client.post("/api/chat", json={"content": "テスト"})
         assert resp.status_code == 502
+
+    def test_chat_saves_transcript_markdown_entry(self, client: TestClient):
+        with patch("src.ai.ollama_client.requests.post", return_value=_chat_mock("了解です。")):
+            resp = client.post("/api/chat", json={"content": "今日やることを整理したい"})
+        assert resp.status_code == 200
+
+        timeline = client.get("/api/timeline").json()["entries"]
+        chat_entries = [entry for entry in timeline if entry["type"] == "chat_ai"]
+        assert chat_entries
+        assert "<!-- chat-message:user -->" in chat_entries[-1]["content"]
+        assert "<!-- chat-message:assistant -->" in chat_entries[-1]["content"]
+
+    def test_chat_with_save_entry_false_does_not_persist_entry(self, client: TestClient):
+        with patch("src.ai.ollama_client.requests.post", return_value=_chat_mock("了解です。")):
+            resp = client.post(
+                "/api/chat",
+                json={"content": "続きです", "thread_id": "thread-x", "save_entry": False},
+            )
+        assert resp.status_code == 200
+        timeline = client.get("/api/timeline").json()["entries"]
+        assert [entry for entry in timeline if entry["type"] == "chat_ai"] == []
 
     def test_entry_candidates_returned(self, client: TestClient):
         candidates = [{"type": "todo", "title": "返信する", "content": "A社へ返信"}]
