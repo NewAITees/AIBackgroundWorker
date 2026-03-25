@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from ..ai.ollama_client import OllamaClient, OllamaClientError
 from ..config import config
-from ..models.entry import Entry, EntryCreate, EntryMeta, EntryType, EntryUpdate
+from ..models.entry import Entry, EntryCreate, EntryMeta, EntryStatus, EntryType, EntryUpdate
 from ..routers.workspace import get_open_workspace
 from ..services.ai_control import ai_control_service
 from ..services.chat_transcript import append_chat_message
@@ -17,6 +17,7 @@ from ..storage.entry_reader import read_entry
 from ..storage.entry_writer import append_entry_content
 from ..storage.daily_writer import upsert_entry_in_daily
 from ..storage.persistence import persist_entry
+from ..storage.todo_control import find_todo, remove_todo, upsert_todo
 
 router = APIRouter()
 TODO_FUTURE_OFFSET = timedelta(minutes=5)
@@ -138,7 +139,10 @@ async def create_entry(req: EntryCreate):
             "meta": _normalize_recurring_meta(entry.id, entry.type, entry.timestamp, entry.meta)
         }
     )
-    persist_entry(workspace_path, entry)
+    if entry.type == EntryType.todo and entry.status == EntryStatus.active:
+        upsert_todo(workspace_path, config.workspace.dirs.todo_control, entry)
+    else:
+        persist_entry(workspace_path, entry)
     return entry
 
 
@@ -146,8 +150,12 @@ async def create_entry(req: EntryCreate):
 async def get_entry(entry_id: str):
     """右ペイン用の entry 詳細を返す"""
     workspace = get_open_workspace()
+    workspace_path = workspace["path"]
     try:
-        return read_entry(workspace["path"], config.workspace.dirs.articles, entry_id)
+        entry = find_todo(workspace_path, config.workspace.dirs.todo_control, entry_id)
+        if entry is not None:
+            return entry
+        return read_entry(workspace_path, config.workspace.dirs.articles, entry_id)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="entry が見つかりません")
     except ValueError as exc:
@@ -160,8 +168,16 @@ async def update_entry(entry_id: str, req: EntryUpdate):
     workspace = get_open_workspace()
     workspace_path = workspace["path"]
 
+    in_todo_control = False
     try:
-        entry = read_entry(workspace_path, config.workspace.dirs.articles, entry_id)
+        in_todo_control_entry = find_todo(
+            workspace_path, config.workspace.dirs.todo_control, entry_id
+        )
+        if in_todo_control_entry is not None:
+            entry = in_todo_control_entry
+            in_todo_control = True
+        else:
+            entry = read_entry(workspace_path, config.workspace.dirs.articles, entry_id)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="entry が見つかりません")
     except ValueError as exc:
@@ -189,8 +205,15 @@ async def update_entry(entry_id: str, req: EntryUpdate):
             )
         }
     )
-    persist_entry(workspace_path, updated)
-    _delete_ai_backup(workspace_path, entry_id)
+
+    is_active_todo = updated.type == EntryType.todo and updated.status == EntryStatus.active
+    if is_active_todo:
+        upsert_todo(workspace_path, config.workspace.dirs.todo_control, updated)
+    else:
+        if in_todo_control:
+            remove_todo(workspace_path, config.workspace.dirs.todo_control, entry_id)
+        persist_entry(workspace_path, updated)
+        _delete_ai_backup(workspace_path, entry_id)
     return updated
 
 
@@ -208,8 +231,10 @@ async def ai_edit_entry(entry_id: str, req: EntryAiEditRequest):
     workspace_path = workspace["path"]
 
     try:
-        entry = read_entry(workspace_path, config.workspace.dirs.articles, entry_id)
-        _backup_article_if_needed(workspace_path, entry_id)
+        entry = find_todo(workspace_path, config.workspace.dirs.todo_control, entry_id)
+        if entry is None:
+            entry = read_entry(workspace_path, config.workspace.dirs.articles, entry_id)
+            _backup_article_if_needed(workspace_path, entry_id)
         edited_content = OllamaClient(config.ai).edit_entry_content(
             current_content=entry.content,
             instruction=instruction,
@@ -263,3 +288,30 @@ async def append_entry_message(entry_id: str, req: EntryAppendMessageRequest):
         raise HTTPException(status_code=404, detail="entry が見つかりません")
     except ValueError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+class MigrateResult(BaseModel):
+    migrated: int
+    skipped: int
+
+
+@router.post("/entries/migrate-todos-to-control", response_model=MigrateResult)
+async def migrate_todos_to_control():
+    """articles/ 内の active todo を todo_control.md へ移行する。"""
+    from ..storage.entry_reader import read_entries
+
+    workspace = get_open_workspace()
+    workspace_path = workspace["path"]
+
+    all_entries = read_entries(workspace_path, config.workspace.dirs.articles)
+    migrated = 0
+    skipped = 0
+    for entry in all_entries:
+        if entry.type == EntryType.todo and entry.status == EntryStatus.active:
+            upsert_todo(workspace_path, config.workspace.dirs.todo_control, entry)
+            path = article_path(workspace_path, config.workspace.dirs.articles, entry.id)
+            delete_file_if_exists(path)
+            migrated += 1
+        else:
+            skipped += 1
+    return MigrateResult(migrated=migrated, skipped=skipped)

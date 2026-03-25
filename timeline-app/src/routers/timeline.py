@@ -7,13 +7,12 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Query
 
 from ..config import config
-from ..models.entry import Entry, EntryStatus, EntryType
+from ..models.entry import EntryStatus, EntryType
 from ..routers.workspace import get_open_workspace
 from ..storage.daily_reader import read_timeline_entries
-from ..storage.entry_reader import read_entries
+from ..storage.todo_control import read_todo_control
 
 router = APIRouter()
-TODO_FUTURE_OFFSET = timedelta(minutes=5)
 
 
 def _as_utc(dt: datetime) -> datetime:
@@ -42,27 +41,13 @@ async def get_timeline(
         start_at=start_at,
         end_at=end_at,
     )
-    active_todos = [
-        _project_active_todo(entry)
-        for entry in read_entries(workspace["path"], config.workspace.dirs.articles)
-        if entry.type == EntryType.todo and entry.status == EntryStatus.active
-    ]
-    merged_entries = {entry.id: entry for entry in entries}
-    for entry in active_todos:
-        if _as_utc(start_at) <= _as_utc(entry.timestamp) <= _as_utc(end_at):
-            merged_entries[entry.id] = entry
-
     todo_entries = sorted(
-        [
-            entry
-            for entry in merged_entries.values()
-            if entry.type == EntryType.todo and entry.status == EntryStatus.active
-        ],
+        read_todo_control(workspace["path"], config.workspace.dirs.todo_control),
         key=lambda entry: _as_utc(entry.timestamp),
     )
     timeline_entries = [
         entry
-        for entry in merged_entries.values()
+        for entry in entries
         if not (entry.type == EntryType.todo and entry.status == EntryStatus.active)
     ]
     past_entries = sorted(
@@ -74,28 +59,16 @@ async def get_timeline(
         key=lambda entry: _as_utc(entry.timestamp),
     )
 
+    all_entries = sorted(
+        timeline_entries + todo_entries,
+        key=lambda entry: _as_utc(entry.timestamp),
+    )
     return {
         "around": around_utc.isoformat(),
         "before_hours": before,
         "after_hours": after,
-        "entries": [
-            entry.model_dump(mode="json")
-            for entry in sorted(merged_entries.values(), key=lambda entry: _as_utc(entry.timestamp))
-        ],
+        "entries": [entry.model_dump(mode="json") for entry in all_entries],
         "past_entries": [entry.model_dump(mode="json") for entry in past_entries],
         "todo_entries": [entry.model_dump(mode="json") for entry in todo_entries],
         "future_entries": [entry.model_dump(mode="json") for entry in future_entries],
     }
-
-
-def _project_active_todo(entry: Entry) -> Entry:
-    now = datetime.now(timezone.utc)
-    if entry.meta.recurring_enabled:
-        return entry
-    entry_timestamp = _as_utc(entry.timestamp)
-    if entry_timestamp > now:
-        return entry
-    due_at = entry.meta.due_at
-    if due_at is not None and _as_utc(due_at) > now:
-        return entry.model_copy(update={"timestamp": _as_utc(due_at)})
-    return entry.model_copy(update={"timestamp": now + TODO_FUTURE_OFFSET})

@@ -31,6 +31,7 @@ class AIConfig(BaseModel):
 class WorkspaceDirsConfig(BaseModel):
     daily: str = "daily"
     articles: str = "articles"
+    todo_control: str = "todo_control.md"
 
 
 class WorkspaceConfig(BaseModel):
