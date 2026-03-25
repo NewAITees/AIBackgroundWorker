@@ -9,10 +9,11 @@ import contextlib
 import logging
 import sqlite3
 import threading
-import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, List, Optional
+
+from src.common.db_mixin import SqliteLockRetryMixin
 
 from .schema import CREATE_TABLES_SQL, MIGRATION_ADD_EVENTS_SQL, get_pragma_settings
 
@@ -22,7 +23,7 @@ logger = logging.getLogger(__name__)
 sqlite3.register_adapter(datetime, lambda d: d.isoformat())
 
 
-class DatabaseManager:
+class DatabaseManager(SqliteLockRetryMixin):
     """
     SQLiteデータベース管理クラス.
 
@@ -164,27 +165,6 @@ class DatabaseManager:
             (process_name, process_path_hash, now, now),
         )
         return cursor.lastrowid
-
-    @staticmethod
-    def _is_lock_error(exc: Exception) -> bool:
-        return (
-            isinstance(exc, sqlite3.OperationalError) and "database is locked" in str(exc).lower()
-        )
-
-    def _run_with_lock_retry(self, fn, retries: int = 5, base_sleep: float = 0.2):
-        for attempt in range(retries + 1):
-            try:
-                return fn()
-            except Exception as exc:  # noqa: BLE001
-                if not self._is_lock_error(exc) or attempt >= retries:
-                    raise
-                logger.warning(
-                    "Database lock detected, retrying (%s/%s): %s",
-                    attempt + 1,
-                    retries,
-                    exc,
-                )
-                time.sleep(base_sleep * (2**attempt))
 
     def get_or_create_app(self, process_name: str, process_path_hash: str) -> int:
         """

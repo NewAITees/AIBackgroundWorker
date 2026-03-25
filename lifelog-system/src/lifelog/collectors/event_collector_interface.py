@@ -244,47 +244,36 @@ class EventCollector(ABC):
 
 class WindowsEventLogCollector(EventCollector):
     """
-    Windows EventLog APIを使用したイベント収集
+    Windows EventLog APIを使用したイベント収集の基底クラス.
 
-    実装時には pywin32 または win32evtlog を使用する。
+    実装クラス: WindowsEventLogCollectorImpl (event_collector.py)
     """
 
     def __init__(self, log_names: List[str] = None, classifier: EventClassifier = None):
         """
         Args:
-            log_names: 収集するログ名のリスト
-                      ['Application', 'System', 'Security'] など
+            log_names: 収集するログ名のリスト（例: ['Application', 'System', 'Security']）
             classifier: イベント分類器
         """
         super().__init__(classifier)
         self.log_names = log_names or ["Application", "System"]
 
+    @abstractmethod
     def collect_events(
         self, since: Optional[datetime] = None, event_types: Optional[List[str]] = None
     ) -> List[SystemEvent]:
-        """
-        Windows EventLogからイベントを収集
+        ...
 
-        実装例:
-        - win32evtlog.OpenEventLog() でログを開く
-        - win32evtlog.ReadEventLog() でイベントを読み取る
-        - イベントデータをSystemEventに変換
-        """
-        events = []
-        # TODO: 実装
-        return events
-
+    @abstractmethod
     def get_supported_logs(self) -> List[str]:
-        """Windows EventLogで利用可能なログのリストを取得"""
-        # TODO: 実装
-        return ["Application", "System", "Security"]
+        ...
 
 
 class LinuxSyslogCollector(EventCollector):
     """
-    Linux syslog/journaldを使用したイベント収集
+    Linux syslog/journaldを使用したイベント収集の基底クラス.
 
-    実装時には systemd-journal または journalctl コマンドを使用する。
+    実装クラス: LinuxSyslogCollectorImpl (linux_syslog_collector.py)
     """
 
     def __init__(
@@ -295,8 +284,7 @@ class LinuxSyslogCollector(EventCollector):
     ):
         """
         Args:
-            facility_filter: 収集するfacilityのリスト
-                            ['kern', 'user', 'daemon', 'auth'] など
+            facility_filter: 収集するfacilityのリスト（例: ['kern', 'user', 'daemon', 'auth']）
             priority_min: 最小優先度（'debug', 'info', 'notice', 'warning', 'err', 'crit', 'alert', 'emerg'）
             classifier: イベント分類器
         """
@@ -304,20 +292,11 @@ class LinuxSyslogCollector(EventCollector):
         self.facility_filter = facility_filter or ["kern", "user", "daemon"]
         self.priority_min = priority_min
 
+    @abstractmethod
     def collect_events(
         self, since: Optional[datetime] = None, event_types: Optional[List[str]] = None
     ) -> List[SystemEvent]:
-        """
-        Linux syslog/journaldからイベントを収集
-
-        実装例:
-        - journalctl コマンドを実行してログを取得
-        - または systemd-journal ライブラリを使用
-        - イベントデータをSystemEventに変換
-        """
-        events = []
-        # TODO: 実装
-        return events
+        ...
 
     def get_supported_logs(self) -> List[str]:
         """Linux syslogで利用可能なfacilityのリストを取得"""
@@ -343,30 +322,3 @@ class LinuxSyslogCollector(EventCollector):
             "local6",
             "local7",
         ]
-
-
-def create_collector_for_platform(platform: str, config: dict) -> EventCollector:
-    """
-    プラットフォームに応じたイベントコレクターを作成
-
-    Args:
-        platform: プラットフォーム名（'windows' または 'linux'）
-        config: 設定辞書
-
-    Returns:
-        EventCollectorインスタンス
-    """
-    classifier = EventClassifier(config.get("classification", {}).get("rules"))
-
-    if platform == "windows":
-        return WindowsEventLogCollector(
-            log_names=config.get("windows", {}).get("log_names"), classifier=classifier
-        )
-    elif platform == "linux":
-        return LinuxSyslogCollector(
-            facility_filter=config.get("linux", {}).get("facility_filter"),
-            priority_min=config.get("linux", {}).get("priority_min", "warning"),
-            classifier=classifier,
-        )
-    else:
-        raise ValueError(f"Unsupported platform: {platform}")

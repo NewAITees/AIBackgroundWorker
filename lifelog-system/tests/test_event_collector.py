@@ -3,7 +3,8 @@
 from datetime import datetime
 from subprocess import CompletedProcess
 
-from src.lifelog.collectors.event_collector import EventClassifierImpl, LinuxSyslogCollectorImpl
+from src.lifelog.collectors.event_classifier import EventClassifierImpl
+from src.lifelog.collectors.linux_syslog_collector import LinuxSyslogCollectorImpl
 from src.lifelog.collectors.event_collector_interface import SystemEvent
 
 
@@ -59,8 +60,10 @@ def test_linux_collector_uses_warning_and_higher_priorities(monkeypatch):
         captured["cmd"] = cmd
         return CompletedProcess(cmd, 0, stdout="", stderr="")
 
-    monkeypatch.setattr("src.lifelog.collectors.event_collector.platform.system", lambda: "Linux")
-    monkeypatch.setattr("src.lifelog.collectors.event_collector.subprocess.run", fake_run)
+    monkeypatch.setattr(
+        "src.lifelog.collectors.linux_syslog_collector.platform.system", lambda: "Linux"
+    )
+    monkeypatch.setattr("src.lifelog.collectors.linux_syslog_collector.subprocess.run", fake_run)
 
     collector = LinuxSyslogCollectorImpl(priority_min="warning")
     collector.collect_events()
@@ -79,8 +82,10 @@ def test_linux_collector_skips_ignored_processes(monkeypatch):
     def fake_run(cmd, capture_output, text, timeout):
         return CompletedProcess(cmd, 0, stdout=stdout, stderr="")
 
-    monkeypatch.setattr("src.lifelog.collectors.event_collector.platform.system", lambda: "Linux")
-    monkeypatch.setattr("src.lifelog.collectors.event_collector.subprocess.run", fake_run)
+    monkeypatch.setattr(
+        "src.lifelog.collectors.linux_syslog_collector.platform.system", lambda: "Linux"
+    )
+    monkeypatch.setattr("src.lifelog.collectors.linux_syslog_collector.subprocess.run", fake_run)
 
     collector = LinuxSyslogCollectorImpl(priority_min="warning", ignored_processes=["tee"])
     events = collector.collect_events()

@@ -426,40 +426,6 @@ class DailyReportDataAggregator:
 
         return [asdict(entry) for entry in timeline]
 
-    def analyze_time_patterns(self, data: DailyReportData) -> Dict[str, Any]:
-        """
-        時間帯別の活動パターンを分析
-
-        Args:
-            data: デイリーレポートデータ
-
-        Returns:
-            時間帯別パターンの辞書
-        """
-        patterns = {
-            "morning": [],  # 6:00-12:00
-            "afternoon": [],  # 12:00-18:00
-            "evening": [],  # 18:00-22:00
-            "night": [],  # 22:00-6:00
-        }
-
-        # 各時間帯の活動を分類
-        for entry in data.timeline:
-            ts = self._parse_datetime(entry.get("timestamp"))
-            if not ts:
-                continue
-            hour = ts.hour
-            if 6 <= hour < 12:
-                patterns["morning"].append(entry)
-            elif 12 <= hour < 18:
-                patterns["afternoon"].append(entry)
-            elif 18 <= hour < 22:
-                patterns["evening"].append(entry)
-            else:
-                patterns["night"].append(entry)
-
-        return patterns
-
     @staticmethod
     def _parse_datetime(value: Any) -> Optional[datetime]:
         """

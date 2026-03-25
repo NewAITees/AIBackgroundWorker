@@ -4,16 +4,17 @@ from __future__ import annotations
 
 import os
 import sqlite3
-import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Generator, List, Optional
 
+from src.common.db_mixin import SqliteLockRetryMixin, apply_wal_pragmas
+
 from .models import BrowserHistoryEntry
 
 
-class BrowserHistoryRepository:
+class BrowserHistoryRepository(SqliteLockRetryMixin):
     """
     ブラウザ履歴リポジトリ
 
@@ -43,29 +44,12 @@ class BrowserHistoryRepository:
     def _connect(self) -> Generator[sqlite3.Connection, None, None]:
         """データベース接続を作成するコンテキストマネージャ"""
         conn = sqlite3.connect(self.db_path, timeout=30.0)
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA synchronous=NORMAL")
-        conn.execute("PRAGMA busy_timeout=30000")
+        apply_wal_pragmas(conn)
         conn.row_factory = sqlite3.Row
         try:
             yield conn
         finally:
             conn.close()
-
-    @staticmethod
-    def _is_lock_error(exc: Exception) -> bool:
-        return (
-            isinstance(exc, sqlite3.OperationalError) and "database is locked" in str(exc).lower()
-        )
-
-    def _run_with_lock_retry(self, fn, retries: int = 5, base_sleep: float = 0.2):
-        for attempt in range(retries + 1):
-            try:
-                return fn()
-            except Exception as exc:  # noqa: BLE001
-                if not self._is_lock_error(exc) or attempt >= retries:
-                    raise
-                time.sleep(base_sleep * (2**attempt))
 
     def _ensure_tables(self) -> None:
         """テーブルを作成（存在しない場合）"""
