@@ -84,6 +84,23 @@ def _feedback_payload(state: dict | None) -> dict:
     }
 
 
+def _analysis_payload(state: dict | None) -> dict | None:
+    if not state:
+        return None
+    return {
+        "category": state.get("category"),
+        "importance_score": state.get("importance_score"),
+        "relevance_score": state.get("relevance_score"),
+        "llm_importance_score": state.get("llm_importance_score"),
+        "llm_relevance_score": state.get("llm_relevance_score"),
+        "source_bonus": state.get("source_bonus", 0.0),
+        "category_bonus": state.get("category_bonus", 0.0),
+        "total_bonus": state.get("total_bonus", 0.0),
+        "importance_reason": state.get("importance_reason", ""),
+        "relevance_reason": state.get("relevance_reason", ""),
+    }
+
+
 def _persist_report_entries(report_rows: list[dict]) -> list[str]:
     workspace_path = resolve_workspace_path()
     if not workspace_path:
@@ -151,9 +168,11 @@ async def get_articles(ids: str = "") -> list[dict]:
     repo = _load_repo()
     articles = repo.get_articles_by_ids(article_ids)
     feedback_map = repo.get_feedback_state_map(article_ids)
+    analysis_map = repo.get_article_analysis_map(article_ids)
 
     for article in articles:
         article["feedback"] = _feedback_payload(feedback_map.get(article["id"]))
+        article["analysis"] = _analysis_payload(analysis_map.get(article["id"]))
 
     return articles
 
@@ -164,6 +183,13 @@ async def post_feedback(article_id: int, body: FeedbackRequest) -> dict:
     repo = _load_repo()
     state = repo.toggle_feedback(article_id, body.type)
     return {"status": "ok", "article_id": article_id, "feedback": _feedback_payload(state)}
+
+
+@router.get("/news/feedback/stats")
+async def get_feedback_stats() -> dict:
+    """source/category ごとの時間減衰つきフィードバック統計を返す。"""
+    repo = _load_repo()
+    return repo.get_feedback_stats()
 
 
 @router.post("/news/articles/{article_id}/generate_report")

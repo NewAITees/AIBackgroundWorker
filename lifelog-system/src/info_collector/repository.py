@@ -134,6 +134,10 @@ class InfoCollectorRepository:
                     article_id INTEGER NOT NULL UNIQUE,
                     importance_score REAL,
                     relevance_score REAL,
+                    llm_importance_score REAL,
+                    llm_relevance_score REAL,
+                    source_bonus REAL,
+                    category_bonus REAL,
                     category TEXT,
                     keywords TEXT,
                     summary TEXT,
@@ -210,6 +214,29 @@ class InfoCollectorRepository:
                 ON article_feedback(article_id)
                 """
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS article_feedback_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    article_id INTEGER NOT NULL REFERENCES collected_info(id),
+                    event_type TEXT NOT NULL,
+                    sentiment TEXT,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_feedback_events_article_id
+                ON article_feedback_events(article_id)
+                """
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_feedback_events_created_at
+                ON article_feedback_events(created_at DESC)
+                """
+            )
 
             # 既存DBへのマイグレーション（不足カラムを追加）
             self._migrate_schema(conn)
@@ -266,6 +293,26 @@ class InfoCollectorRepository:
                 conn.execute("ALTER TABLE article_analysis ADD COLUMN relevance_reason TEXT")
             except sqlite3.OperationalError:
                 pass
+        if not has_column("article_analysis", "llm_importance_score"):
+            try:
+                conn.execute("ALTER TABLE article_analysis ADD COLUMN llm_importance_score REAL")
+            except sqlite3.OperationalError:
+                pass
+        if not has_column("article_analysis", "llm_relevance_score"):
+            try:
+                conn.execute("ALTER TABLE article_analysis ADD COLUMN llm_relevance_score REAL")
+            except sqlite3.OperationalError:
+                pass
+        if not has_column("article_analysis", "source_bonus"):
+            try:
+                conn.execute("ALTER TABLE article_analysis ADD COLUMN source_bonus REAL")
+            except sqlite3.OperationalError:
+                pass
+        if not has_column("article_analysis", "category_bonus"):
+            try:
+                conn.execute("ALTER TABLE article_analysis ADD COLUMN category_bonus REAL")
+            except sqlite3.OperationalError:
+                pass
 
         # article_feedback の状態管理カラムを追加
         if not has_column("article_feedback", "sentiment"):
@@ -312,6 +359,31 @@ class InfoCollectorRepository:
                 """,
                 (datetime.now().isoformat(),),
             )
+
+        # article_feedback_events がなければ作成
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS article_feedback_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                article_id INTEGER NOT NULL REFERENCES collected_info(id),
+                event_type TEXT NOT NULL,
+                sentiment TEXT,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_feedback_events_article_id
+            ON article_feedback_events(article_id)
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_feedback_events_created_at
+            ON article_feedback_events(created_at DESC)
+            """
+        )
 
     def add_info(self, info: CollectedInfo) -> Optional[int]:
         """
@@ -554,6 +626,10 @@ class InfoCollectorRepository:
         analyzed_at: datetime,
         importance_reason: Optional[str] = None,
         relevance_reason: Optional[str] = None,
+        llm_importance: Optional[float] = None,
+        llm_relevance: Optional[float] = None,
+        source_bonus: float = 0.0,
+        category_bonus: float = 0.0,
     ) -> None:
         """
         分析結果を保存.
@@ -569,6 +645,10 @@ class InfoCollectorRepository:
             analyzed_at: 分析日時
             importance_reason: 重要度の判断理由（オプション）
             relevance_reason: 関連度の判断理由（オプション）
+            llm_importance: 補正前のLLM重要度（オプション）
+            llm_relevance: 補正前のLLM関連度（オプション）
+            source_bonus: source由来の補正値
+            category_bonus: category由来の補正値
         """
 
         def _op() -> None:
@@ -577,8 +657,9 @@ class InfoCollectorRepository:
                     """
                     INSERT OR REPLACE INTO article_analysis
                     (article_id, importance_score, relevance_score, category,
-                     keywords, summary, model, analyzed_at, importance_reason, relevance_reason)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     keywords, summary, model, analyzed_at, importance_reason, relevance_reason,
+                     llm_importance_score, llm_relevance_score, source_bonus, category_bonus)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         article_id,
@@ -591,6 +672,10 @@ class InfoCollectorRepository:
                         analyzed_at.isoformat(),
                         importance_reason or "",
                         relevance_reason or "",
+                        llm_importance,
+                        llm_relevance,
+                        source_bonus,
+                        category_bonus,
                     ),
                 )
 
@@ -938,6 +1023,23 @@ class InfoCollectorRepository:
             "updated_at": row["updated_at"],
         }
 
+    def _append_feedback_event(
+        self,
+        conn: sqlite3.Connection,
+        article_id: int,
+        event_type: str,
+        *,
+        sentiment: str | None,
+        created_at: str,
+    ) -> None:
+        conn.execute(
+            """
+            INSERT INTO article_feedback_events (article_id, event_type, sentiment, created_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (article_id, event_type, sentiment, created_at),
+        )
+
     def toggle_feedback(self, article_id: int, sentiment: str) -> dict[str, Any]:
         """positive / negative を排他的トグルで保存する。"""
         now = datetime.now().isoformat()
@@ -962,6 +1064,13 @@ class InfoCollectorRepository:
                     next_sentiment,
                     now,
                 ),
+            )
+            self._append_feedback_event(
+                conn,
+                article_id,
+                "feedback_cleared" if next_sentiment is None else f"feedback_{next_sentiment}",
+                sentiment=next_sentiment,
+                created_at=now,
             )
             return self._get_feedback_state(conn, article_id)
 
@@ -988,6 +1097,13 @@ class InfoCollectorRepository:
                 """,
                 (article_id, now, now),
             )
+            self._append_feedback_event(
+                conn,
+                article_id,
+                "report_requested",
+                sentiment="positive",
+                created_at=now,
+            )
             return True, self._get_feedback_state(conn, article_id)
 
     def mark_report_running(self, article_id: int) -> dict[str, Any]:
@@ -1001,6 +1117,13 @@ class InfoCollectorRepository:
                 WHERE article_id = ?
                 """,
                 (now, article_id),
+            )
+            self._append_feedback_event(
+                conn,
+                article_id,
+                "report_running",
+                sentiment="positive",
+                created_at=now,
             )
             return self._get_feedback_state(conn, article_id)
 
@@ -1018,6 +1141,13 @@ class InfoCollectorRepository:
                 """,
                 (report_entry_id, now, article_id),
             )
+            self._append_feedback_event(
+                conn,
+                article_id,
+                "report_done",
+                sentiment="positive",
+                created_at=now,
+            )
             return self._get_feedback_state(conn, article_id)
 
     def mark_report_failed(self, article_id: int) -> dict[str, Any]:
@@ -1031,6 +1161,15 @@ class InfoCollectorRepository:
                 WHERE article_id = ?
                 """,
                 (now, article_id),
+            )
+            self._append_feedback_event(
+                conn,
+                article_id,
+                "report_failed",
+                sentiment=current["sentiment"]
+                if (current := self._get_feedback_state(conn, article_id))
+                else None,
+                created_at=now,
             )
             return self._get_feedback_state(conn, article_id)
 
@@ -1058,6 +1197,169 @@ class InfoCollectorRepository:
                 "updated_at": row["updated_at"],
             }
             for row in rows
+        }
+
+    def get_article_analysis_map(self, article_ids: list[int]) -> dict[int, dict[str, Any]]:
+        """指定した記事IDの分析・補正説明データをまとめて返す。"""
+        if not article_ids:
+            return {}
+        placeholders = ",".join("?" * len(article_ids))
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                f"""
+                SELECT
+                    article_id,
+                    category,
+                    importance_score,
+                    relevance_score,
+                    llm_importance_score,
+                    llm_relevance_score,
+                    source_bonus,
+                    category_bonus,
+                    importance_reason,
+                    relevance_reason
+                FROM article_analysis
+                WHERE article_id IN ({placeholders})
+                """,
+                article_ids,
+            ).fetchall()
+
+        analysis_map: dict[int, dict[str, Any]] = {}
+        for row in rows:
+            total_bonus = float(row["source_bonus"] or 0.0) + float(row["category_bonus"] or 0.0)
+            analysis_map[row["article_id"]] = {
+                "category": row["category"] or "未分類",
+                "importance_score": float(row["importance_score"] or 0.0),
+                "relevance_score": float(row["relevance_score"] or 0.0),
+                "llm_importance_score": float(row["llm_importance_score"] or 0.0),
+                "llm_relevance_score": float(row["llm_relevance_score"] or 0.0),
+                "source_bonus": float(row["source_bonus"] or 0.0),
+                "category_bonus": float(row["category_bonus"] or 0.0),
+                "total_bonus": total_bonus,
+                "importance_reason": row["importance_reason"] or "",
+                "relevance_reason": row["relevance_reason"] or "",
+            }
+        return analysis_map
+
+    def get_feedback_stats(self) -> dict[str, Any]:
+        """source/category ごとの時間減衰つきフィードバック統計を返す。"""
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                """
+                SELECT
+                    e.article_id,
+                    e.event_type,
+                    e.sentiment,
+                    e.created_at,
+                    c.source_name,
+                    COALESCE(NULLIF(a.category, ''), '未分類') AS category
+                FROM article_feedback_events e
+                JOIN collected_info c ON e.article_id = c.id
+                LEFT JOIN article_analysis a ON e.article_id = a.article_id
+                WHERE e.event_type IN ('feedback_positive', 'feedback_negative', 'report_requested')
+                ORDER BY e.created_at DESC, e.id DESC
+                """
+            ).fetchall()
+
+        now = datetime.now()
+        groups = {
+            "source": {},
+            "category": {},
+        }
+        prior_alpha = 2.0
+        prior_beta = 2.0
+        min_samples = 3.0
+        report_requested_weight = 3.0
+        negative_weight = 1.0
+
+        def _decay_weight(created_at: str | None) -> float:
+            if not created_at:
+                return 0.2
+            try:
+                ts = datetime.fromisoformat(created_at)
+            except ValueError:
+                return 0.2
+            age_days = max((now - ts).total_seconds() / 86400.0, 0.0)
+            if age_days <= 7:
+                return 1.0
+            if age_days <= 30:
+                return 0.5
+            return 0.2
+
+        def _ensure_bucket(kind: str, name: str) -> dict[str, Any]:
+            bucket = groups[kind].get(name)
+            if bucket is None:
+                bucket = {
+                    "name": name,
+                    "positive": 0.0,
+                    "negative": 0.0,
+                    "report_requested": 0.0,
+                    "samples": 0.0,
+                    "score": 0.5,
+                    "bonus": 0.0,
+                }
+                groups[kind][name] = bucket
+            return bucket
+
+        def _apply_event(bucket: dict[str, Any], event_type: str, weight: float) -> None:
+            if event_type == "feedback_positive":
+                bucket["positive"] += weight
+                bucket["samples"] += weight
+            elif event_type == "feedback_negative":
+                bucket["negative"] += negative_weight * weight
+                bucket["samples"] += negative_weight * weight
+            elif event_type == "report_requested":
+                bucket["positive"] += report_requested_weight * weight
+                bucket["report_requested"] += weight
+                bucket["samples"] += report_requested_weight * weight
+
+        for row in rows:
+            weight = _decay_weight(row["created_at"])
+            source_name = row["source_name"] or "不明"
+            category = row["category"] or "未分類"
+            _apply_event(_ensure_bucket("source", source_name), row["event_type"], weight)
+            _apply_event(_ensure_bucket("category", category), row["event_type"], weight)
+
+        def _finalize(items: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+            result: list[dict[str, Any]] = []
+            for item in items.values():
+                weighted_positive = item["positive"]
+                weighted_negative = item["negative"]
+                score = (weighted_positive + prior_alpha) / (
+                    weighted_positive + weighted_negative + prior_alpha + prior_beta
+                )
+                confidence = min(item["samples"] / min_samples, 1.0) if min_samples > 0 else 1.0
+                bonus = (score - 0.5) * confidence
+                result.append(
+                    {
+                        "name": item["name"],
+                        "positive": round(weighted_positive, 3),
+                        "negative": round(weighted_negative, 3),
+                        "report_requested": round(item["report_requested"], 3),
+                        "samples": round(item["samples"], 3),
+                        "score": round(score, 4),
+                        "bonus": round(bonus, 4),
+                    }
+                )
+            result.sort(key=lambda item: (item["score"], item["samples"]), reverse=True)
+            return result
+
+        return {
+            "config": {
+                "prior_alpha": prior_alpha,
+                "prior_beta": prior_beta,
+                "min_samples": min_samples,
+                "report_requested_weight": report_requested_weight,
+                "decay_windows": [
+                    {"max_days": 7, "weight": 1.0},
+                    {"max_days": 30, "weight": 0.5},
+                    {"max_days": None, "weight": 0.2},
+                ],
+            },
+            "source": _finalize(groups["source"]),
+            "category": _finalize(groups["category"]),
         }
 
     def get_articles_by_ids(self, article_ids: list[int]) -> list[dict]:

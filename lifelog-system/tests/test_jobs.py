@@ -59,13 +59,21 @@ def test_analyze_pending_inserts_analysis(tmp_path: Path, monkeypatch: pytest.Mo
     assert processed == 1
     try:
         cur = conn.execute(
-            "SELECT importance_score, relevance_score, category FROM article_analysis"
+            """
+            SELECT importance_score, relevance_score, category,
+                   llm_importance_score, llm_relevance_score, source_bonus, category_bonus
+            FROM article_analysis
+            """
         )
         row = cur.fetchone()
         assert row is not None
         assert row[0] == pytest.approx(0.9)
         assert row[1] == pytest.approx(0.8)
         assert row[2] == "AI"
+        assert row[3] == pytest.approx(0.9)
+        assert row[4] == pytest.approx(0.8)
+        assert row[5] == pytest.approx(0.0)
+        assert row[6] == pytest.approx(0.0)
     finally:
         conn.close()
 
@@ -109,10 +117,83 @@ def test_analyze_pending_saves_reasons(tmp_path: Path, monkeypatch: pytest.Monke
         cur = conn.execute("SELECT importance_reason, relevance_reason FROM article_analysis")
         row = cur.fetchone()
         assert row is not None
-        assert row[0] == "AI技術の最新動向で、業界に大きな影響を与える可能性がある"
-        assert row[1] == "ユーザーの興味分野（AI・機械学習）と直接関連している"
+        assert row[0].startswith("AI技術の最新動向で、業界に大きな影響を与える可能性がある")
+        assert row[1].startswith("ユーザーの興味分野（AI・機械学習）と直接関連している")
+        assert "interest_profile:" in row[0]
+        assert "interest_profile:" in row[1]
     finally:
         conn.close()
+
+
+def test_analyze_pending_applies_interest_bonus(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    db_path = tmp_path / "ai_secretary.db"
+    repo = InfoCollectorRepository(str(db_path))
+    now = datetime.now()
+
+    with sqlite3.connect(db_path) as conn:
+        article_seed = _insert_collected(conn, title="seed", content="AIの重要記事")
+        conn.execute(
+            "UPDATE collected_info SET source_name = ? WHERE id = ?",
+            ("fav-source", article_seed),
+        )
+        article_target = _insert_collected(conn, title="target", content="新しいAI記事")
+        conn.execute(
+            "UPDATE collected_info SET source_name = ? WHERE id = ?",
+            ("fav-source", article_target),
+        )
+        conn.commit()
+
+    repo.save_analysis(
+        article_id=article_seed,
+        importance=0.8,
+        relevance=0.8,
+        category="AI",
+        keywords=["AI"],
+        summary="seed",
+        model="seed",
+        analyzed_at=now,
+    )
+    repo.toggle_feedback(article_seed, "positive")
+    repo.request_report(article_seed)
+
+    class StubClient:
+        model = "stub-model"
+
+        def generate(self, prompt, system=None, options=None):
+            return json.dumps(
+                {
+                    "theme": "AI follow-up",
+                    "keywords": ["AI"],
+                    "category": "AI",
+                    "importance_score": 0.4,
+                    "relevance_score": 0.5,
+                    "one_line_summary": "AI follow-up",
+                    "should_deep_research": False,
+                }
+            )
+
+    monkeypatch.setattr(analyze_pending, "OllamaClient", lambda: StubClient())
+
+    processed = analyze_pending.analyze_pending_articles(db_path=db_path, batch_size=5)
+
+    assert processed == 1
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute(
+            """
+            SELECT importance_score, relevance_score, llm_importance_score, llm_relevance_score,
+                   source_bonus, category_bonus, relevance_reason
+            FROM article_analysis
+            WHERE article_id = ?
+            """,
+            (article_target,),
+        ).fetchone()
+
+    assert row is not None
+    assert row[0] > row[2]
+    assert row[1] > row[3]
+    assert row[4] > 0
+    assert row[5] > 0
+    assert "interest_profile:" in row[6]
 
 
 def test_deep_research_creates_entry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

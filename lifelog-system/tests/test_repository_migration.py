@@ -49,10 +49,17 @@ def test_repository_adds_missing_columns(tmp_path: Path):
         report_cols = {row["name"] for row in cursor.fetchall()}
         cursor = conn.execute("PRAGMA table_info(article_analysis)")
         analysis_cols = {row["name"] for row in cursor.fetchall()}
+        cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = {row["name"] for row in cursor.fetchall()}
 
     assert "article_ids_hash" in report_cols
     assert "importance_reason" in analysis_cols
     assert "relevance_reason" in analysis_cols
+    assert "llm_importance_score" in analysis_cols
+    assert "llm_relevance_score" in analysis_cols
+    assert "source_bonus" in analysis_cols
+    assert "category_bonus" in analysis_cols
+    assert "article_feedback_events" in tables
 
     # ensure saving still works after migration
     repo.save_report(
