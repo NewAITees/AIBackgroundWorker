@@ -5,6 +5,15 @@
 - 同じ失敗を繰り返さないための知見をまとめる
 
 ## 2026-03-25
+- パターン: 運用確認用の画面を settings の既存タブへ混ぜると、設定値編集と状態観測が混ざってタブ責務が曖昧になりやすい。
+- 対策: RSS / 検索 / ニュース学習のような運用系UIは、settings 配下でも既存タブへ押し込まず、「ニュース関連」の新規タブとして分離する。
+
+- パターン: 説明用の bonus 内訳を別APIで取りに行くと、hourly news 展開時に同じ article_id 群へ追加リクエストが増え、実装も表示更新も二重化しやすい。
+- 対策: `GET /api/news/articles` の返却に `analysis` を同梱し、`llm_*` / `source_bonus` / `category_bonus` / `total_bonus` / reason をまとめて返す。既存の詳細取得経路に explanation を載せる方が軽い。
+
+- パターン: Stage1 の補正を `importance_score / relevance_score` に直接上書きするだけだと、あとから「LLMの素点」と「interest profile の補正量」を分離して検証できない。
+- 対策: `article_analysis` には補正後スコアだけでなく、`llm_importance_score` / `llm_relevance_score` / `source_bonus` / `category_bonus` も保存する。説明文だけに埋め込まず、数値を別カラムで持つ。
+
 - レビュー機能と Big Five 機能は同じ worker に載せても、設定と表示は分離しておくと「レビューだけ使いたい」運用を壊しにくい
 - entry メタデータ拡張は articles と daily の両方へそのまま流れるため、行動分析系の追加情報は `EntryMeta` に寄せると実装差分が小さい
 - 改善アクションは memo ではなく timeline に自然に乗る `todo` として流すと、レビュー結果が次の行動へつながりやすい
@@ -47,6 +56,12 @@
 - 対策: `info_limit: 5` に減らし（旧: 10）、`search_queries.txt` のクエリ数も 3 件に整理済み。
 
 ## 2026-03-25
+- パターン: フィードバック学習を `article_feedback` の最新状態だけで持つと、toggle解除や `report_requested` のような強いシグナルが履歴から消え、後段の好み集計や重み見直しがしづらい。
+- 対策: UI用の最新状態テーブルとは別に、`article_feedback_events` の append-only 履歴を持つ。interest profile や集計系は履歴テーブルを正本にする。
+
+- パターン: 興味学習の初手で title keyword や埋め込みまで広げると、データが少ない段階ではノイズの方が勝ちやすい。
+- 対策: 第1段階は `source_name` / `category` のみで時間減衰つき・事前確率つきの score を作る。keyword / topic / 非教師学習は第2段階へ分離する。
+
 - パターン: `DB write time P95 > ...` のようなSLO warningを閾値名だけで出すと、どのバッチサイズ・どの契機・どの程度の遅さだったかが運用ログから追えない。
 - 対策: SLO warning には `db_write_time_p95` の実測値に加え、直近の遅い書き込みサンプル（`batch_size` / `trigger` / `queue_depth`）を含める。SQLite 競合の可能性がある経路では lock retry も warning 出力する。
 

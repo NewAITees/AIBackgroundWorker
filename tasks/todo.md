@@ -25,6 +25,17 @@
 
 ---
 
+## timeline-app: entry 型変更ルールの再設計
+
+- [ ] entry type ごとの許可変換 / 禁止変換を整理する
+      → 例: AI 誤分類の修正として許可すべき変換と、意味的に禁止すべき変換を分ける
+      → 例: `chat -> news` や `todo -> diary` を本当に許すかを検討する
+- [ ] recurring は `todo` / `todo_done` のみ許可し、それ以外へ変更したら recurring meta をクリアする仕様を明文化する
+- [ ] UI 上の型変更候補を entry ごとに制限する案を整理する
+- [ ] API 側でも禁止変換を弾く必要があるか確認する
+
+---
+
 ## lifelog-system: SLO violation / merge_windows_logs 調査
 
 - [x] `activity_collector` の SLO 計測箇所と warning 出力条件を特定する
@@ -36,32 +47,56 @@
 
 ## news feedback: N-2 再設計（時間減衰つき interest profile）
 
-- [ ] N-2 の主軸を「過去記事 few-shot 注入」から「構造化 interest profile + 前処理スコア補正」へ更新する
+- [x] N-2 の主軸を「過去記事 few-shot 注入」から「構造化 interest profile + 前処理スコア補正」へ更新する
       → 生記事列挙の LLM 注入は暫定策に下げる
       → 推薦本体は Stage1 前の補正層として設計する
-- [ ] `article_feedback` を「現在状態」と「履歴イベント」に分離する設計を追加する
+- [x] `article_feedback` を「現在状態」と「履歴イベント」に分離する設計を追加する
       → `article_feedback` は最新状態を保持
       → `article_feedback_events` は append-only で `positive` / `negative` / `report_requested` / 解除を記録する
-- [ ] interest profile の最小特徴集合を定義する
+- [x] interest profile の最小特徴集合を定義する
       → 第1段階は `source_name` と `category` に限定する
       → 将来の `tag` / `keyword` / `topic` 拡張を阻害しないスキーマにする
-- [ ] source/category ごとの時間減衰つき preference 集計関数を追加する
+- [x] source/category ごとの時間減衰つき preference 集計関数を追加する
       → `positive` は加点、`negative` は減点、`report_requested` は強い加点として扱う
       → 直近 7 日 / 30 日 / それ以前で重みを落とす案を比較して決める
-- [ ] ベイズ風の事前確率つき preference score を実装する
+- [x] ベイズ風の事前確率つき preference score を実装する
       → 少数データで暴れないよう `a,b` の事前値を持たせる
       → source/category ごとに 0〜1 の安定した score を返す
-- [ ] Stage1 の importance / relevance に interest bonus を加える前処理補正を実装する
+- [x] Stage1 の importance / relevance に interest bonus を加える前処理補正を実装する
       → `final_score = llm_score + source_bonus + category_bonus` の弱い補正から始める
       → フィードバック件数が少ない期間は補正を弱める安全装置を入れる
-- [ ] profile / score のデバッグ API を health とは別エンドポイントで追加する
+- [x] profile / score のデバッグ API を health とは別エンドポイントで追加する
       → `/api/news/feedback/stats` などで source/category ごとの score と件数を確認できるようにする
       → 上位 positive / negative source、上位 category、直近変動を見られるようにする
-- [ ] 「なぜその記事が上がったか」を確認できる説明用データを追加する
+- [x] 「なぜその記事が上がったか」を確認できる説明用データを追加する
       → source bonus / category bonus / 元の llm_score を分けて確認できるようにする
 - [ ] 非教師学習・共起は第2段階タスクとして分離する
       → positive 記事群から keyword cluster / latent topic を抽出する補助層として扱う
       → 推薦本体には直結させず、profile 拡張候補として別評価する
+
+---
+
+## news関連画面: RSS / 検索 / 学習可視化
+
+- [ ] settings 内に、ニュース関連の新規タブを追加する
+      → RSS / 検索 / ニュースフィードバック / interest profile を同じ導線にまとめる
+      → settings 配下に置くが、既存タブとは責務を分けて「運用確認と調整」の領域として扱う
+- [ ] ニュース関連画面の情報設計を整理する
+      → RSS 設定/状態、検索設定/状態、feedback 学習状態を同居させるレイアウトを決める
+      → 初期表示で何を見せ、詳細はどこで展開するかを決める
+- [ ] source/category ごとの preference score 一覧を表示する
+      → score / samples / positive / negative / report_requested を見られるようにする
+- [ ] 記事ごとの explanation を確認できる UI を追加する
+      → llm score / source bonus / category bonus / total bonus / reason を表示する
+- [ ] 直近変動を確認できる表示を追加する
+      → recent feedback と time decay の効き方を把握できるようにする
+- [ ] デバッグ用途と通常ユーザー用途の表示粒度を分ける
+      → 初期表示は簡潔に、必要なら詳細を展開できる形にする
+- [ ] API の返却形式を UI 用に整理する
+      → `/api/news/feedback/stats` と `/api/news/articles` の役割分担を明確にする
+- [ ] RSS / 検索の現在設定と実行状態も同じ画面で確認できるようにする
+      → feed/query の一覧、実行間隔、直近実行状況を見られるようにする
+- [ ] フロントエンドの表示テストを追加する
 
 ---
 
