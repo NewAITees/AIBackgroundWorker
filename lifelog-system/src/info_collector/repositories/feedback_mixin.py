@@ -13,6 +13,87 @@ from typing import Any
 class FeedbackMixin:
     """article_feedback / article_feedback_events の操作を提供するミックスイン。"""
 
+    def get_feedback_progress(self, recent_limit: int = 10) -> dict[str, Any]:
+        """学習進捗の確認用に件数サマリと最近のイベントを返す。"""
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+
+            overview_row = conn.execute(
+                """
+                SELECT
+                    (SELECT COUNT(*) FROM article_feedback) AS feedback_articles,
+                    (SELECT COUNT(*) FROM article_feedback_events) AS feedback_events,
+                    (SELECT COUNT(*) FROM article_feedback_events WHERE event_type = 'feedback_positive') AS positive_events,
+                    (SELECT COUNT(*) FROM article_feedback_events WHERE event_type = 'feedback_negative') AS negative_events,
+                    (SELECT COUNT(*) FROM article_feedback_events WHERE event_type = 'report_requested') AS report_requests,
+                    (SELECT COUNT(*) FROM article_analysis) AS analyzed_articles,
+                    (
+                        SELECT COUNT(*)
+                        FROM article_analysis
+                        WHERE ABS(COALESCE(source_bonus, 0)) > 0.000001
+                           OR ABS(COALESCE(category_bonus, 0)) > 0.000001
+                    ) AS analyses_with_bonus,
+                    (SELECT COUNT(*) FROM collected_info) AS collected_articles,
+                    (
+                        SELECT COUNT(*)
+                        FROM collected_info c
+                        LEFT JOIN article_analysis a ON c.id = a.article_id
+                        WHERE a.article_id IS NULL
+                    ) AS pending_articles
+                """
+            ).fetchone()
+
+            recent_events = conn.execute(
+                """
+                SELECT
+                    e.article_id,
+                    e.event_type,
+                    e.sentiment,
+                    e.created_at,
+                    c.title,
+                    c.source_name,
+                    COALESCE(NULLIF(a.category, ''), '未分類') AS category
+                FROM article_feedback_events e
+                JOIN collected_info c ON e.article_id = c.id
+                LEFT JOIN article_analysis a ON e.article_id = a.article_id
+                ORDER BY e.created_at DESC, e.id DESC
+                LIMIT ?
+                """,
+                (recent_limit,),
+            ).fetchall()
+
+            recent_analyses = conn.execute(
+                """
+                SELECT
+                    a.article_id,
+                    c.title,
+                    c.source_name,
+                    a.category,
+                    a.importance_score,
+                    a.relevance_score,
+                    a.llm_importance_score,
+                    a.llm_relevance_score,
+                    a.source_bonus,
+                    a.category_bonus,
+                    a.analyzed_at
+                FROM article_analysis a
+                JOIN collected_info c ON a.article_id = c.id
+                ORDER BY a.analyzed_at DESC, a.article_id DESC
+                LIMIT ?
+                """,
+                (recent_limit,),
+            ).fetchall()
+
+        stats = self.get_feedback_stats()
+        overview = dict(overview_row) if overview_row else {}
+        return {
+            "overview": overview,
+            "top_source": stats.get("source", [])[:5],
+            "top_category": stats.get("category", [])[:5],
+            "recent_events": [dict(row) for row in recent_events],
+            "recent_analyses": [dict(row) for row in recent_analyses],
+        }
+
     def _get_feedback_state(self, conn: sqlite3.Connection, article_id: int) -> dict[str, Any]:
         conn.row_factory = sqlite3.Row
         row = conn.execute(

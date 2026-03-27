@@ -70,3 +70,100 @@ def test_repository_adds_missing_columns(tmp_path: Path):
         category="daily",
         created_at=datetime.now(),
     )
+
+
+def test_repository_backfills_feedback_events_from_feedback_table(tmp_path: Path):
+    db_path = tmp_path / "info.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """
+        CREATE TABLE collected_info (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_type TEXT NOT NULL,
+            title TEXT NOT NULL,
+            url TEXT NOT NULL,
+            content TEXT,
+            snippet TEXT,
+            published_at TEXT,
+            fetched_at TEXT NOT NULL,
+            source_name TEXT,
+            metadata_json TEXT,
+            UNIQUE(source_type, url)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE reports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            report_date TEXT NOT NULL,
+            content TEXT NOT NULL,
+            article_count INTEGER,
+            category TEXT,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE article_analysis (
+            article_id INTEGER PRIMARY KEY,
+            importance_score REAL,
+            relevance_score REAL,
+            category TEXT,
+            keywords TEXT,
+            summary TEXT,
+            model TEXT,
+            analyzed_at TEXT
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE article_feedback (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            article_id INTEGER NOT NULL UNIQUE,
+            feedback_type TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            sentiment TEXT,
+            report_status TEXT,
+            report_entry_id TEXT,
+            updated_at TEXT
+        )
+        """
+    )
+    now = datetime.now().isoformat()
+    conn.execute(
+        """
+        INSERT INTO collected_info (id, source_type, title, url, fetched_at, source_name)
+        VALUES (1, 'news', 'title', 'https://example.com', ?, 'Source')
+        """,
+        (now,),
+    )
+    conn.execute(
+        """
+        INSERT INTO article_feedback
+        (article_id, feedback_type, created_at, sentiment, report_status, updated_at)
+        VALUES (1, 'report_requested', ?, 'positive', 'done', ?)
+        """,
+        (now, now),
+    )
+    conn.commit()
+    conn.close()
+
+    InfoCollectorRepository(str(db_path))
+
+    with sqlite3.connect(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT event_type, sentiment
+            FROM article_feedback_events
+            ORDER BY id ASC
+            """
+        ).fetchall()
+
+    assert rows == [
+        ("feedback_positive", "positive"),
+        ("report_requested", "positive"),
+    ]

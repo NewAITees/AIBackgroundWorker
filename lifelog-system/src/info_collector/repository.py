@@ -350,3 +350,52 @@ class InfoCollectorRepository(
             ON article_feedback_events(created_at DESC)
             """
         )
+        self._backfill_feedback_events(conn)
+
+    def _backfill_feedback_events(self, conn: sqlite3.Connection) -> None:
+        """既存 article_feedback から履歴イベントを最低限復元する。"""
+        cursor = conn.cursor()
+        feedback_count = cursor.execute("SELECT COUNT(*) FROM article_feedback").fetchone()[0]
+        if feedback_count == 0:
+            return
+
+        event_count = cursor.execute("SELECT COUNT(*) FROM article_feedback_events").fetchone()[0]
+        if event_count > 0:
+            return
+
+        cursor.execute(
+            """
+            SELECT article_id, sentiment, report_status, created_at, updated_at
+            FROM article_feedback
+            ORDER BY COALESCE(updated_at, created_at, ?) ASC, article_id ASC
+            """,
+            (datetime.now().isoformat(),),
+        )
+        rows = cursor.fetchall()
+        for article_id, sentiment, report_status, created_at, updated_at in rows:
+            event_time = updated_at or created_at or datetime.now().isoformat()
+            if sentiment == "positive":
+                conn.execute(
+                    """
+                    INSERT INTO article_feedback_events (article_id, event_type, sentiment, created_at)
+                    VALUES (?, 'feedback_positive', 'positive', ?)
+                    """,
+                    (article_id, event_time),
+                )
+            elif sentiment == "negative":
+                conn.execute(
+                    """
+                    INSERT INTO article_feedback_events (article_id, event_type, sentiment, created_at)
+                    VALUES (?, 'feedback_negative', 'negative', ?)
+                    """,
+                    (article_id, event_time),
+                )
+
+            if report_status in {"requested", "running", "done", "failed"}:
+                conn.execute(
+                    """
+                    INSERT INTO article_feedback_events (article_id, event_type, sentiment, created_at)
+                    VALUES (?, 'report_requested', 'positive', ?)
+                    """,
+                    (article_id, event_time),
+                )

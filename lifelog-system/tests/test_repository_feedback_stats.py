@@ -167,3 +167,44 @@ def test_get_article_analysis_map_returns_bonus_breakdown(tmp_path: Path):
     assert analysis_map[article_id]["source_bonus"] == 0.07
     assert analysis_map[article_id]["category_bonus"] == 0.05
     assert analysis_map[article_id]["total_bonus"] == pytest.approx(0.12)
+
+
+def test_get_feedback_progress_returns_overview_and_recent_items(tmp_path: Path):
+    db_path = tmp_path / "info.db"
+    repo = InfoCollectorRepository(str(db_path))
+    now = datetime.now()
+
+    article_id = _add_article(
+        repo,
+        title="Progress article",
+        url="https://example.com/progress",
+        source_name="ProgressSource",
+        fetched_at=now,
+    )
+    repo.save_analysis(
+        article_id=article_id,
+        importance=0.8,
+        relevance=0.75,
+        category="AI",
+        keywords=["AI"],
+        summary="progress",
+        model="test",
+        analyzed_at=now,
+        llm_importance=0.7,
+        llm_relevance=0.65,
+        source_bonus=0.05,
+        category_bonus=0.03,
+    )
+    repo.toggle_feedback(article_id, "positive")
+    repo.request_report(article_id)
+
+    progress = repo.get_feedback_progress(recent_limit=5)
+
+    assert progress["overview"]["feedback_articles"] == 1
+    assert progress["overview"]["feedback_events"] == 2
+    assert progress["overview"]["positive_events"] == 1
+    assert progress["overview"]["report_requests"] == 1
+    assert progress["overview"]["analyzed_articles"] == 1
+    assert progress["overview"]["analyses_with_bonus"] == 1
+    assert progress["recent_events"][0]["title"] == "Progress article"
+    assert progress["recent_analyses"][0]["source_bonus"] == pytest.approx(0.05)
