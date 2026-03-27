@@ -5,6 +5,15 @@
 
 ---
 
+## timeline-app: activity/browser worker import 経路修正
+
+- [x] `activity_worker` の `ModuleNotFoundError: src.common` の再現条件と import 経路差分を整理する
+- [x] `lifelog-system` の import ルートを worker 起動時に正しく解決できるよう修正する
+- [x] 関連 worker への横展開有無を確認し、必要なら同系統箇所も合わせて修正する
+- [x] 動作確認を実施し、完了後に `tasks/lessons.md` を更新する
+
+---
+
 ## timeline-app: フェーズ6 M3 行動改善
 
 - [x] 要件書 §10 / §21.3 / §24.2 と既存実装を照合し、レビュー機能と Big Five 機能の分離方針を整理する
@@ -70,6 +79,12 @@
       → 上位 positive / negative source、上位 category、直近変動を見られるようにする
 - [x] 「なぜその記事が上がったか」を確認できる説明用データを追加する
       → source bonus / category bonus / 元の llm_score を分けて確認できるようにする
+- [x] 既存 `article_feedback` から `article_feedback_events` への backfill を実装する
+      → 履歴導入前に存在していた `sentiment / report_status / updated_at` を最低限イベントへ復元する
+      → `feedback_articles > 0` かつ `feedback_events = 0` の状態を解消する
+- [x] backfill 後に学習補正が効き始めたことを progress API で確認する
+      → `feedback_events > 0`、`top_source/top_category` が埋まることを確認した
+      → 開発用に pending の `49998` / `50036` を Stage1 へ通し、`analyses_with_bonus = 2` を確認した
 - [ ] 非教師学習・共起は第2段階タスクとして分離する
       → positive 記事群から keyword cluster / latent topic を抽出する補助層として扱う
       → 推薦本体には直結させず、profile 拡張候補として別評価する
@@ -78,13 +93,13 @@
 
 ## news関連画面: RSS / 検索 / 学習可視化
 
-- [ ] settings 内に、ニュース関連の新規タブを追加する
+- [x] settings 内に、ニュース関連の新規タブを追加する
       → RSS / 検索 / ニュースフィードバック / interest profile を同じ導線にまとめる
       → settings 配下に置くが、既存タブとは責務を分けて「運用確認と調整」の領域として扱う
-- [ ] ニュース関連画面の情報設計を整理する
+- [x] ニュース関連画面の情報設計を整理する
       → RSS 設定/状態、検索設定/状態、feedback 学習状態を同居させるレイアウトを決める
       → 初期表示で何を見せ、詳細はどこで展開するかを決める
-- [ ] source/category ごとの preference score 一覧を表示する
+- [x] source/category ごとの preference score 一覧を表示する
       → score / samples / positive / negative / report_requested を見られるようにする
 - [ ] 記事ごとの explanation を確認できる UI を追加する
       → llm score / source bonus / category bonus / total bonus / reason を表示する
@@ -96,7 +111,7 @@
       → `/api/news/feedback/stats` と `/api/news/articles` の役割分担を明確にする
 - [ ] RSS / 検索の現在設定と実行状態も同じ画面で確認できるようにする
       → feed/query の一覧、実行間隔、直近実行状況を見られるようにする
-- [ ] フロントエンドの表示テストを追加する
+- [x] フロントエンドの表示テストを追加する
 
 ---
 

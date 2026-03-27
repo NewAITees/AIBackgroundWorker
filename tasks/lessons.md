@@ -4,7 +4,20 @@
 - 設計上の判断ミスや整合性の注意点も記録する
 - 同じ失敗を繰り返さないための知見をまとめる
 
+## 2026-03-26
+- パターン: `lifelog-system/src` 配下の `lifelog.*` を読む worker で `sys.path` に `src` だけを足すと、下層で使っている `src.common.*` 系 import が実運用時だけ解決できず `ModuleNotFoundError` になる。
+- 対策: `timeline-app` 側 worker から `lifelog-system` を読むときは、`lifelog-system` root と `lifelog-system/src` の両方を `sys.path` に追加し、必要なら既存 `src.__path__` にも `lifelog-system/src` を追加する。`activity_worker` と `browser_worker` のような動的 import 箇所には同じ補助関数を使う。
+
 ## 2026-03-25
+- パターン: `article_feedback_events` を後から導入しても、既存の `article_feedback` から履歴を埋め戻さないと、見かけ上フィードバック件数があっても学習用イベント数は 0 のままになり、bonus が一切効かない。
+- 対策: 進捗APIで `feedback_articles` と `feedback_events` を同時に監視する。履歴導入後は既存 `article_feedback` の `sentiment / report_status / updated_at` から最低限の backfill を入れ、`analyses_with_bonus > 0` になることを確認する。
+
+- パターン: interest profile の補正確認を新着の未分析記事にそのまま任せると、学習対象外ソースばかり先に処理されて「bonus が効いていない」ように見えやすい。
+- 対策: 開発確認では pending 記事を source/category で明示的に選び、LLM は固定応答に差し替えてもよいので、Stage1 の保存経路を通して `source_bonus` / `category_bonus` と `analyses_with_bonus` を確認する。
+
+- パターン: settings 内で新しい運用系UIを増やすとき、既存の縦並びセクションへそのまま継ぎ足すと、情報量が増えた瞬間に見通しが崩れる。
+- 対策: 既存の settings パネルを捨てず、まずは `一般 / ニュース関連` のようなタブ分割で責務を分ける。大きなナビゲーション追加より低コストで整理しやすい。
+
 - パターン: 運用確認用の画面を settings の既存タブへ混ぜると、設定値編集と状態観測が混ざってタブ責務が曖昧になりやすい。
 - 対策: RSS / 検索 / ニュース学習のような運用系UIは、settings 配下でも既存タブへ押し込まず、「ニュース関連」の新規タブとして分離する。
 
