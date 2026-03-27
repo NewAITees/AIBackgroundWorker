@@ -969,6 +969,27 @@ body[data-mobile-layout="false"] .layout[data-detail-open="false"] .detail-pane 
 .settings-head h2 { margin: 0; font-size: 1.3rem; }
 .settings-head .ghost-button { font-size: 1.3rem; padding: 4px 10px; }
 
+.settings-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.settings-tab-button {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 0.88rem;
+}
+
+.settings-tab-button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
 .settings-section {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -984,6 +1005,12 @@ body[data-mobile-layout="false"] .layout[data-detail-open="false"] .detail-pane 
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+.settings-subhead {
+  margin: 0 0 10px;
+  font-size: 0.82rem;
+  color: var(--muted);
 }
 
 .settings-field {
@@ -1089,6 +1116,39 @@ body[data-mobile-layout="false"] .layout[data-detail-open="false"] .detail-pane 
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 10px;
+}
+
+.settings-news-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 18px;
+}
+
+.settings-stats-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-stat-row {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: rgba(255,255,255,0.75);
+}
+
+.settings-stat-row strong {
+  display: block;
+  font-size: 0.9rem;
+  margin-bottom: 4px;
+}
+
+.settings-stat-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  font-size: 0.78rem;
+  color: var(--muted);
 }
 
 .review-body {

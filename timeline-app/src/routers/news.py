@@ -192,6 +192,14 @@ async def get_feedback_stats() -> dict:
     return repo.get_feedback_stats()
 
 
+@router.get("/news/feedback/progress")
+async def get_feedback_progress(limit: int = 10) -> dict:
+    """学習の進み具合を件数サマリと最近のイベント付きで返す。"""
+    repo = _load_repo()
+    safe_limit = max(1, min(limit, 50))
+    return repo.get_feedback_progress(recent_limit=safe_limit)
+
+
 @router.post("/news/articles/{article_id}/generate_report")
 async def generate_report(article_id: int, background_tasks: BackgroundTasks) -> dict:
     """

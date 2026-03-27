@@ -206,6 +206,8 @@ function cacheRefs() {
   refs.navSettings = document.getElementById("nav-settings");
   refs.settingsPanel = document.getElementById("settings-panel");
   refs.settingsClose = document.getElementById("settings-close");
+  refs.settingsTabButtons = Array.from(document.querySelectorAll("[data-settings-tab]"));
+  refs.settingsTabPanels = Array.from(document.querySelectorAll("[data-settings-tab-panel]"));
   refs.reviewPanel = document.getElementById("review-panel");
   refs.reviewClose = document.getElementById("review-close");
   refs.reviewAnchorDate = document.getElementById("review-anchor-date");
@@ -257,6 +259,9 @@ function cacheRefs() {
   refs.sSearchQuery = document.getElementById("s-search-query");
   refs.sSearchQueryAdd = document.getElementById("s-search-query-add");
   refs.sSearchQueryStatus = document.getElementById("s-search-query-status");
+  refs.sNewsSourceStats = document.getElementById("s-news-source-stats");
+  refs.sNewsCategoryStats = document.getElementById("s-news-category-stats");
+  refs.sNewsStatsStatus = document.getElementById("s-news-stats-status");
 }
 
 function bindEvents() {
@@ -302,6 +307,9 @@ function bindEvents() {
   refs.settingsClose.addEventListener("click", closeSettingsPanel);
   refs.reviewClose.addEventListener("click", closeReviewPanel);
   refs.reviewReload.addEventListener("click", loadWeeklyReview);
+  refs.settingsTabButtons.forEach((button) => {
+    button.addEventListener("click", () => setSettingsTab(button.dataset.settingsTab || "general"));
+  });
   refs.vrmDebugCopy?.addEventListener("click", copyVrmDebugConfig);
   refs.sPersonalitySave.addEventListener("click", savePersonality);
   refs.sAiSave.addEventListener("click", saveAiSettings);
@@ -1977,6 +1985,7 @@ async function openSettingsPanel() {
   refs.navSettings.classList.add("active");
   refs.navTimeline.classList.remove("active");
   refs.navReview.classList.remove("active");
+  setSettingsTab("general");
   await loadSettings();
 }
 
@@ -2015,7 +2024,10 @@ function closeOverlayPanels() {
 
 async function loadSettings() {
   try {
-    const s = await api("/api/settings");
+    const [s, newsStats] = await Promise.all([
+      api("/api/settings"),
+      api("/api/news/feedback/stats").catch((error) => ({ __error: error.message })),
+    ]);
     refs.sPersonality.value = s.ai.personality ?? "";
     refs.sOllamaUrl.value = s.ai.ollama_base_url;
     refs.sOllamaModel.value = s.ai.ollama_model;
@@ -2038,9 +2050,27 @@ async function loadSettings() {
     renderWorkers(s.workers);
     renderFeeds(s.feeds);
     renderSearchQueries(s.search_queries ?? []);
+    if (newsStats && !newsStats.__error) {
+      renderNewsStats(newsStats);
+      refs.sNewsStatsStatus.textContent = "";
+    } else {
+      renderNewsStats(null);
+      refs.sNewsStatsStatus.textContent = newsStats?.__error || "学習状態を取得できませんでした";
+    }
   } catch (e) {
     refs.sAiStatus.textContent = e.message;
   }
+}
+
+function setSettingsTab(tabName) {
+  refs.settingsTabButtons.forEach((button) => {
+    const active = (button.dataset.settingsTab || "general") === tabName;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", active ? "true" : "false");
+  });
+  refs.settingsTabPanels.forEach((panel) => {
+    panel.classList.toggle("hidden", (panel.dataset.settingsTabPanel || "general") !== tabName);
+  });
 }
 
 function renderVrmOptions(models, selected) {
@@ -2138,6 +2168,47 @@ function renderSearchQueries(queries) {
     row.appendChild(btn);
     refs.sSearchQueries.appendChild(row);
   }
+}
+
+function renderNewsStats(stats) {
+  renderStatsGroup(refs.sNewsSourceStats, stats?.source ?? [], "source の学習データはまだありません");
+  renderStatsGroup(refs.sNewsCategoryStats, stats?.category ?? [], "category の学習データはまだありません");
+}
+
+function renderStatsGroup(container, items, emptyText) {
+  if (!container) return;
+  container.innerHTML = "";
+  if (!items.length) {
+    container.textContent = emptyText;
+    return;
+  }
+  items.slice(0, 8).forEach((item) => {
+    const row = document.createElement("div");
+    row.className = "settings-stat-row";
+    row.innerHTML = `
+      <strong>${escapeHtml(item.name || "不明")}</strong>
+      <div class="settings-stat-meta">
+        <span>score ${formatStatNumber(item.score, 3)}</span>
+        <span>bonus ${formatSignedNumber(item.bonus, 3)}</span>
+        <span>samples ${formatStatNumber(item.samples, 1)}</span>
+        <span>+ ${formatStatNumber(item.positive, 1)}</span>
+        <span>- ${formatStatNumber(item.negative, 1)}</span>
+        <span>report ${formatStatNumber(item.report_requested, 1)}</span>
+      </div>
+    `;
+    container.appendChild(row);
+  });
+}
+
+function formatStatNumber(value, digits = 1) {
+  const num = Number(value ?? 0);
+  return Number.isFinite(num) ? num.toFixed(digits) : "0.0";
+}
+
+function formatSignedNumber(value, digits = 1) {
+  const num = Number(value ?? 0);
+  if (!Number.isFinite(num)) return "0.0";
+  return `${num >= 0 ? "+" : ""}${num.toFixed(digits)}`;
 }
 
 async function savePersonality() {
@@ -2359,6 +2430,15 @@ function buildReviewCard(title, body) {
   card.appendChild(heading);
   card.appendChild(copy);
   return card;
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 function textareaLines(value) {

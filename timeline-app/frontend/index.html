@@ -321,7 +321,12 @@
         <button id="settings-close" class="ghost-button" type="button" aria-label="閉じる">×</button>
       </div>
 
-      <section class="settings-section">
+      <div class="settings-tabs" role="tablist" aria-label="設定タブ">
+        <button id="settings-tab-general" class="settings-tab-button active" type="button" data-settings-tab="general" aria-selected="true">一般</button>
+        <button id="settings-tab-news" class="settings-tab-button" type="button" data-settings-tab="news" aria-selected="false">ニュース関連</button>
+      </div>
+
+      <section class="settings-section" data-settings-tab-panel="general">
         <h3>AI 性格</h3>
         <label class="settings-field settings-field--column">
           <span>性格・話し方</span>
@@ -333,7 +338,7 @@
         </div>
       </section>
 
-      <section class="settings-section">
+      <section class="settings-section" data-settings-tab-panel="general">
         <h3>AI 接続</h3>
         <label class="settings-field">
           <span>Ollama URL</span>
@@ -353,7 +358,7 @@
         </div>
       </section>
 
-      <section class="settings-section">
+      <section class="settings-section" data-settings-tab-panel="general">
         <h3>VRM</h3>
         <label class="settings-field">
           <span>モデル</span>
@@ -365,12 +370,12 @@
         </div>
       </section>
 
-      <section class="settings-section">
+      <section class="settings-section" data-settings-tab-panel="general">
         <h3>ワーカー</h3>
         <div id="s-workers" class="settings-workers"></div>
       </section>
 
-      <section class="settings-section">
+      <section class="settings-section" data-settings-tab-panel="general">
         <h3>行動改善</h3>
         <label class="timeline-toggle">
           <input id="s-review-enabled" type="checkbox" />
@@ -463,7 +468,7 @@
         </div>
       </section>
 
-      <section class="settings-section">
+      <section class="settings-section" data-settings-tab-panel="news">
         <h3>分析パイプライン</h3>
         <label class="settings-field">
           <span>RSS 取得上限（件）</span>
@@ -491,7 +496,7 @@
         </div>
       </section>
 
-      <section class="settings-section">
+      <section class="settings-section" data-settings-tab-panel="news">
         <h3>RSS フィード</h3>
         <div id="s-feeds" class="settings-feeds"></div>
         <div class="settings-feed-add">
@@ -501,7 +506,7 @@
         <span id="s-feed-status" class="settings-status"></span>
       </section>
 
-      <section class="settings-section">
+      <section class="settings-section" data-settings-tab-panel="news">
         <h3>DuckDuckGo 検索クエリ</h3>
         <div id="s-search-queries" class="settings-feeds"></div>
         <div class="settings-feed-add">
@@ -509,6 +514,21 @@
           <button id="s-search-query-add" type="button">追加</button>
         </div>
         <span id="s-search-query-status" class="settings-status"></span>
+      </section>
+
+      <section class="settings-section" data-settings-tab-panel="news">
+        <h3>学習状態</h3>
+        <div class="settings-news-grid">
+          <div>
+            <h4 class="settings-subhead">source 傾向</h4>
+            <div id="s-news-source-stats" class="settings-stats-list"></div>
+          </div>
+          <div>
+            <h4 class="settings-subhead">category 傾向</h4>
+            <div id="s-news-category-stats" class="settings-stats-list"></div>
+          </div>
+        </div>
+        <span id="s-news-stats-status" class="settings-status"></span>
       </section>
     </div>
   </div>

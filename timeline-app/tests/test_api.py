@@ -407,6 +407,27 @@ class TestNewsFeedback:
         assert resp.json()["source"][0]["name"] == "SourceA"
         assert resp.json()["category"][0]["name"] == "AI"
 
+    def test_get_feedback_progress(self, client: TestClient, monkeypatch):
+        class _Repo:
+            def get_feedback_progress(self, recent_limit=10):
+                assert recent_limit == 5
+                return {
+                    "overview": {"feedback_articles": 3, "analyzed_articles": 8},
+                    "top_source": [{"name": "SourceA", "score": 0.8}],
+                    "top_category": [{"name": "AI", "score": 0.7}],
+                    "recent_events": [{"article_id": 1, "event_type": "feedback_positive"}],
+                    "recent_analyses": [{"article_id": 2, "source_bonus": 0.04}],
+                }
+
+        monkeypatch.setattr("src.routers.news._load_repo", lambda: _Repo())
+
+        resp = client.get("/api/news/feedback/progress?limit=5")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["overview"]["feedback_articles"] == 3
+        assert data["recent_events"][0]["event_type"] == "feedback_positive"
+        assert data["recent_analyses"][0]["source_bonus"] == 0.04
+
     def test_get_articles_includes_feedback_state(self, client: TestClient, monkeypatch):
         class _Repo:
             def get_articles_by_ids(self, article_ids):

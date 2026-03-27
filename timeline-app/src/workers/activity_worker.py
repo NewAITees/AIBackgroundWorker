@@ -14,17 +14,13 @@ from typing import Any
 from pathlib import Path
 
 from ..config import config
-from .paths import get_latest_sqlite_id, lifelog_src, resolve_lifelog_path
+from .paths import ensure_lifelog_import_paths, get_latest_sqlite_id, resolve_lifelog_path
 
 logger = logging.getLogger(__name__)
 
 
 def _load_lifelog_classes():
-    import sys
-
-    src_path = str(lifelog_src())
-    if src_path not in sys.path:
-        sys.path.insert(0, src_path)
+    ensure_lifelog_import_paths()
 
     from lifelog.collectors.activity_collector import ActivityCollector
     from lifelog.database.db_manager import DatabaseManager

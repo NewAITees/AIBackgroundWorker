@@ -11,15 +11,11 @@ import sqlite3
 from typing import Any
 
 from ..config import config
-from .paths import get_latest_sqlite_id, lifelog_src, resolve_lifelog_path
+from .paths import ensure_lifelog_import_paths, get_latest_sqlite_id, resolve_lifelog_path
 
 
 def _load_browser_classes():
-    import sys
-
-    src_path = str(lifelog_src())
-    if src_path not in sys.path:
-        sys.path.insert(0, src_path)
+    ensure_lifelog_import_paths()
 
     from browser_history.importer import BraveHistoryImporter
     from browser_history.repository import BrowserHistoryRepository
